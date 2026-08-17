@@ -1,0 +1,43 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Test output
+TestResults/
+coverage/
+*.trx
+
+# Logs
+logs/
+*.log
+
+# Local uploaded files
+OnlineJudge.Api/App_Data/
+OnlineJudge.Api/wwwroot/uploads/
+upload-test/
+
+# Local build artifacts and database backups
+artifacts/
+backup_before_delete_large_testcase.sql
+
+# Local environment and private keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.tools/
+
+# OS files
+.DS_Store
+Thumbs.db
