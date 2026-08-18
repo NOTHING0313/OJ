@@ -9,7 +9,6 @@ namespace OnlineJudge.Infrastructure.Judging.Sandbox;
 public class DockerJudgeSandbox : IJudgeSandbox
 {
     private const string ContainerWorkspace = "/workspace";
-    private const string ContainerInputFile = "/judge-input.txt";
 
     private const UnixFileMode WorkspaceDirectoryMode =
         UnixFileMode.UserRead |
@@ -21,12 +20,6 @@ public class DockerJudgeSandbox : IJudgeSandbox
         UnixFileMode.OtherRead |
         UnixFileMode.OtherWrite |
         UnixFileMode.OtherExecute;
-
-    private const UnixFileMode WorkspaceFileMode =
-        UnixFileMode.UserRead |
-        UnixFileMode.UserWrite |
-        UnixFileMode.GroupRead |
-        UnixFileMode.OtherRead;
 
     private const UnixFileMode WorkspaceParentMode =
         UnixFileMode.UserRead |
@@ -43,12 +36,9 @@ public class DockerJudgeSandbox : IJudgeSandbox
 
         try
         {
-            await WriteWorkspaceFileAsync(
-                Path.Combine(tempDirectory, profile.SourceFileName),
-                request.SourceCode,
-                cancellationToken);
-
+            await File.WriteAllTextAsync(Path.Combine(tempDirectory, profile.SourceFileName), request.SourceCode, cancellationToken);
             await WriteExtraFilesAsync(tempDirectory, profile.ExtraFiles, cancellationToken);
+            await WriteTestCaseInputsAsync(tempDirectory, request.TestCases, cancellationToken);
 
             var compileResult = await RunDockerCommandAsync(
                 tempDirectory,
@@ -56,8 +46,6 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 profile.DockerImageName,
                 profile.CompileCommand,
                 timeout: TimeSpan.FromSeconds(30),
-                workspaceReadOnly: false,
-                inputFilePath: null,
                 cancellationToken: cancellationToken);
 
             if (compileResult.TimedOut)
@@ -98,109 +86,91 @@ public class DockerJudgeSandbox : IJudgeSandbox
         }
     }
 
-    private async Task<JudgeResult> RunTestCasesAsync(
-        JudgeRequest request,
-        LanguageJudgeProfile profile,
-        string tempDirectory,
-        CancellationToken cancellationToken)
+    private async Task<JudgeResult> RunTestCasesAsync(JudgeRequest request, LanguageJudgeProfile profile, string tempDirectory, CancellationToken cancellationToken)
     {
         var totalTimeUsedMs = 0;
         var caseResults = new List<JudgeCaseResult>();
 
         foreach (var testCase in request.TestCases)
         {
-            var inputFilePath = GetInputFilePath(request.SubmissionId, testCase.TestCaseId);
+            var inputFileName = GetInputFileName(testCase.TestCaseId);
+            var runResult = await RunDockerCommandAsync(
+                tempDirectory,
+                request.MemoryLimitMb,
+                profile.DockerImageName,
+                $"{profile.RunCommand} < {inputFileName}",
+                timeout: TimeSpan.FromMilliseconds(Math.Max(request.TimeLimitMs, 1)),
+                cancellationToken: cancellationToken);
 
-            try
+            totalTimeUsedMs += runResult.ElapsedMs;
+            var actualOutput = NormalizeOutput(runResult.StandardOutput);
+
+            if (runResult.TimedOut)
             {
-                await WriteWorkspaceFileAsync(inputFilePath, testCase.Input, cancellationToken);
-
-                var runResult = await RunDockerCommandAsync(
-                    tempDirectory,
-                    request.MemoryLimitMb,
-                    profile.DockerImageName,
-                    $"{profile.RunCommand} < {ContainerInputFile}",
-                    timeout: TimeSpan.FromMilliseconds(Math.Max(request.TimeLimitMs, 1)),
-                    workspaceReadOnly: true,
-                    inputFilePath: inputFilePath,
-                    cancellationToken: cancellationToken);
-
-                totalTimeUsedMs += runResult.ElapsedMs;
-                var actualOutput = NormalizeOutput(runResult.StandardOutput);
-
-                if (runResult.TimedOut)
+                caseResults.Add(new JudgeCaseResult
                 {
-                    caseResults.Add(new JudgeCaseResult
-                    {
-                        TestCaseId = testCase.TestCaseId,
-                        Status = JudgeStatus.TimeLimitExceeded,
-                        TimeUsedMs = runResult.ElapsedMs
-                    });
+                    TestCaseId = testCase.TestCaseId,
+                    Status = JudgeStatus.TimeLimitExceeded,
+                    TimeUsedMs = runResult.ElapsedMs
+                });
 
-                    return new JudgeResult
-                    {
-                        Status = JudgeStatus.TimeLimitExceeded,
-                        TimeUsedMs = totalTimeUsedMs,
-                        CaseResults = caseResults
-                    };
-                }
-
-                if (runResult.ExitCode != 0)
+                return new JudgeResult
                 {
-                    var errorMessage = GetErrorMessage(
-                        runResult,
-                        $"Process exited with code {runResult.ExitCode}.");
+                    Status = JudgeStatus.TimeLimitExceeded,
+                    TimeUsedMs = totalTimeUsedMs,
+                    CaseResults = caseResults
+                };
+            }
 
-                    caseResults.Add(new JudgeCaseResult
-                    {
-                        TestCaseId = testCase.TestCaseId,
-                        Status = JudgeStatus.RuntimeError,
-                        TimeUsedMs = runResult.ElapsedMs,
-                        ActualOutput = actualOutput,
-                        ErrorMessage = errorMessage
-                    });
-
-                    return new JudgeResult
-                    {
-                        Status = JudgeStatus.RuntimeError,
-                        TimeUsedMs = totalTimeUsedMs,
-                        ErrorMessage = errorMessage,
-                        CaseResults = caseResults
-                    };
-                }
-
-                if (actualOutput != NormalizeOutput(testCase.ExpectedOutput))
-                {
-                    caseResults.Add(new JudgeCaseResult
-                    {
-                        TestCaseId = testCase.TestCaseId,
-                        Status = JudgeStatus.WrongAnswer,
-                        TimeUsedMs = runResult.ElapsedMs,
-                        ActualOutput = actualOutput,
-                        ErrorMessage = "Output does not match expected output."
-                    });
-
-                    return new JudgeResult
-                    {
-                        Status = JudgeStatus.WrongAnswer,
-                        TimeUsedMs = totalTimeUsedMs,
-                        ErrorMessage = "Output does not match expected output.",
-                        CaseResults = caseResults
-                    };
-                }
+            if (runResult.ExitCode != 0)
+            {
+                var errorMessage = GetErrorMessage(runResult, $"Process exited with code {runResult.ExitCode}.");
 
                 caseResults.Add(new JudgeCaseResult
                 {
                     TestCaseId = testCase.TestCaseId,
-                    Status = JudgeStatus.Accepted,
+                    Status = JudgeStatus.RuntimeError,
                     TimeUsedMs = runResult.ElapsedMs,
-                    ActualOutput = actualOutput
+                    ActualOutput = actualOutput,
+                    ErrorMessage = errorMessage
                 });
+
+                return new JudgeResult
+                {
+                    Status = JudgeStatus.RuntimeError,
+                    TimeUsedMs = totalTimeUsedMs,
+                    ErrorMessage = errorMessage,
+                    CaseResults = caseResults
+                };
             }
-            finally
+
+            if (actualOutput != NormalizeOutput(testCase.ExpectedOutput))
             {
-                TryDeleteFile(inputFilePath);
+                caseResults.Add(new JudgeCaseResult
+                {
+                    TestCaseId = testCase.TestCaseId,
+                    Status = JudgeStatus.WrongAnswer,
+                    TimeUsedMs = runResult.ElapsedMs,
+                    ActualOutput = actualOutput,
+                    ErrorMessage = "Output does not match expected output."
+                });
+
+                return new JudgeResult
+                {
+                    Status = JudgeStatus.WrongAnswer,
+                    TimeUsedMs = totalTimeUsedMs,
+                    ErrorMessage = "Output does not match expected output.",
+                    CaseResults = caseResults
+                };
             }
+
+            caseResults.Add(new JudgeCaseResult
+            {
+                TestCaseId = testCase.TestCaseId,
+                Status = JudgeStatus.Accepted,
+                TimeUsedMs = runResult.ElapsedMs,
+                ActualOutput = actualOutput
+            });
         }
 
         return new JudgeResult
@@ -217,8 +187,6 @@ public class DockerJudgeSandbox : IJudgeSandbox
         string dockerImageName,
         string command,
         TimeSpan timeout,
-        bool workspaceReadOnly,
-        string? inputFilePath,
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -229,7 +197,6 @@ public class DockerJudgeSandbox : IJudgeSandbox
         process.StartInfo.RedirectStandardError = true;
         process.StartInfo.UseShellExecute = false;
         process.StartInfo.CreateNoWindow = true;
-
         process.StartInfo.ArgumentList.Add("run");
         process.StartInfo.ArgumentList.Add("--rm");
         process.StartInfo.ArgumentList.Add("--network");
@@ -240,31 +207,14 @@ public class DockerJudgeSandbox : IJudgeSandbox
         process.StartInfo.ArgumentList.Add("1");
         process.StartInfo.ArgumentList.Add("--pids-limit");
         process.StartInfo.ArgumentList.Add("64");
-
         process.StartInfo.ArgumentList.Add("-v");
-        process.StartInfo.ArgumentList.Add(
-            workspaceReadOnly
-                ? $"{workspaceDirectory}:{ContainerWorkspace}:ro"
-                : $"{workspaceDirectory}:{ContainerWorkspace}");
-
-        if (!string.IsNullOrWhiteSpace(inputFilePath))
-        {
-            process.StartInfo.ArgumentList.Add("-v");
-            process.StartInfo.ArgumentList.Add(
-                $"{inputFilePath}:{ContainerInputFile}:ro");
-        }
-
+        process.StartInfo.ArgumentList.Add($"{workspaceDirectory}:{ContainerWorkspace}");
         process.StartInfo.ArgumentList.Add("-w");
         process.StartInfo.ArgumentList.Add(ContainerWorkspace);
-
         process.StartInfo.ArgumentList.Add(dockerImageName);
         process.StartInfo.ArgumentList.Add("bash");
         process.StartInfo.ArgumentList.Add("-lc");
-
-        process.StartInfo.ArgumentList.Add(
-            workspaceReadOnly
-                ? command
-                : $"umask 000; {command}");
+        process.StartInfo.ArgumentList.Add($"umask 000; {command}");
 
         var standardOutputBuilder = new StringBuilder();
         var standardErrorBuilder = new StringBuilder();
@@ -316,10 +266,18 @@ public class DockerJudgeSandbox : IJudgeSandbox
             TimedOut: false);
     }
 
-    private static async Task WriteExtraFilesAsync(
-        string tempDirectory,
-        IReadOnlyDictionary<string, string> extraFiles,
-        CancellationToken cancellationToken)
+    private static async Task WriteTestCaseInputsAsync(string tempDirectory, IReadOnlyList<JudgeCaseRequest> testCases, CancellationToken cancellationToken)
+    {
+        foreach (var testCase in testCases)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(tempDirectory, GetInputFileName(testCase.TestCaseId)),
+                testCase.Input,
+                cancellationToken);
+        }
+    }
+
+    private static async Task WriteExtraFilesAsync(string tempDirectory, IReadOnlyDictionary<string, string> extraFiles, CancellationToken cancellationToken)
     {
         foreach (var extraFile in extraFiles)
         {
@@ -328,65 +286,42 @@ public class DockerJudgeSandbox : IJudgeSandbox
 
             if (!string.IsNullOrWhiteSpace(directory))
             {
-                EnsureContainerWritableDirectory(directory);
+                Directory.CreateDirectory(directory);
+                SetWorkspaceDirectoryMode(directory);
             }
 
-            await WriteWorkspaceFileAsync(
-                path,
-                extraFile.Value,
-                cancellationToken);
+            await File.WriteAllTextAsync(path, extraFile.Value, cancellationToken);
         }
-    }
-
-    private static async Task WriteWorkspaceFileAsync(
-        string path,
-        string content,
-        CancellationToken cancellationToken)
-    {
-        await File.WriteAllTextAsync(path, content, cancellationToken);
-        SetUnixMode(path, WorkspaceFileMode);
     }
 
     private static string CreateTempDirectory(Guid submissionId)
     {
-        var parentDirectory = Path.Combine(
-            Path.GetTempPath(),
-            "onlinejudge");
-
+        var parentDirectory = Path.Combine(Path.GetTempPath(), "onlinejudge");
         Directory.CreateDirectory(parentDirectory);
-        SetUnixMode(parentDirectory, WorkspaceParentMode);
 
-        var directory = Path.Combine(
-            parentDirectory,
-            submissionId.ToString("N"));
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(parentDirectory, WorkspaceParentMode);
+        }
 
+        var directory = Path.Combine(parentDirectory, submissionId.ToString("N"));
         Directory.CreateDirectory(directory);
-        SetUnixMode(directory, WorkspaceDirectoryMode);
+        SetWorkspaceDirectoryMode(directory);
 
         return directory;
     }
 
-    private static void EnsureContainerWritableDirectory(string directory)
-    {
-        Directory.CreateDirectory(directory);
-        SetUnixMode(directory, WorkspaceDirectoryMode);
-    }
-
-    private static void SetUnixMode(string path, UnixFileMode mode)
+    private static void SetWorkspaceDirectoryMode(string directory)
     {
         if (OperatingSystem.IsLinux())
         {
-            File.SetUnixFileMode(path, mode);
+            File.SetUnixFileMode(directory, WorkspaceDirectoryMode);
         }
     }
 
-    private static string GetInputFilePath(
-        Guid submissionId,
-        Guid testCaseId)
+    private static string GetInputFileName(Guid testCaseId)
     {
-        return Path.Combine(
-            Path.GetTempPath(),
-            $"onlinejudge-input-{submissionId:N}-{testCaseId:N}.txt");
+        return $"{testCaseId:N}.input.txt";
     }
 
     private static string NormalizeOutput(string output)
@@ -394,9 +329,7 @@ public class DockerJudgeSandbox : IJudgeSandbox
         return output.Replace("\r\n", "\n").TrimEnd();
     }
 
-    private static string GetErrorMessage(
-        DockerCommandResult result,
-        string fallback)
+    private static string GetErrorMessage(DockerCommandResult result, string fallback)
     {
         if (!string.IsNullOrWhiteSpace(result.StandardError))
         {
@@ -418,20 +351,6 @@ public class DockerJudgeSandbox : IJudgeSandbox
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
-            }
-        }
-        catch
-        {
-        }
-    }
-
-    private static void TryDeleteFile(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
             }
         }
         catch
