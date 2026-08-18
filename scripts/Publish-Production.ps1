@@ -13,19 +13,18 @@ $hashPath = "$archivePath.sha256"
 function Invoke-Checked {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Command,
+        [string]$FilePath,
 
-        [Parameter(ValueFromRemainingArguments = $true)]
-        [string[]]$Arguments
+        [string[]]$ArgumentList = @()
     )
 
     Write-Host ""
-    Write-Host ">>> $Command $($Arguments -join ' ')"
+    Write-Host ">>> $FilePath $($ArgumentList -join ' ')"
 
-    & $Command @Arguments
+    & $FilePath @ArgumentList
 
     if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code $LASTEXITCODE : $Command"
+        throw "Command failed with exit code $LASTEXITCODE : $FilePath $($ArgumentList -join ' ')"
     }
 }
 
@@ -36,6 +35,7 @@ Write-Host "========================================"
 Set-Location $root
 
 $gitStatus = git status --porcelain
+
 if ($LASTEXITCODE -ne 0) {
     throw "Unable to read Git status."
 }
@@ -45,7 +45,16 @@ if ($gitStatus) {
 }
 
 $commit = (git rev-parse HEAD).Trim()
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to read Git commit."
+}
+
 $branch = (git branch --show-current).Trim()
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to read Git branch."
+}
 
 Write-Host "Root   : $root"
 Write-Host "Branch : $branch"
@@ -71,33 +80,70 @@ New-Item -ItemType Directory -Path $sandboxOutput -Force | Out-Null
 Write-Host ""
 Write-Host "=== Restore EF Tool ==="
 
-Invoke-Checked dotnet tool restore
+Invoke-Checked `
+    -FilePath "dotnet" `
+    -ArgumentList @(
+        "tool",
+        "restore"
+    )
 
 Write-Host ""
 Write-Host "=== Build And Test Backend ==="
 
-Invoke-Checked dotnet build OnlineJudge.sln -c Release
-Invoke-Checked dotnet test OnlineJudge.sln -c Release --no-build
+Invoke-Checked `
+    -FilePath "dotnet" `
+    -ArgumentList @(
+        "build",
+        "OnlineJudge.sln",
+        "-c",
+        "Release"
+    )
+
+Invoke-Checked `
+    -FilePath "dotnet" `
+    -ArgumentList @(
+        "test",
+        "OnlineJudge.sln",
+        "-c",
+        "Release",
+        "--no-build"
+    )
 
 Write-Host ""
 Write-Host "=== Publish API For Linux x64 ==="
 
-Invoke-Checked dotnet publish `
-    OnlineJudge.Api/OnlineJudge.Api.csproj `
-    -c Release `
-    -r linux-x64 `
-    --self-contained true `
-    -o $apiOutput
+Invoke-Checked `
+    -FilePath "dotnet" `
+    -ArgumentList @(
+        "publish",
+        "OnlineJudge.Api/OnlineJudge.Api.csproj",
+        "-c",
+        "Release",
+        "-r",
+        "linux-x64",
+        "--self-contained",
+        "true",
+        "-o",
+        $apiOutput
+    )
 
 Write-Host ""
 Write-Host "=== Publish JudgeWorker For Linux x64 ==="
 
-Invoke-Checked dotnet publish `
-    OnlineJudge.JudgeWorker/OnlineJudge.JudgeWorker.csproj `
-    -c Release `
-    -r linux-x64 `
-    --self-contained true `
-    -o $workerOutput
+Invoke-Checked `
+    -FilePath "dotnet" `
+    -ArgumentList @(
+        "publish",
+        "OnlineJudge.JudgeWorker/OnlineJudge.JudgeWorker.csproj",
+        "-c",
+        "Release",
+        "-r",
+        "linux-x64",
+        "--self-contained",
+        "true",
+        "-o",
+        $workerOutput
+    )
 
 Write-Host ""
 Write-Host "=== Remove Development Configuration From Production Artifacts ==="
@@ -134,15 +180,31 @@ Write-Host "=== Build Frontend ==="
 Push-Location (Join-Path $root "frontend")
 
 try {
-    Invoke-Checked npm ci
-    Invoke-Checked npm run build
+    Invoke-Checked `
+        -FilePath "npm.cmd" `
+        -ArgumentList @(
+            "ci"
+        )
+
+    Invoke-Checked `
+        -FilePath "npm.cmd" `
+        -ArgumentList @(
+            "run",
+            "build"
+        )
 }
 finally {
     Pop-Location
 }
 
+$frontendDist = Join-Path $root "frontend\dist"
+
+if (!(Test-Path $frontendDist)) {
+    throw "Frontend dist directory was not generated."
+}
+
 Copy-Item `
-    (Join-Path $root "frontend\dist\*") `
+    (Join-Path $frontendDist "*") `
     $frontendOutput `
     -Recurse `
     -Force
@@ -152,19 +214,35 @@ Write-Host "=== Build EF Core Migration Bundle ==="
 
 $efBundlePath = Join-Path $outputRoot "efbundle"
 
-Invoke-Checked dotnet ef migrations bundle `
-    --project OnlineJudge.Infrastructure/OnlineJudge.Infrastructure.csproj `
-    --startup-project OnlineJudge.Api/OnlineJudge.Api.csproj `
-    --self-contained `
-    -r linux-x64 `
-    -o $efBundlePath `
-    --force
+Invoke-Checked `
+    -FilePath "dotnet" `
+    -ArgumentList @(
+        "ef",
+        "migrations",
+        "bundle",
+        "--project",
+        "OnlineJudge.Infrastructure/OnlineJudge.Infrastructure.csproj",
+        "--startup-project",
+        "OnlineJudge.Api/OnlineJudge.Api.csproj",
+        "--self-contained",
+        "-r",
+        "linux-x64",
+        "-o",
+        $efBundlePath,
+        "--force"
+    )
 
 Write-Host ""
 Write-Host "=== Copy Judge Sandbox Definitions ==="
 
+$sandboxSource = Join-Path $root "sandbox"
+
+if (!(Test-Path $sandboxSource)) {
+    throw "Sandbox directory was not found: $sandboxSource"
+}
+
 Copy-Item `
-    (Join-Path $root "sandbox\*") `
+    (Join-Path $sandboxSource "*") `
     $sandboxOutput `
     -Recurse `
     -Force
@@ -217,6 +295,17 @@ if (!(Test-Path (Join-Path $frontendOutput "index.html"))) {
     throw "Frontend production build was not generated."
 }
 
+if (!(Test-Path (Join-Path $sandboxOutput "*"))) {
+    throw "Judge sandbox definitions were not copied."
+}
+
+Write-Host "[PASS] API Artifact"
+Write-Host "[PASS] JudgeWorker Artifact"
+Write-Host "[PASS] Frontend Artifact"
+Write-Host "[PASS] EF Migration Bundle"
+Write-Host "[PASS] Sandbox Definitions"
+Write-Host "[PASS] Development Configuration Removed"
+
 Write-Host ""
 Write-Host "=== Create Release Archive ==="
 
@@ -226,15 +315,22 @@ if ($null -eq $tarCommand) {
     throw "tar command is unavailable on this Windows installation."
 }
 
-Invoke-Checked tar `
-    -czf `
-    $archivePath `
-    -C `
-    $outputRoot `
-    .
+Invoke-Checked `
+    -FilePath $tarCommand.Source `
+    -ArgumentList @(
+        "-czf",
+        $archivePath,
+        "-C",
+        $outputRoot,
+        "."
+    )
 
 Write-Host ""
 Write-Host "=== Generate SHA256 ==="
+
+if (!(Test-Path $archivePath)) {
+    throw "Release archive was not generated."
+}
 
 $hash = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 $archiveName = Split-Path $archivePath -Leaf
@@ -243,6 +339,10 @@ Set-Content `
     -Path $hashPath `
     -Value "$hash  $archiveName" `
     -Encoding ASCII
+
+if (!(Test-Path $hashPath)) {
+    throw "SHA256 file was not generated."
+}
 
 Write-Host ""
 Write-Host "========================================"
