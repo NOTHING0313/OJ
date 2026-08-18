@@ -1,0 +1,4 @@
+interface:
+  display_name: "OnlineJudge Project Context"
+  short_description: "Verified OnlineJudge architecture and safety context"
+  default_prompt: "Use $onlinejudge-project-context to load the verified OnlineJudge boundaries before planning a project change."

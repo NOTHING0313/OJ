@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "workflowVersion": "2026.07-workflow-v2",
+  "mode": "merge",
+  "localAgents": ".agent/AGENTS.md",
+  "initialization": {
+    "state": "complete",
+    "checkpoint": "finalized",
+    "managedArtifacts": [
+      ".agent/AGENTS.md",
+      ".agents/skills/onlinejudge-project-context/SKILL.md",
+      ".agents/skills/onlinejudge-project-context/agents/openai.yaml",
+      "docs/ai/context/OnlineJudge-Context-Capsule.md",
+      "docs/ai/tasks/OJ-PRODUCTION-DEPLOY-01.md",
+      "docs/ai/handoffs/OJ-AGENTS-INIT-01.md"
+    ]
+  },
+  "localSkills": [
+    {
+      "name": "onlinejudge-project-context",
+      "path": ".agents/skills/onlinejudge-project-context/SKILL.md",
+      "enabled": true,
+      "triggers": [
+        "OnlineJudge",
+        "OJ-*",
+        "OJ-PRODUCTION-DEPLOY-01"
+      ]
+    }
+  ],
+  "localTemplateVersion": "2026.07-local-agents-v2",
+  "ConfigurationState": "current",
+  "initializedAt": "2026-08-17T01:35:04.0095412Z",
+  "updatedAt": "2026-08-17T01:41:16.0115187Z",
+  "projectRoot": "E:/Github/OJ",
+  "projectType": "dotnet-react",
+  "documentationRoot": "docs"
+}

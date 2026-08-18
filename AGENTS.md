@@ -28,7 +28,7 @@ Frontend:
 
 Sandbox:
 - Docker-based runner
-- First language: C++17 only
+- Supported judge languages: C11, C++17, and C#
 
 ## Architecture Rules
 
