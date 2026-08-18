@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
@@ -11,8 +12,10 @@ public static class RootAccountSeeder
     public static async Task SeedAsync(IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
     {
         using var scope = serviceProvider.CreateScope();
+
         var dbContext = scope.ServiceProvider.GetRequiredService<OnlineJudgeDbContext>();
         var passwordHasher = scope.ServiceProvider.GetRequiredService<PasswordHasher>();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         await dbContext.Users
             .Where(user => user.Role == (UserRole)0)
@@ -26,20 +29,39 @@ public static class RootAccountSeeder
 
         var rootExists = await dbContext.Users
             .AsNoTracking()
-            .AnyAsync(user => user.UserName == "UnrealStudio", cancellationToken);
+            .AnyAsync(user => user.Role == UserRole.Root, cancellationToken);
 
         if (rootExists)
         {
             return;
         }
 
+        var userName = GetRequiredConfiguration(configuration, "RootAccount:UserName");
+        var email = GetRequiredConfiguration(configuration, "RootAccount:Email").ToLowerInvariant();
+        var password = GetRequiredConfiguration(configuration, "RootAccount:Password");
+
+        if (password.Length < 12)
+        {
+            throw new InvalidOperationException("RootAccount:Password must contain at least 12 characters.");
+        }
+
+        var accountConflict = await dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(user => user.UserName == userName || user.Email.ToLower() == email, cancellationToken);
+
+        if (accountConflict)
+        {
+            throw new InvalidOperationException("Configured root account conflicts with an existing user.");
+        }
+
         var now = DateTimeOffset.UtcNow;
+
         dbContext.Users.Add(new User
         {
             Id = Guid.NewGuid(),
-            UserName = "UnrealStudio",
-            Email = "unrealstudio@example.com",
-            PasswordHash = passwordHasher.HashPassword("UnrealStudio"),
+            UserName = userName,
+            Email = email,
+            PasswordHash = passwordHasher.HashPassword(password),
             Role = UserRole.Root,
             IsBlacklisted = false,
             CreatedAt = now,
@@ -47,5 +69,17 @@ public static class RootAccountSeeder
         });
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string GetRequiredConfiguration(IConfiguration configuration, string key)
+    {
+        var value = configuration[key]?.Trim();
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException($"{key} is not configured.");
+        }
+
+        return value;
     }
 }

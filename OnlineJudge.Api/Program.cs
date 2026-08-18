@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using OnlineJudge.Api.Common;
@@ -13,16 +14,28 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
-builder.Services.AddCors(options =>
+
+if (builder.Environment.IsDevelopment())
 {
-    options.AddPolicy("FrontendDev", policy =>
+    builder.Services.AddCors(options =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        options.AddPolicy("FrontendDev", policy =>
+        {
+            policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        });
     });
+}
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
 });
+
 builder.Services.AddInfrastructure(builder.Configuration);
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -45,6 +58,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.Zero
         };
     });
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("RequireProblemSetter", policy =>
@@ -52,10 +66,13 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RequireRoot", policy =>
         policy.RequireRole(UserRole.Root.ToString()));
 });
+
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
 await RootAccountSeeder.SeedAsync(app.Services);
+
 var webRootPath = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "images"));
 
@@ -64,12 +81,18 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+app.UseForwardedHeaders();
+
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(webRootPath)
 });
-app.UseCors("FrontendDev");
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors("FrontendDev");
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

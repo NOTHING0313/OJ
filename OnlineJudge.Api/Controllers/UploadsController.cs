@@ -44,6 +44,7 @@ public class UploadsController(IWebHostEnvironment environment) : ControllerBase
         }
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+
         if (string.IsNullOrWhiteSpace(extension) || !AllowedExtensions.Contains(extension))
         {
             return BadRequest("Unsupported image extension.");
@@ -56,6 +57,7 @@ public class UploadsController(IWebHostEnvironment environment) : ControllerBase
 
         var webRootPath = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
         var uploadDirectory = Path.Combine(webRootPath, "uploads", "images");
+
         Directory.CreateDirectory(uploadDirectory);
 
         var fileName = $"{Guid.NewGuid():N}{extension}";
@@ -70,7 +72,9 @@ public class UploadsController(IWebHostEnvironment environment) : ControllerBase
         await using var stream = System.IO.File.Create(filePath);
         await file.CopyToAsync(stream, cancellationToken);
 
-        var url = $"{Request.Scheme}://{Request.Host}/uploads/images/{fileName}";
-        return Ok(new { url });
+        return Ok(new
+        {
+            url = $"/uploads/images/{fileName}"
+        });
     }
 }

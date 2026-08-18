@@ -1,4 +1,4 @@
-export const baseUrl = "http://localhost:5101";
+export const baseUrl = "";
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem("accessToken");
@@ -27,6 +27,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   }
 
   const text = await response.text();
+
   if (!text) {
     return undefined as T;
   }
@@ -43,6 +44,7 @@ async function readErrorMessage(response: Response): Promise<string> {
 
   try {
     const parsed = JSON.parse(text) as unknown;
+
     if (typeof parsed === "string") {
       return parsed;
     }
@@ -50,7 +52,8 @@ async function readErrorMessage(response: Response): Promise<string> {
     if (parsed && typeof parsed === "object" && "title" in parsed) {
       return String((parsed as { title?: unknown }).title);
     }
-  } catch {
+  }
+  catch {
     return text;
   }
 
