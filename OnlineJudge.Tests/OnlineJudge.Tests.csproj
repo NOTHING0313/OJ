@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OnlineJudge.Api\OnlineJudge.Api.csproj" />
     <ProjectReference Include="..\OnlineJudge.Domain\OnlineJudge.Domain.csproj" />
     <ProjectReference Include="..\OnlineJudge.Application\OnlineJudge.Application.csproj" />
     <ProjectReference Include="..\OnlineJudge.Infrastructure\OnlineJudge.Infrastructure.csproj" />

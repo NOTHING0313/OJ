@@ -6,7 +6,6 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const [userName, setUserName] = useState("");
   const [email, setEmail] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
   const [emailCode, setEmailCode] = useState("");
   const [debugCode, setDebugCode] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -76,8 +75,7 @@ export function RegisterPage() {
         userName: userName.trim(),
         email: email.trim(),
         password,
-        emailCode: emailCode.trim(),
-        avatarUrl: avatarUrl.trim() || undefined
+        emailCode: emailCode.trim()
       });
       setNotice("注册成功，请登录。");
       window.setTimeout(() => navigate("/login"), 600);
@@ -121,10 +119,6 @@ export function RegisterPage() {
             </button>
           </div>
           {debugCode && <div className="quiet-note">开发环境验证码：{debugCode}</div>}
-          <label>
-            头像 URL（可选）
-            <input value={avatarUrl} onChange={(event) => setAvatarUrl(event.target.value)} placeholder="/uploads/images/..." />
-          </label>
           <label>
             密码
             <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required />

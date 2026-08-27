@@ -21,6 +21,7 @@ export function ProblemDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const functionSpec = useMemo(() => parseFunctionSpec(problem?.functionSpecJson), [problem?.functionSpecJson]);
   const sampleTestCases = useMemo(() => problem?.testCases.filter((testCase) => testCase.visibility === 1) || [], [problem?.testCases]);
+  const sampleScoreTotal = useMemo(() => sampleTestCases.reduce((total, testCase) => total + testCase.score, 0), [sampleTestCases]);
   const hasListNode = useMemo(() => hasFunctionSpecListNode(functionSpec), [functionSpec]);
   const hasTreeNode = useMemo(() => hasFunctionSpecTreeNode(functionSpec), [functionSpec]);
   const hasC11UnsupportedComplexType = hasListNode || hasTreeNode;
@@ -165,7 +166,7 @@ export function ProblemDetailPage() {
           <div>
             <h1>{problem.title}</h1>
             <p>
-              {problem.timeLimitMs} ms / {problem.memoryLimitMb} MB
+              {problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {sampleScoreTotal} 分
             </p>
           </div>
           <div className="button-row">
@@ -212,7 +213,7 @@ export function ProblemDetailPage() {
             {language === 2 && <p className="quiet-note">C 语言返回数组时，请使用 malloc 分配返回数组，并正确设置 *returnSize。</p>}
             {functionSpec ? (
               <div className="table-wrap">
-                <table>
+                <table className="function-spec-table">
                   <tbody>
                     <tr>
                       <th>函数名</th>

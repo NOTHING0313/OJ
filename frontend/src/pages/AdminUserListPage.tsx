@@ -32,6 +32,7 @@ export function AdminUserListPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [operatingUserId, setOperatingUserId] = useState<string | null>(null);
+  const [openMenuUserId, setOpenMenuUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -41,8 +42,34 @@ export function AdminUserListPage() {
     return () => window.clearTimeout(handle);
   }, [keyword, roleFilter, blacklistFilter, page]);
 
+  useEffect(() => {
+    if (!openMenuUserId) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (event.target instanceof Element && !event.target.closest(".admin-user-actions")) {
+        setOpenMenuUserId(null);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenMenuUserId(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuUserId]);
+
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(page, totalPages);
+  const filtersAreDefault = !keyword && roleFilter === "all" && blacklistFilter === "all";
 
   async function refreshUsers() {
     try {
@@ -56,6 +83,7 @@ export function AdminUserListPage() {
       });
       setUsers(data.items);
       setTotalCount(data.totalCount);
+      setOpenMenuUserId(null);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "用户列表加载失败");
@@ -99,6 +127,7 @@ export function AdminUserListPage() {
   async function runUserAction(userId: string, successMessage: string, action: () => Promise<unknown>) {
     try {
       setOperatingUserId(userId);
+      setOpenMenuUserId(null);
       setError(null);
       setNotice(null);
       await action();
@@ -116,127 +145,165 @@ export function AdminUserListPage() {
     setPage(1);
   }
 
+  function resetAllFilters() {
+    setKeyword("");
+    setRoleFilter("all");
+    setBlacklistFilter("all");
+    setPage(1);
+    setOpenMenuUserId(null);
+  }
+
   return (
-    <section className="challenge-page admin-user-page">
-      <div className="leaderboard-header">
+    <section className="challenge-page admin-user-page admin-user-v2-page">
+      <div className="leaderboard-header admin-user-header">
         <div>
           <p className="eyebrow">ROOT ADMIN</p>
           <h1>用户管理</h1>
-          <p>查看账号角色、黑名单状态，并授权答题人成为出题人。</p>
+          <p>管理用户角色、账号状态与访问权限。</p>
         </div>
+        <span className="admin-user-total">共 {totalCount} 名用户</span>
       </div>
 
       {notice && <div className="quiet-note success">{notice}</div>}
       {error && <div className="alert error">{error}</div>}
 
-      <div className="admin-filter-bar">
-        <label>
-          搜索
+      <div className="admin-user-toolbar">
+        <label className="admin-user-search-field">
+          <span>搜索</span>
           <input
-            placeholder="用户名或邮箱"
+            placeholder="搜索用户名或邮箱"
             value={keyword}
             onChange={(event) => resetFilters(() => setKeyword(event.target.value))}
           />
         </label>
         <label>
-          角色
+          <span>角色</span>
           <select value={roleFilter} onChange={(event) => resetFilters(() => setRoleFilter(parseRoleFilter(event.target.value)))}>
-            <option value="all">全部</option>
-            <option value={1}>答题人</option>
-            <option value={2}>出题人</option>
-            <option value={3}>Root</option>
+            <option value="all">角色：全部</option>
+            <option value={1}>角色：答题人</option>
+            <option value={2}>角色：出题人</option>
+            <option value={3}>角色：Root</option>
           </select>
         </label>
         <label>
-          状态
+          <span>状态</span>
           <select value={blacklistFilter} onChange={(event) => resetFilters(() => setBlacklistFilter(event.target.value as BlacklistFilter))}>
-            <option value="all">全部</option>
-            <option value="active">正常</option>
-            <option value="blacklisted">已拉黑</option>
+            <option value="all">状态：全部</option>
+            <option value="active">状态：正常</option>
+            <option value="blacklisted">状态：已拉黑</option>
           </select>
         </label>
+        <button className="button admin-user-toolbar-reset" type="button" disabled={filtersAreDefault} onClick={resetAllFilters}>
+          重置
+        </button>
       </div>
 
       {isLoading ? (
-        <div className="state-line">正在加载用户列表...</div>
+        <div className="admin-user-state-panel">正在加载用户...</div>
+      ) : users.length === 0 ? (
+        <div className="admin-user-state-panel admin-user-empty-state">
+          <strong>未找到匹配用户</strong>
+          <p>调整搜索条件或重置筛选后重试。</p>
+          <button className="button" type="button" disabled={filtersAreDefault} onClick={resetAllFilters}>重置筛选</button>
+        </div>
       ) : (
-        <>
-          <div className="table-wrap leaderboard-table-wrap">
-            <table className="leaderboard-table">
-              <thead>
-                <tr>
-                  <th>用户</th>
-                  <th>邮箱</th>
-                  <th>角色</th>
-                  <th>拉黑状态</th>
-                  <th>创建时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id}>
+        <div className="table-wrap admin-user-table-wrap">
+          <table className="admin-user-table">
+            <thead>
+              <tr>
+                <th>用户</th>
+                <th>角色</th>
+                <th>状态</th>
+                <th>注册时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user, index) => {
+                const createdAt = formatUserCreatedAt(user.createdAt);
+                const isOperating = operatingUserId === user.id;
+                const isMenuOpen = openMenuUserId === user.id;
+
+                return (
+                  <tr className={user.role === 3 ? "admin-user-root-row" : undefined} key={user.id}>
                     <td>
-                      <div className="leaderboard-user">
+                      <div className="admin-user-identity">
                         {user.avatarUrl ? (
-                          <img src={user.avatarUrl} alt={user.userName} />
+                          <img className="admin-user-avatar" src={user.avatarUrl} alt={user.userName} />
                         ) : (
-                          <span className="leaderboard-avatar-placeholder">{user.userName.slice(0, 1).toUpperCase()}</span>
+                          <span className="admin-user-avatar-placeholder">{user.userName.slice(0, 1).toUpperCase()}</span>
                         )}
-                        <span>{user.userName}</span>
+                        <div className="admin-user-identity-copy">
+                          <strong title={user.userName}>{user.userName}</strong>
+                          <span className="admin-user-email" title={user.email}>{user.email}</span>
+                        </div>
                       </div>
                     </td>
-                    <td>{user.email}</td>
-                    <td>{roleNames[user.role]}</td>
-                    <td>{user.isBlacklisted ? "已拉黑" : "正常"}</td>
-                    <td>{formatDate(user.createdAt)}</td>
+                    <td><RoleBadge role={user.role} /></td>
+                    <td><UserStatusBadge isBlacklisted={user.isBlacklisted} /></td>
                     <td>
-                      <div className="table-actions">
-                        <Link className="button" to={`/admin/users/${user.id}/profile`}>
-                          查看主页
-                        </Link>
-                        {user.role === 1 && (
-                          <button className="button" disabled={operatingUserId === user.id} type="button" onClick={() => handlePromote(user)}>
-                            提升为出题人
-                          </button>
+                      <time className="admin-user-created-at" dateTime={user.createdAt}>
+                        <strong>{createdAt.date}</strong>
+                        <span>{createdAt.time}</span>
+                      </time>
+                    </td>
+                    <td>
+                      <div className="admin-user-row-actions">
+                        <Link className="button admin-user-view-link" to={`/admin/users/${user.id}/profile`}>查看</Link>
+                        {user.role === 3 ? (
+                          <span className="admin-user-root-note">Root 账号不可管理</span>
+                        ) : (
+                          <div className="admin-user-actions">
+                            <button
+                              className="button admin-user-more-button"
+                              type="button"
+                              aria-haspopup="menu"
+                              aria-expanded={isMenuOpen}
+                              aria-label={`管理 ${user.userName}`}
+                              disabled={isOperating}
+                              onClick={() => setOpenMenuUserId(isMenuOpen ? null : user.id)}
+                            >
+                              …
+                            </button>
+                            {isMenuOpen && (
+                              <div className={index >= users.length - 2 ? "admin-user-action-menu admin-user-action-menu-align-up" : "admin-user-action-menu"} role="menu">
+                                {user.role === 1 && (
+                                  <button type="button" role="menuitem" disabled={isOperating} onClick={() => void handlePromote(user)}>提升为出题人</button>
+                                )}
+                                {user.role === 2 && (
+                                  <button type="button" role="menuitem" disabled={isOperating} onClick={() => void handleDemote(user)}>降级为答题人</button>
+                                )}
+                                {user.isBlacklisted ? (
+                                  <button type="button" role="menuitem" disabled={isOperating} onClick={() => void handleUnblacklist(user)}>解除拉黑</button>
+                                ) : (
+                                  <button className="admin-user-danger-action" type="button" role="menuitem" disabled={isOperating} onClick={() => void handleBlacklist(user)}>拉黑用户</button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
-                        {user.role === 2 && (
-                          <button className="button" disabled={operatingUserId === user.id} type="button" onClick={() => handleDemote(user)}>
-                            降级为答题人
-                          </button>
-                        )}
-                        {user.role !== 3 && !user.isBlacklisted && (
-                          <button className="button" disabled={operatingUserId === user.id} type="button" onClick={() => handleBlacklist(user)}>
-                            拉黑
-                          </button>
-                        )}
-                        {user.role !== 3 && user.isBlacklisted && (
-                          <button className="button" disabled={operatingUserId === user.id} type="button" onClick={() => handleUnblacklist(user)}>
-                            解除拉黑
-                          </button>
-                        )}
-                        {user.role === 3 && <span className="muted">Root 账号不可操作</span>}
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {users.length === 0 && <div className="empty-state">没有匹配的用户</div>}
-        </>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <Pagination
-        page={currentPage}
-        pageSize={pageSize}
-        totalCount={totalCount}
-        totalPages={totalPages}
-        onPageChange={setPage}
-      />
+      <Pagination page={currentPage} pageSize={pageSize} totalCount={totalCount} totalPages={totalPages} onPageChange={setPage} />
     </section>
   );
+}
+
+function RoleBadge({ role }: { role: UserRole }) {
+  const tone = role === 3 ? "root" : role === 2 ? "problem-setter" : "answerer";
+  return <span className={`admin-user-badge admin-user-role-${tone}`}>{roleNames[role]}</span>;
+}
+
+function UserStatusBadge({ isBlacklisted }: { isBlacklisted: boolean }) {
+  return <span className={`admin-user-badge admin-user-status-${isBlacklisted ? "blacklisted" : "active"}`}>{isBlacklisted ? "已拉黑" : "正常"}</span>;
 }
 
 function parseRoleFilter(value: string): RoleFilter {
@@ -273,28 +340,34 @@ function Pagination({
   onPageChange: (page: number) => void;
 }) {
   return (
-    <div className="pagination-row">
-      <span>
-        共 {totalCount} 条，每页 {pageSize} 条，第 {page} / {totalPages} 页
-      </span>
+    <div className="pagination-row admin-user-pagination">
+      <span>共 {totalCount} 条 · 每页 {pageSize} 条 · 第 {page} / {totalPages} 页</span>
       <div className="button-row">
-        <button className="button" disabled={page <= 1} type="button" onClick={() => onPageChange(page - 1)}>
-          上一页
-        </button>
-        <button className="button" disabled={page >= totalPages} type="button" onClick={() => onPageChange(page + 1)}>
-          下一页
-        </button>
+        <button className="button" disabled={page <= 1} type="button" onClick={() => onPageChange(page - 1)}>上一页</button>
+        <button className="button" disabled={page >= totalPages} type="button" onClick={() => onPageChange(page + 1)}>下一页</button>
       </div>
     </div>
   );
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatUserCreatedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { date: "-", time: "-" };
+  }
+
+  const parts = new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const readPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    date: `${readPart("year")}-${readPart("month")}-${readPart("day")}`,
+    time: `${readPart("hour")}:${readPart("minute")}`
+  };
 }

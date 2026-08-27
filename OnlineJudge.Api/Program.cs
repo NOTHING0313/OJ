@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
+using OnlineJudge.Api.Authorization;
 using OnlineJudge.Api.Common;
 using OnlineJudge.Application.Common.CurrentUser;
-using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure;
 using OnlineJudge.Infrastructure.Auth;
 
@@ -59,13 +59,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("RequireProblemSetter", policy =>
-        policy.RequireRole(UserRole.ProblemSetter.ToString(), UserRole.Root.ToString()));
-    options.AddPolicy("RequireRoot", policy =>
-        policy.RequireRole(UserRole.Root.ToString()));
-});
+builder.Services.AddCurrentRoleAuthorization();
 
 builder.Services.AddOpenApi();
 
