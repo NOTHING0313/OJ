@@ -90,6 +90,8 @@ public class DockerJudgeSandbox : IJudgeSandbox
     {
         var totalTimeUsedMs = 0;
         var caseResults = new List<JudgeCaseResult>();
+        var overallStatus = JudgeStatus.Accepted;
+        string? firstErrorMessage = null;
 
         foreach (var testCase in request.TestCases)
         {
@@ -104,79 +106,76 @@ public class DockerJudgeSandbox : IJudgeSandbox
 
             totalTimeUsedMs += runResult.ElapsedMs;
             var actualOutput = NormalizeOutput(runResult.StandardOutput);
+            JudgeCaseResult caseResult;
 
             if (runResult.TimedOut)
             {
-                caseResults.Add(new JudgeCaseResult
+                caseResult = new JudgeCaseResult
                 {
                     TestCaseId = testCase.TestCaseId,
                     Status = JudgeStatus.TimeLimitExceeded,
                     TimeUsedMs = runResult.ElapsedMs
-                });
-
-                return new JudgeResult
-                {
-                    Status = JudgeStatus.TimeLimitExceeded,
-                    TimeUsedMs = totalTimeUsedMs,
-                    CaseResults = caseResults
                 };
             }
-
-            if (runResult.ExitCode != 0)
+            else if (runResult.ExitCode != 0)
             {
                 var errorMessage = GetErrorMessage(runResult, $"Process exited with code {runResult.ExitCode}.");
-
-                caseResults.Add(new JudgeCaseResult
+                caseResult = new JudgeCaseResult
                 {
                     TestCaseId = testCase.TestCaseId,
                     Status = JudgeStatus.RuntimeError,
                     TimeUsedMs = runResult.ElapsedMs,
                     ActualOutput = actualOutput,
                     ErrorMessage = errorMessage
-                });
-
-                return new JudgeResult
-                {
-                    Status = JudgeStatus.RuntimeError,
-                    TimeUsedMs = totalTimeUsedMs,
-                    ErrorMessage = errorMessage,
-                    CaseResults = caseResults
                 };
             }
-
-            if (actualOutput != NormalizeOutput(testCase.ExpectedOutput))
+            else if (actualOutput != NormalizeOutput(testCase.ExpectedOutput))
             {
-                caseResults.Add(new JudgeCaseResult
+                caseResult = new JudgeCaseResult
                 {
                     TestCaseId = testCase.TestCaseId,
                     Status = JudgeStatus.WrongAnswer,
                     TimeUsedMs = runResult.ElapsedMs,
                     ActualOutput = actualOutput,
                     ErrorMessage = "Output does not match expected output."
-                });
-
-                return new JudgeResult
+                };
+            }
+            else
+            {
+                caseResult = new JudgeCaseResult
                 {
-                    Status = JudgeStatus.WrongAnswer,
-                    TimeUsedMs = totalTimeUsedMs,
-                    ErrorMessage = "Output does not match expected output.",
-                    CaseResults = caseResults
+                    TestCaseId = testCase.TestCaseId,
+                    Status = JudgeStatus.Accepted,
+                    TimeUsedMs = runResult.ElapsedMs,
+                    ActualOutput = actualOutput
                 };
             }
 
-            caseResults.Add(new JudgeCaseResult
+            caseResults.Add(caseResult);
+
+            if (caseResult.Status != JudgeStatus.Accepted && overallStatus == JudgeStatus.Accepted)
             {
-                TestCaseId = testCase.TestCaseId,
-                Status = JudgeStatus.Accepted,
-                TimeUsedMs = runResult.ElapsedMs,
-                ActualOutput = actualOutput
-            });
+                overallStatus = caseResult.Status;
+                firstErrorMessage = caseResult.ErrorMessage;
+            }
+
+            if (!request.CollectAllCaseResults && caseResult.Status != JudgeStatus.Accepted)
+            {
+                return new JudgeResult
+                {
+                    Status = caseResult.Status,
+                    TimeUsedMs = totalTimeUsedMs,
+                    ErrorMessage = caseResult.ErrorMessage,
+                    CaseResults = caseResults
+                };
+            }
         }
 
         return new JudgeResult
         {
-            Status = JudgeStatus.Accepted,
+            Status = overallStatus,
             TimeUsedMs = totalTimeUsedMs,
+            ErrorMessage = firstErrorMessage,
             CaseResults = caseResults
         };
     }

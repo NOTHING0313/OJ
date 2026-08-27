@@ -337,14 +337,19 @@ export function ChallengeDetailPage() {
                   </div>
                 </div>
                 <div className="selected-task-facts selected-task-facts-v8">
-                  <div><span>分数</span><strong>{selectedTask.score}</strong></div>
+                  <div><span>得分</span><strong>{selectedTask.earnedScore} / {selectedTask.score}</strong></div>
                   <div>
                     <span>状态</span>
                     <strong className={selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "status-passed" : undefined}>
-                      {selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "已完成" : "未完成"}
+                      {selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "已完成" : selectedTask.earnedScore > 0 ? "进行中" : "未完成"}
                     </strong>
                   </div>
                 </div>
+                {selectedTask.taskType === 1 && selectedTask.score > 0 && (
+                  <div className="challenge-task-score-progress" aria-label={`当前得分 ${selectedTask.earnedScore} / ${selectedTask.score}`}>
+                    <span style={{ width: `${Math.min(100, Math.max(0, Math.round((selectedTask.earnedScore / selectedTask.score) * 100)))}%` }} />
+                  </div>
+                )}
                 <button className="button" type="button" onClick={() => handleTaskClick(selectedTask)}>
                   进入任务
                 </button>

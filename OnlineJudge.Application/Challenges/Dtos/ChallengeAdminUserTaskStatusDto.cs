@@ -18,6 +18,8 @@ public class ChallengeAdminUserTaskStatusDto
 
     public int? CompletedScore { get; set; }
 
+    public int EarnedScore { get; set; }
+
     public Guid? SubmissionId { get; set; }
 
     public Guid? FileSubmissionId { get; set; }

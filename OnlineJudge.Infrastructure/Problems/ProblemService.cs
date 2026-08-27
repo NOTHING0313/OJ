@@ -660,6 +660,8 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
 
     private static Result ValidateTestCaseRequest(Problem problem, CreateTestCaseRequest request)
     {
+        if (request.Score < 0) return Result.Failure("Score cannot be negative.");
+
         if (problem.JudgeMode == JudgeMode.StandardInputOutput)
         {
             if (!string.IsNullOrWhiteSpace(request.ArgumentsJson) || !string.IsNullOrWhiteSpace(request.ExpectedJson))

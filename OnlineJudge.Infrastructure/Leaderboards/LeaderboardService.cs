@@ -24,7 +24,9 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                     user.AvatarUrl,
                     completion.ChallengeId,
                     completion.Score,
-                    completion.CompletedAt
+                    completion.IsCompleted,
+                    completion.CompletedAt,
+                    completion.UpdatedAt
                 })
             .ToListAsync(cancellationToken);
 
@@ -35,10 +37,10 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                 group.Key.UserId,
                 group.Key.UserName,
                 group.Key.AvatarUrl,
-                CompletedChallengeCount = group.Select(row => row.ChallengeId).Distinct().Count(),
-                CompletedTaskCount = group.Count(),
+                CompletedChallengeCount = group.Where(row => row.IsCompleted).Select(row => row.ChallengeId).Distinct().Count(),
+                CompletedTaskCount = group.Count(row => row.IsCompleted),
                 TotalScore = group.Sum(row => row.Score),
-                LastCompletedAt = group.Max(row => row.CompletedAt)
+                LastCompletedAt = group.Max(row => row.UpdatedAt)
             })
             .OrderByDescending(entry => entry.TotalScore)
             .ThenByDescending(entry => entry.CompletedTaskCount)
@@ -80,14 +82,16 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                 join user in dbContext.Users.AsNoTracking() on completion.UserId equals user.Id
                 where challenge.IsPublished
                     && !user.IsBlacklisted
-                    && completion.CompletedAt < historyEnd
+                    && completion.UpdatedAt < historyEnd
                 select new GlobalHistoryRow
                 {
                     UserId = completion.UserId,
                     UserName = user.UserName,
                     ChallengeId = completion.ChallengeId,
                     Score = completion.Score,
-                    CompletedAt = completion.CompletedAt
+                    IsCompleted = completion.IsCompleted,
+                    CompletedAt = completion.CompletedAt,
+                    UpdatedAt = completion.UpdatedAt
                 })
             .ToListAsync(cancellationToken);
 
@@ -99,21 +103,29 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                     var dayStart = historyStart.AddDays(offset);
                     var cutoff = offset == days - 1 ? now.AddTicks(1) : dayStart.AddDays(1);
                     var entries = rows
-                        .Where(row => row.CompletedAt < cutoff)
+                        .Where(row => row.UpdatedAt < cutoff)
                         .GroupBy(row => new { row.UserId, row.UserName })
                         .Select(group => new
                         {
                             group.Key.UserId,
                             group.Key.UserName,
-                            CompletedChallengeCount = group.Select(row => row.ChallengeId).Distinct().Count(),
-                            CompletedTaskCount = group.Count(),
+                            CompletedChallengeCount = group
+                                .Where(row => row.IsCompleted && row.CompletedAt < cutoff)
+                                .Select(row => row.ChallengeId)
+                                .Distinct()
+                                .Count(),
+                            CompletedTaskCount = group.Count(row => row.IsCompleted && row.CompletedAt < cutoff),
                             TotalScore = group.Sum(row => row.Score),
-                            LastCompletedAt = group.Max(row => row.CompletedAt)
+                            LastCompletedAt = group
+                                .Where(row => row.IsCompleted && row.CompletedAt < cutoff)
+                                .Select(row => (DateTimeOffset?)row.CompletedAt)
+                                .Max()
                         })
+                        .Where(entry => entry.CompletedTaskCount > 0 || entry.TotalScore > 0)
                         .OrderByDescending(entry => entry.TotalScore)
                         .ThenByDescending(entry => entry.CompletedTaskCount)
                         .ThenByDescending(entry => entry.CompletedChallengeCount)
-                        .ThenBy(entry => entry.LastCompletedAt)
+                        .ThenBy(entry => entry.LastCompletedAt ?? DateTimeOffset.MaxValue)
                         .ThenBy(entry => entry.UserName)
                         .Select((entry, index) => new RankHistoryEntryDto
                         {
@@ -186,7 +198,9 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                     user.UserName,
                     user.AvatarUrl,
                     completion.Score,
-                    completion.CompletedAt
+                    completion.IsCompleted,
+                    completion.CompletedAt,
+                    completion.UpdatedAt
                 })
             .ToListAsync(cancellationToken);
 
@@ -196,6 +210,7 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
             .ToDictionary(group => group.Key, group => group.Select(row => row.UserId).Distinct().Count());
 
         var completedUserCountMap = completionRows
+            .Where(row => row.IsCompleted)
             .GroupBy(row => row.ChallengeId)
             .ToDictionary(group => group.Key, group => group.Select(row => row.UserId).Distinct().Count());
 
@@ -210,9 +225,9 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                         userGroup.Key.UserId,
                         userGroup.Key.UserName,
                         userGroup.Key.AvatarUrl,
-                        CompletedTaskCount = userGroup.Count(),
+                        CompletedTaskCount = userGroup.Count(row => row.IsCompleted),
                         TotalScore = userGroup.Sum(row => row.Score),
-                        LastCompletedAt = userGroup.Max(row => row.CompletedAt)
+                        LastCompletedAt = userGroup.Max(row => row.UpdatedAt)
                     })
                     .OrderByDescending(entry => entry.TotalScore)
                     .ThenByDescending(entry => entry.CompletedTaskCount)
@@ -263,7 +278,11 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
 
         public int Score { get; set; }
 
+        public bool IsCompleted { get; set; }
+
         public DateTimeOffset CompletedAt { get; set; }
+
+        public DateTimeOffset UpdatedAt { get; set; }
     }
 
     private async Task<Guid?> GetCurrentUserIdAsync(CancellationToken cancellationToken)

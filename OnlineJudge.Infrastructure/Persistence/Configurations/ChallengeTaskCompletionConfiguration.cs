@@ -18,6 +18,12 @@ public class ChallengeTaskCompletionConfiguration : IEntityTypeConfiguration<Cha
         builder.Property(completion => completion.CompletedAt)
             .IsRequired();
 
+        builder.Property(completion => completion.UpdatedAt)
+            .IsRequired();
+
+        builder.Property(completion => completion.IsCompleted)
+            .IsRequired();
+
         builder.Property(completion => completion.Score)
             .IsRequired();
 

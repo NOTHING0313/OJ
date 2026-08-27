@@ -106,9 +106,9 @@ public class ChallengeService(
             .Select(group => new
             {
                 UserId = group.Key,
-                CompletedTaskCount = group.Count(),
+                CompletedTaskCount = group.Count(completion => completion.IsCompleted),
                 TotalScore = group.Sum(completion => completion.Score),
-                LastCompletedAt = group.Max(completion => completion.CompletedAt)
+                LastCompletedAt = group.Max(completion => completion.UpdatedAt)
             })
             .Join(
                 dbContext.Users.AsNoTracking().Where(user => !user.IsBlacklisted),
@@ -212,7 +212,9 @@ public class ChallengeService(
                     AvatarUrl = user.AvatarUrl,
                     TaskId = completion.ChallengeTaskId,
                     Score = completion.Score,
-                    CompletedAt = completion.CompletedAt
+                    IsCompleted = completion.IsCompleted,
+                    CompletedAt = completion.CompletedAt,
+                    UpdatedAt = completion.UpdatedAt
                 })
             .ToListAsync(cancellationToken);
 
@@ -239,9 +241,9 @@ public class ChallengeService(
                 {
                     User = user,
                     Completions = userCompletions,
-                    CompletedTaskCount = userCompletions.Count,
+                    CompletedTaskCount = userCompletions.Count(row => row.IsCompleted),
                     TotalScore = userCompletions.Sum(row => row.Score),
-                    LastCompletedAt = userCompletions.Count == 0 ? (DateTimeOffset?)null : userCompletions.Max(row => row.CompletedAt)
+                    LastCompletedAt = userCompletions.Count == 0 ? (DateTimeOffset?)null : userCompletions.Max(row => row.UpdatedAt)
                 };
             })
             .OrderByDescending(entry => entry.TotalScore)
@@ -266,7 +268,8 @@ public class ChallengeService(
                 TotalScore = entry.TotalScore,
                 LastCompletedAt = entry.LastCompletedAt,
                 IsCurrentUser = current?.Id == entry.User.UserId,
-                CompletedTaskIds = entry.Completions.Select(row => row.TaskId).Distinct().ToList()
+                CompletedTaskIds = entry.Completions.Where(row => row.IsCompleted).Select(row => row.TaskId).Distinct().ToList(),
+                TaskScores = entry.Completions.GroupBy(row => row.TaskId).ToDictionary(group => group.Key, group => group.Max(row => row.Score))
             })
             .ToList();
 
@@ -313,6 +316,7 @@ public class ChallengeService(
                 join user in dbContext.Users.AsNoTracking() on completion.UserId equals user.Id
                 where completion.ChallengeId == challengeId
                     && !user.IsBlacklisted
+                    && completion.IsCompleted
                     && completion.CompletedAt < historyEnd
                 select new ChallengeProgressCompletionRow
                 {
@@ -321,7 +325,9 @@ public class ChallengeService(
                     AvatarUrl = user.AvatarUrl,
                     TaskId = completion.ChallengeTaskId,
                     Score = completion.Score,
-                    CompletedAt = completion.CompletedAt
+                    IsCompleted = completion.IsCompleted,
+                    CompletedAt = completion.CompletedAt,
+                    UpdatedAt = completion.UpdatedAt
                 })
             .ToListAsync(cancellationToken);
 
@@ -435,6 +441,7 @@ public class ChallengeService(
             .ToDictionary(group => group.Key, group => group.OrderByDescending(submission => submission.UpdatedAt).First());
 
         var completedUserCountByTask = completions
+            .Where(completion => completion.IsCompleted)
             .GroupBy(completion => completion.ChallengeTaskId)
             .ToDictionary(group => group.Key, group => group.Select(completion => completion.UserId).Distinct().Count());
 
@@ -462,9 +469,9 @@ public class ChallengeService(
                     UserId = user.Id,
                     UserName = user.UserName,
                     AvatarUrl = user.AvatarUrl,
-                    CompletedTaskCount = userCompletions.Count,
+                    CompletedTaskCount = userCompletions.Count(completion => completion.IsCompleted),
                     TotalScore = userCompletions.Sum(completion => completion.Score),
-                    LastCompletedAt = userCompletions.Count == 0 ? null : userCompletions.Max(completion => completion.CompletedAt),
+                    LastCompletedAt = userCompletions.Count == 0 ? null : userCompletions.Max(completion => completion.UpdatedAt),
                     TaskStatuses = tasks
                         .Select(task =>
                         {
@@ -488,7 +495,7 @@ public class ChallengeService(
             ChallengeTitle = challenge.Title,
             TotalTaskCount = tasks.Count,
             ParticipantCount = users.Count,
-            TotalCompletionCount = completions.Count,
+            TotalCompletionCount = completions.Count(completion => completion.IsCompleted),
             Users = userProgress,
             Tasks = taskProgress
         });
@@ -678,7 +685,9 @@ public class ChallengeService(
                 ChallengeTaskId = fileSubmission.ChallengeTaskId,
                 UserId = fileSubmission.UserId,
                 SubmissionId = null,
-                CompletedAt = fileSubmission.CreatedAt == default ? now : fileSubmission.CreatedAt,
+                CompletedAt = now,
+                UpdatedAt = now,
+                IsCompleted = true,
                 Score = request.Score
             };
 
@@ -687,6 +696,9 @@ public class ChallengeService(
         else
         {
             completion.Score = request.Score;
+            completion.IsCompleted = true;
+            completion.CompletedAt = now;
+            completion.UpdatedAt = now;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -1081,6 +1093,8 @@ public class ChallengeService(
                 ChallengeTaskId = taskId,
                 UserId = userResult.Value.Id,
                 CompletedAt = now,
+                UpdatedAt = now,
+                IsCompleted = false,
                 SubmissionId = null,
                 Score = 0
             };
@@ -1091,6 +1105,8 @@ public class ChallengeService(
         {
             completion.SubmissionId = null;
             completion.Score = 0;
+            completion.IsCompleted = false;
+            completion.UpdatedAt = now;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -1463,7 +1479,7 @@ public class ChallengeService(
 
     private static int CountCompletedTasks(Challenge challenge, IReadOnlyDictionary<Guid, ChallengeTaskCompletion> completions)
     {
-        return challenge.Tasks.Count(task => completions.ContainsKey(task.Id));
+        return challenge.Tasks.Count(task => completions.TryGetValue(task.Id, out var completion) && completion.IsCompleted);
     }
 
     private ChallengeDetailDto ToDetailDto(Challenge challenge, IReadOnlyDictionary<Guid, ChallengeTaskCompletion> completions)
@@ -1507,9 +1523,10 @@ public class ChallengeService(
             IsPublished = task.IsPublished,
             CreatedAt = task.CreatedAt,
             UpdatedAt = task.UpdatedAt,
-            IsCompleted = completion is not null,
-            CompletedAt = completion?.CompletedAt,
-            CompletedScore = completion?.Score
+            IsCompleted = completion?.IsCompleted == true,
+            CompletedAt = completion?.IsCompleted == true ? completion.CompletedAt : null,
+            CompletedScore = completion?.IsCompleted == true ? completion.Score : null,
+            EarnedScore = completion?.Score ?? 0
         };
     }
 
@@ -1525,9 +1542,10 @@ public class ChallengeService(
             TaskType = (int)task.TaskType,
             Difficulty = (int)task.Difficulty,
             Score = task.Score,
-            IsCompleted = completion is not null,
-            CompletedAt = completion?.CompletedAt,
-            CompletedScore = completion?.Score,
+            IsCompleted = completion?.IsCompleted == true,
+            CompletedAt = completion?.IsCompleted == true ? completion.CompletedAt : null,
+            CompletedScore = completion?.IsCompleted == true ? completion.Score : null,
+            EarnedScore = completion?.Score ?? 0,
             SubmissionId = completion?.SubmissionId,
             FileSubmissionId = fileSubmission?.Id,
             OriginalFileName = fileSubmission?.OriginalFileName,
@@ -1717,7 +1735,11 @@ public class ChallengeService(
 
         public int Score { get; set; }
 
+        public bool IsCompleted { get; set; }
+
         public DateTimeOffset CompletedAt { get; set; }
+
+        public DateTimeOffset UpdatedAt { get; set; }
     }
 
     private async Task EnsureParticipantAsync(Guid challengeId, Guid userId, DateTimeOffset joinedAt, CancellationToken cancellationToken)

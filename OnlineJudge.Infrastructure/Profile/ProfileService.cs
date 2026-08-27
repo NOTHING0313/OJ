@@ -212,9 +212,9 @@ public class ProfileService(OnlineJudgeDbContext dbContext, ICurrentUser current
             .GroupBy(_ => 1)
             .Select(group => new
             {
-                CompletedTaskCount = group.Count(),
+                CompletedTaskCount = group.Count(completion => completion.IsCompleted),
                 TotalScore = group.Sum(completion => completion.Score),
-                LastCompletedAt = group.Max(completion => (DateTimeOffset?)completion.CompletedAt)
+                LastCompletedAt = group.Max(completion => (DateTimeOffset?)completion.UpdatedAt)
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -251,7 +251,7 @@ public class ProfileService(OnlineJudgeDbContext dbContext, ICurrentUser current
     {
         return await dbContext.ChallengeTaskCompletions
             .AsNoTracking()
-            .Where(completion => completion.UserId == userId)
+            .Where(completion => completion.UserId == userId && completion.IsCompleted)
             .OrderByDescending(completion => completion.CompletedAt)
             .Take(10)
             .Select(completion => new RecentChallengeCompletionDto

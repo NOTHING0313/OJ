@@ -178,7 +178,9 @@ public class ProfileServiceTests
             ChallengeTaskId = missingTaskId,
             UserId = ids.AnswererA,
             Score = 5,
-            CompletedAt = BaseTime.AddHours(10)
+            CompletedAt = BaseTime.AddHours(10),
+            UpdatedAt = BaseTime.AddHours(10),
+            IsCompleted = true
         });
         await dbContext.SaveChangesAsync();
 
@@ -407,6 +409,8 @@ public class ProfileServiceTests
             UserId = userId,
             Score = score,
             CompletedAt = completedAt,
+            UpdatedAt = completedAt,
+            IsCompleted = true,
             Challenge = challenge,
             ChallengeTask = task
         };

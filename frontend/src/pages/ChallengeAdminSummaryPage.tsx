@@ -118,7 +118,7 @@ export function ChallengeAdminSummaryPage() {
 
   function openReviewForm(status: ChallengeAdminUserTaskStatus) {
     setReviewTarget(status);
-    setReviewScore(String(status.reviewScore ?? status.completedScore ?? 0));
+    setReviewScore(String(status.reviewScore ?? status.earnedScore ?? status.completedScore ?? 0));
     setReviewComment(status.reviewComment ?? "");
     setNotice(null);
     setActionError(null);
@@ -385,7 +385,7 @@ export function ChallengeAdminSummaryPage() {
                             {status.isCompleted ? "已完成" : "未完成"}
                           </span>
                         </td>
-                        <td>{status.completedScore ?? "—"}</td>
+                        <td>{status.earnedScore > 0 ? status.earnedScore : status.completedScore ?? "—"}</td>
                         <td>
                           {status.taskType === 2 && status.fileSubmissionId ? (
                             <ReviewSummary status={status} />

@@ -34,6 +34,7 @@ export interface ChallengeTaskDto {
   isCompleted: boolean;
   completedAt: string | null;
   completedScore: number | null;
+  earnedScore: number;
 }
 
 export interface ChallengeDetailDto {
@@ -142,6 +143,7 @@ export interface ChallengeLeaderboardProgressUser {
   lastCompletedAt: string | null;
   isCurrentUser: boolean;
   completedTaskIds: string[];
+  taskScores: Record<string, number>;
 }
 
 export interface ChallengeAdminSummary {
@@ -182,6 +184,7 @@ export interface ChallengeAdminUserTaskStatus {
   isCompleted: boolean;
   completedAt: string | null;
   completedScore: number | null;
+  earnedScore: number;
   submissionId: string | null;
   fileSubmissionId: string | null;
   originalFileName: string | null;

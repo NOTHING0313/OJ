@@ -20,5 +20,7 @@ public class JudgeRequest
 
     public int MemoryLimitMb { get; set; }
 
+    public bool CollectAllCaseResults { get; set; }
+
     public IReadOnlyList<JudgeCaseRequest> TestCases { get; set; } = [];
 }

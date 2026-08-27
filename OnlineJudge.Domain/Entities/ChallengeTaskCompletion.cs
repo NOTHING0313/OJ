@@ -14,6 +14,10 @@ public class ChallengeTaskCompletion
 
     public DateTimeOffset CompletedAt { get; set; }
 
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public bool IsCompleted { get; set; }
+
     public int Score { get; set; }
 
     public Challenge? Challenge { get; set; }

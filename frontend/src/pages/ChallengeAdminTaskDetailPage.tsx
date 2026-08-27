@@ -133,7 +133,7 @@ export function ChallengeAdminTaskDetailPage() {
 
   function openReviewForm(status: ChallengeAdminUserTaskStatus) {
     setReviewTarget(status);
-    setReviewScore(String(status.reviewScore ?? status.completedScore ?? 0));
+    setReviewScore(String(status.reviewScore ?? status.earnedScore ?? status.completedScore ?? 0));
     setReviewComment(status.reviewComment ?? "");
     setNotice(null);
     setError(null);
@@ -361,7 +361,7 @@ function formatScore(status: ChallengeAdminUserTaskStatus | null, maxScore: numb
     return "-";
   }
 
-  return `${status.completedScore ?? 0} / ${maxScore}`;
+  return `${status.earnedScore ?? status.completedScore ?? 0} / ${maxScore}`;
 }
 
 function formatSubmissionType(status: ChallengeAdminUserTaskStatus | null) {

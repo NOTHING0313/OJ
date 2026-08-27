@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OnlineJudge.Application.Challenges;
 using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Judging.Services;
 using OnlineJudge.Domain.Entities;
@@ -128,9 +129,9 @@ public class Worker(
                 dbContext.SubmissionCaseResults.AddRange(caseResults);
             }
 
-            if (submission.Status == JudgeStatus.Accepted && submission.ChallengeTaskId.HasValue)
+            if (submission.ChallengeTaskId.HasValue)
             {
-                await UpsertChallengeTaskCompletionAsync(dbContext, submission, cancellationToken);
+                await UpsertChallengeTaskProgressAsync(dbContext, submission, judgeResult, cancellationToken);
             }
 
             logger.LogInformation(
@@ -150,18 +151,27 @@ public class Worker(
         }
     }
 
-    private static async Task UpsertChallengeTaskCompletionAsync(
+    private static async Task UpsertChallengeTaskProgressAsync(
         OnlineJudgeDbContext dbContext,
         Submission submission,
+        JudgeResult judgeResult,
         CancellationToken cancellationToken)
     {
         var task = submission.ChallengeTask ?? await dbContext.ChallengeTasks
             .FirstOrDefaultAsync(task => task.Id == submission.ChallengeTaskId, cancellationToken);
 
-        if (task is null || task.TaskType != ChallengeTaskType.Algorithm)
-        {
-            return;
-        }
+        if (task is null || task.TaskType != ChallengeTaskType.Algorithm || submission.Problem is null) return;
+
+        var scoreByTestCaseId = submission.Problem.TestCases.ToDictionary(testCase => testCase.Id, testCase => Math.Max(0, testCase.Score));
+        var totalTestCaseScore = scoreByTestCaseId.Values.Sum();
+        var passedTestCaseScore = judgeResult.CaseResults
+            .Where(caseResult => caseResult.Status == JudgeStatus.Accepted)
+            .Sum(caseResult => scoreByTestCaseId.GetValueOrDefault(caseResult.TestCaseId));
+        var isCompleted = judgeResult.Status == JudgeStatus.Accepted;
+        var earnedScore = isCompleted
+            ? Math.Max(0, task.Score)
+            : ChallengeScoreCalculator.CalculateEarnedScore(task.Score, passedTestCaseScore, totalTestCaseScore);
+        var now = DateTimeOffset.UtcNow;
 
         var completion = await dbContext.ChallengeTaskCompletions
             .FirstOrDefaultAsync(
@@ -176,17 +186,32 @@ public class Worker(
                 ChallengeId = task.ChallengeId,
                 ChallengeTaskId = task.Id,
                 UserId = submission.UserId,
-                SubmissionId = submission.Id,
-                CompletedAt = DateTimeOffset.UtcNow,
-                Score = task.Score
+                SubmissionId = earnedScore > 0 || isCompleted ? submission.Id : null,
+                CompletedAt = now,
+                UpdatedAt = now,
+                IsCompleted = isCompleted,
+                Score = earnedScore
             };
 
             dbContext.ChallengeTaskCompletions.Add(completion);
             return;
         }
 
-        completion.SubmissionId = submission.Id;
-        completion.Score = task.Score;
+        if (earnedScore > completion.Score)
+        {
+            completion.Score = earnedScore;
+            completion.SubmissionId = submission.Id;
+        }
+
+        if (isCompleted && !completion.IsCompleted)
+        {
+            completion.IsCompleted = true;
+            completion.CompletedAt = now;
+            completion.Score = Math.Max(completion.Score, Math.Max(0, task.Score));
+            completion.SubmissionId = submission.Id;
+        }
+
+        completion.UpdatedAt = now;
     }
 
     private static JudgeRequest ToJudgeRequest(Submission submission)
@@ -203,6 +228,7 @@ public class Worker(
             FunctionSpecJson = problem.FunctionSpecJson,
             TimeLimitMs = problem.TimeLimitMs,
             MemoryLimitMb = problem.MemoryLimitMb,
+            CollectAllCaseResults = submission.ChallengeTaskId.HasValue,
             TestCases = problem.TestCases
                 .OrderBy(testCase => testCase.CreatedAt)
                 .Select(testCase => new JudgeCaseRequest

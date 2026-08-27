@@ -35,4 +35,6 @@ public class ChallengeTaskDto
     public DateTimeOffset? CompletedAt { get; set; }
 
     public int? CompletedScore { get; set; }
+
+    public int EarnedScore { get; set; }
 }

@@ -39,4 +39,6 @@ public class ChallengeLeaderboardProgressUserDto
     public bool IsCurrentUser { get; set; }
 
     public IReadOnlyList<Guid> CompletedTaskIds { get; set; } = [];
+
+    public IReadOnlyDictionary<Guid, int> TaskScores { get; set; } = new Dictionary<Guid, int>();
 }

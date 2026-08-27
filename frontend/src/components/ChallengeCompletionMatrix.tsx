@@ -56,10 +56,12 @@ export function ChallengeCompletionMatrix({ progress }: { progress: ChallengeLea
                     <td>{user.rank ? <span className={`leaderboard-rank ${getRankClass(user.rank)}`}>{user.rank}</span> : <span className="challenge-progress-unranked">—</span>}</td>
                     {progress.tasks.map((task) => {
                       const completed = completedTaskIds.has(task.taskId);
+                      const earnedScore = user.taskScores?.[task.taskId] ?? 0;
+                      const hasProgress = earnedScore > 0;
                       return (
                         <td className="challenge-progress-status-cell" key={task.taskId}>
-                          <span className={`challenge-progress-status ${completed ? "is-completed" : "is-pending"}`} title={completed ? `${task.title}：已完成` : `${task.title}：未完成`}>
-                            {completed ? "✓" : "—"}
+                          <span className={`challenge-progress-status ${completed ? "is-completed" : hasProgress ? "is-partial" : "is-pending"}`} title={`${task.title}：${earnedScore} / ${task.score} 分${completed ? "，已完成" : ""}`}>
+                            {completed ? "✓" : hasProgress ? `${earnedScore}` : "—"}
                           </span>
                         </td>
                       );
