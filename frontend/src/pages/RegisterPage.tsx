@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register, sendRegisterEmailCode } from "../api/authApi";
+import { PasswordInput } from "../components/PasswordInput";
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -122,11 +123,11 @@ export function RegisterPage() {
           {debugCode && <div className="quiet-note">开发环境验证码：{debugCode}</div>}
           <label>
             密码
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required />
+            <PasswordInput value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required />
           </label>
           <label>
             确认密码
-            <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" required />
+            <PasswordInput value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" required />
           </label>
           {notice && <div className="quiet-note success">{notice}</div>}
           {error && <div className="alert error">{error}</div>}

@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { PasswordInput } from "../components/PasswordInput";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -60,8 +61,7 @@ export function LoginPage() {
           </label>
           <label>
             密码
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="current-password"
