@@ -123,6 +123,8 @@ h2 {
 }
 
 .app-shell {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   position: relative;
   isolation: isolate;
@@ -291,9 +293,30 @@ h2 {
 }
 
 .page-container {
+  flex: 1;
   width: min(1180px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 28px 0 56px;
+}
+
+.site-footer {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: #7f8798;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  padding: 16px;
+  text-align: center;
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.site-footer a:hover,
+.site-footer a:focus-visible {
+  color: #aeb6ca;
+  text-decoration: underline;
 }
 
 .page-section {

@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { canManageContent, isRoot, useAuth } from "./auth/AuthContext";
+import { SiteFooter } from "./components/SiteFooter";
 import { ThemeQuickSwitch } from "./components/ThemeQuickSwitch";
 
 export function AppLayout() {
@@ -57,6 +58,7 @@ export function AppLayout() {
       <main className="page-container">
         <Outlet />
       </main>
+      <SiteFooter />
     </div>
   );
 }
