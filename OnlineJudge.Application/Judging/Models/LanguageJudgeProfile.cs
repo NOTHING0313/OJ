@@ -12,6 +12,8 @@ public class LanguageJudgeProfile
 
     public string CompileCommand { get; set; } = string.Empty;
 
+    public int CompileMemoryLimitMb { get; set; } = 512;
+
     public string RunCommand { get; set; } = string.Empty;
 
     public string DockerImageName { get; set; } = string.Empty;

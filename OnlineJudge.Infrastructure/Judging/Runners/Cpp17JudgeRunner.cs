@@ -13,6 +13,7 @@ public partial class Cpp17JudgeRunner(IJudgeSandbox judgeSandbox, IFunctionJudge
         DisplayName = "C++17",
         SourceFileName = "main.cpp",
         CompileCommand = "g++ main.cpp -std=c++17 -O2 -pipe -s -o main",
+        CompileMemoryLimitMb = 512,
         RunCommand = "./main",
         DockerImageName = "onlinejudge-cpp17-sandbox:latest"
     };

@@ -101,7 +101,7 @@ public class ChallengeService(
 
         var groupedCompletions = await dbContext.ChallengeTaskCompletions
             .AsNoTracking()
-            .Where(completion => completion.ChallengeId == challengeId)
+            .Where(completion => completion.ChallengeId == challengeId && (completion.Score > 0 || completion.IsCompleted))
             .GroupBy(completion => completion.UserId)
             .Select(group => new
             {
@@ -252,8 +252,8 @@ public class ChallengeService(
             .ThenBy(entry => entry.User.UserName)
             .ToList();
 
-        var rankedCompletionUsers = rankedUsers.Where(entry => entry.CompletedTaskCount > 0).ToList();
-        var rankMap = rankedCompletionUsers
+        var rankedScoredUsers = rankedUsers.Where(entry => entry.TotalScore > 0 || entry.CompletedTaskCount > 0).ToList();
+        var rankMap = rankedScoredUsers
             .Select((entry, index) => new { entry.User.UserId, Rank = index + 1 })
             .ToDictionary(entry => entry.UserId, entry => entry.Rank);
 

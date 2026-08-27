@@ -14,6 +14,7 @@ public partial class C11JudgeRunner(IJudgeSandbox judgeSandbox, C11FunctionJudge
         DisplayName = "C11",
         SourceFileName = "main.c",
         CompileCommand = "gcc main.c -std=c11 -O2 -pipe -s -o main",
+        CompileMemoryLimitMb = 512,
         RunCommand = "./main",
         DockerImageName = "onlinejudge-cpp17-sandbox:latest"
     };

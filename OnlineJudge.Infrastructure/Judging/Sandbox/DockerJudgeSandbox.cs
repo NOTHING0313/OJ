@@ -42,7 +42,7 @@ public class DockerJudgeSandbox : IJudgeSandbox
 
             var compileResult = await RunDockerCommandAsync(
                 tempDirectory,
-                request.MemoryLimitMb,
+                JudgeResourceLimits.ResolveCompileMemoryLimitMb(profile),
                 profile.DockerImageName,
                 profile.CompileCommand,
                 timeout: TimeSpan.FromSeconds(30),
@@ -98,7 +98,7 @@ public class DockerJudgeSandbox : IJudgeSandbox
             var inputFileName = GetInputFileName(testCase.TestCaseId);
             var runResult = await RunDockerCommandAsync(
                 tempDirectory,
-                request.MemoryLimitMb,
+                JudgeResourceLimits.ResolveRunMemoryLimitMb(request.MemoryLimitMb),
                 profile.DockerImageName,
                 $"{profile.RunCommand} < {inputFileName}",
                 timeout: TimeSpan.FromMilliseconds(Math.Max(request.TimeLimitMs, 1)),

@@ -14,6 +14,7 @@ public partial class CSharpJudgeRunner(IJudgeSandbox judgeSandbox, CSharpFunctio
         DisplayName = "C#",
         SourceFileName = "Program.cs",
         CompileCommand = "dotnet build Main.csproj -c Release -o out --nologo --verbosity quiet",
+        CompileMemoryLimitMb = 1024,
         RunCommand = "dotnet out/Main.dll",
         DockerImageName = "onlinejudge-csharp-sandbox:latest",
         ExtraFiles = new Dictionary<string, string>

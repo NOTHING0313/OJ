@@ -180,13 +180,15 @@ public class Worker(
 
         if (completion is null)
         {
+            if (earnedScore <= 0 && !isCompleted) return;
+
             completion = new ChallengeTaskCompletion
             {
                 Id = Guid.NewGuid(),
                 ChallengeId = task.ChallengeId,
                 ChallengeTaskId = task.Id,
                 UserId = submission.UserId,
-                SubmissionId = earnedScore > 0 || isCompleted ? submission.Id : null,
+                SubmissionId = submission.Id,
                 CompletedAt = now,
                 UpdatedAt = now,
                 IsCompleted = isCompleted,
@@ -197,21 +199,7 @@ public class Worker(
             return;
         }
 
-        if (earnedScore > completion.Score)
-        {
-            completion.Score = earnedScore;
-            completion.SubmissionId = submission.Id;
-        }
-
-        if (isCompleted && !completion.IsCompleted)
-        {
-            completion.IsCompleted = true;
-            completion.CompletedAt = now;
-            completion.Score = Math.Max(completion.Score, Math.Max(0, task.Score));
-            completion.SubmissionId = submission.Id;
-        }
-
-        completion.UpdatedAt = now;
+        ChallengeProgressUpdater.TryApply(completion, earnedScore, isCompleted, task.Score, submission.Id, now);
     }
 
     private static JudgeRequest ToJudgeRequest(Submission submission)
