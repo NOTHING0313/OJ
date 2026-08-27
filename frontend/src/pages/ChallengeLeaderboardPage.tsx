@@ -1,12 +1,30 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getChallengeLeaderboard, type ChallengeLeaderboard } from "../api/challengesApi";
+import {
+  getChallengeLeaderboard,
+  getChallengeLeaderboardHistory,
+  getChallengeLeaderboardProgress,
+  type ChallengeLeaderboard,
+  type ChallengeLeaderboardProgress
+} from "../api/challengesApi";
+import type { RankHistory } from "../api/leaderboardsApi";
+import { ChallengeCompletionMatrix } from "../components/ChallengeCompletionMatrix";
+import { RankHistoryChart } from "../components/RankHistoryChart";
+import { useRankMovementAnimation } from "../components/useRankMovementAnimation";
+import { mergeCurrentRankHistory } from "../utils/rankHistory";
+
+const LIVE_REFRESH_MS = 10_000;
 
 export function ChallengeLeaderboardPage() {
   const { challengeId } = useParams();
   const [leaderboard, setLeaderboard] = useState<ChallengeLeaderboard | null>(null);
+  const [progress, setProgress] = useState<ChallengeLeaderboardProgress | null>(null);
+  const [history, setHistory] = useState<RankHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const rowKeys = leaderboard?.entries.map((entry) => entry.userId) ?? [];
+  const { capturePositions, setRowNode } = useRankMovementAnimation(rowKeys);
 
   useEffect(() => {
     if (!challengeId) {
@@ -15,10 +33,17 @@ export function ChallengeLeaderboardPage() {
 
     let ignore = false;
 
-    getChallengeLeaderboard(challengeId)
-      .then((data) => {
+    Promise.all([
+      getChallengeLeaderboard(challengeId),
+      getChallengeLeaderboardProgress(challengeId).catch(() => null),
+      getChallengeLeaderboardHistory(challengeId, 10).catch(() => null)
+    ])
+      .then(([data, progressData, historyData]) => {
         if (!ignore) {
           setLeaderboard(data);
+          setProgress(progressData);
+          setHistory(historyData);
+          setLastUpdatedAt(new Date());
           setError(null);
         }
       })
@@ -37,6 +62,33 @@ export function ChallengeLeaderboardPage() {
       ignore = true;
     };
   }, [challengeId]);
+
+  const refreshLeaderboard = useCallback(async () => {
+    if (!challengeId || document.visibilityState === "hidden") {
+      return;
+    }
+
+    try {
+      const [data, progressData] = await Promise.all([
+        getChallengeLeaderboard(challengeId),
+        getChallengeLeaderboardProgress(challengeId).catch(() => null)
+      ]);
+      capturePositions();
+      setLeaderboard(data);
+      if (progressData) {
+        setProgress(progressData);
+      }
+      setHistory((current) => mergeCurrentRankHistory(current, data.entries));
+      setLastUpdatedAt(new Date());
+    } catch {
+      // 保留最后一次成功数据，短暂网络波动不会让榜单闪空。
+    }
+  }, [capturePositions, challengeId]);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => void refreshLeaderboard(), LIVE_REFRESH_MS);
+    return () => window.clearInterval(timerId);
+  }, [refreshLeaderboard]);
 
   if (isLoading) {
     return <div className="state-line">正在加载排行榜...</div>;
@@ -63,15 +115,19 @@ export function ChallengeLeaderboardPage() {
   const completedTaskTotal = leaderboard.entries.reduce((sum, entry) => sum + entry.completedTaskCount, 0);
 
   return (
-    <section className="challenge-page leaderboard-page leaderboard-v2-page">
+    <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
       <div className="leaderboard-header leaderboard-v2-header">
         <div>
           <p className="eyebrow">CHALLENGE LEADERBOARD</p>
           <h1>{leaderboard.challengeTitle}</h1>
-          <p>查看当前挑战中所有完成用户的排名和得分情况。</p>
+          <p>查看当前挑战的实时排名、参与者任务完成情况和近十天名次变化。</p>
         </div>
         <div className="leaderboard-header-actions">
-          <span className="leaderboard-total">共 {leaderboard.entries.length} 名用户</span>
+          <span className="leaderboard-live-status">
+            <i /> 实时更新 · 10 秒
+            {lastUpdatedAt && <small>{formatUpdatedTime(lastUpdatedAt)}</small>}
+          </span>
+          <span className="leaderboard-total">共 {progress?.users.length ?? leaderboard.entries.length} 名参与者</span>
           <Link className="button" to={`/challenges/${leaderboard.challengeId}`}>
             返回棋盘
           </Link>
@@ -103,7 +159,7 @@ export function ChallengeLeaderboardPage() {
           <p>完成挑战任务的用户会出现在这里。</p>
         </div>
       ) : (
-        <div className="leaderboard-v2-table-wrap">
+        <div className="leaderboard-v2-table-wrap leaderboard-live-table-wrap">
           <table className="leaderboard-table leaderboard-v2-table leaderboard-v2-challenge-table">
             <thead>
               <tr>
@@ -116,7 +172,11 @@ export function ChallengeLeaderboardPage() {
             </thead>
             <tbody>
               {leaderboard.entries.map((entry) => (
-                <tr className={entry.isCurrentUser ? "leaderboard-current-user" : ""} key={entry.userId}>
+                <tr
+                  className={entry.isCurrentUser ? "leaderboard-current-user" : ""}
+                  key={entry.userId}
+                  ref={(node) => setRowNode(entry.userId, node)}
+                >
                   <td>
                     <span className={`leaderboard-rank ${getRankClass(entry.rank)}`}>{entry.rank}</span>
                   </td>
@@ -149,30 +209,28 @@ export function ChallengeLeaderboardPage() {
           </table>
         </div>
       )}
+
+      <ChallengeCompletionMatrix progress={progress} />
+
+      <RankHistoryChart
+        history={history}
+        currentEntries={leaderboard.entries}
+        title="挑战近 10 天名次变化"
+        description="按挑战内积分和完成题数生成每日排名；今天的数据随实时榜单同步变化。"
+      />
     </section>
   );
 }
 
 function getRankClass(rank: number) {
-  if (rank === 1) {
-    return "top-one";
-  }
-
-  if (rank === 2) {
-    return "top-two";
-  }
-
-  if (rank === 3) {
-    return "top-three";
-  }
-
+  if (rank === 1) return "top-one";
+  if (rank === 2) return "top-two";
+  if (rank === 3) return "top-three";
   return "";
 }
 
 function formatDate(value: string | null) {
-  if (!value) {
-    return "—";
-  }
+  if (!value) return "尚未完成";
 
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
@@ -181,4 +239,8 @@ function formatDate(value: string | null) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatUpdatedTime(value: Date) {
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(value);
 }

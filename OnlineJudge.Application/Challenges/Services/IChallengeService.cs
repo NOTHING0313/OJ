@@ -1,6 +1,7 @@
 using OnlineJudge.Application.Challenges.Dtos;
 using OnlineJudge.Application.Challenges.Requests;
 using OnlineJudge.Application.Common;
+using OnlineJudge.Application.Leaderboards.Dtos;
 
 namespace OnlineJudge.Application.Challenges.Services;
 
@@ -11,6 +12,10 @@ public interface IChallengeService
     Task<Result<ChallengeDetailDto>> GetChallengeAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task<Result<ChallengeLeaderboardDto>> GetLeaderboardAsync(Guid challengeId, CancellationToken cancellationToken = default);
+
+    Task<Result<ChallengeLeaderboardProgressDto>> GetLeaderboardProgressAsync(Guid challengeId, CancellationToken cancellationToken = default);
+
+    Task<Result<RankHistoryDto>> GetLeaderboardHistoryAsync(Guid challengeId, int days = 10, CancellationToken cancellationToken = default);
 
     Task<Result<ChallengeAdminSummaryDto>> GetAdminSummaryAsync(Guid challengeId, CancellationToken cancellationToken = default);
 

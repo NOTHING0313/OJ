@@ -200,128 +200,171 @@ export function ChallengeDetailPage() {
   const canOpenAdminSummary = challenge.canManage;
 
   return (
-    <section className="challenge-page challenge-detail-layout">
-      <div className="challenge-detail-main">
-        <div className="challenge-hero">
+    <section className="challenge-page ui-v2-page challenge-detail-v2-page challenge-detail-v8-page">
+      <header className="challenge-detail-header-v8">
+        <div className="challenge-detail-title-v8">
           <p className="eyebrow">BOARD CHALLENGE</p>
           <h1>{challenge.title}</h1>
           {joinWarning && <div className="alert error">{joinWarning}</div>}
-          <MarkdownRenderer value={challenge.description} />
-          <div className="challenge-time">
-            <span>{formatDate(challenge.startAt)}</span>
-            <span>{formatDate(challenge.endAt)}</span>
+          <div className="challenge-description-v8">
+            <MarkdownRenderer value={challenge.description} />
+          </div>
+        </div>
+        <div className="challenge-time-v8">
+          <div>
+            <span>开始时间</span>
+            <strong>{formatDate(challenge.startAt)}</strong>
+          </div>
+          <div>
+            <span>截止时间</span>
+            <strong>{formatDate(challenge.endAt)}</strong>
+          </div>
+        </div>
+      </header>
+
+      <div className="challenge-detail-layout-v8">
+        <div className="challenge-board-panel-v8">
+          <div className="challenge-board-heading-v8">
+            <div>
+              <span>挑战棋盘</span>
+              <strong>选择棋子进入对应任务</strong>
+            </div>
+            <span className="context-chip">8 × 8</span>
+          </div>
+
+          <div className="challenge-board" aria-label="Challenge board">
+            {Array.from({ length: 64 }, (_, index) => {
+              const x = index % 8;
+              const y = 7 - Math.floor(index / 8);
+              const task = taskMap.get(`${x}:${y}`);
+              const isSelected = Boolean(task && selectedTask && idsEqual(task.id, selectedTask.id));
+              const isBreaking = Boolean(task && breakingTaskId && idsEqual(task.id, breakingTaskId));
+              const isVisuallyCompleted = Boolean(task && (task.isCompleted || hasTaskId(visualCompletedTaskIds, task.id)));
+              const isFocusedTarget = Boolean(task && focusedTaskId && idsEqual(task.id, focusedTaskId));
+
+              return (
+                <button
+                  className={`board-cell ${(x + y) % 2 === 0 ? "light" : "dark"} ${isSelected ? "selected" : ""} ${isVisuallyCompleted && !isBreaking ? "completed" : ""} ${isBreaking ? "breaking" : ""} ${isFocusedTarget ? "focus-target" : ""}`}
+                  key={`${x}:${y}`}
+                  type="button"
+                  disabled={!task}
+                  ref={(element) => {
+                    if (task) {
+                      pieceRefs.current[normalizeTaskId(task.id)] = element;
+                    }
+                  }}
+                  onClick={() => task && handleTaskClick(task)}
+                  onFocus={() => task && setSelectedTask(task)}
+                  onMouseEnter={() => task && setSelectedTask(task)}
+                >
+                  {task && (
+                    <span className={`task-piece ${getPieceTone(task, isVisuallyCompleted && !isBreaking)} ${isBreaking ? "challenge-piece--breaking" : ""} ${isVisuallyCompleted && !isBreaking ? "challenge-piece--ghost" : ""}`}>
+                      <span className="piece-symbol">{difficultySymbols[task.difficulty]}</span>
+                      {isBreaking && (
+                        <>
+                          {breakFragments.map((fragment) => (
+                            <span className={`challenge-piece-fragment fragment-${fragment}`} key={fragment} />
+                          ))}
+                        </>
+                      )}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="challenge-board" aria-label="Challenge board">
-          {Array.from({ length: 64 }, (_, index) => {
-            const x = index % 8;
-            const y = 7 - Math.floor(index / 8);
-            const task = taskMap.get(`${x}:${y}`);
-            const isSelected = Boolean(task && selectedTask && idsEqual(task.id, selectedTask.id));
-            const isBreaking = Boolean(task && breakingTaskId && idsEqual(task.id, breakingTaskId));
-            const isVisuallyCompleted = Boolean(task && (task.isCompleted || hasTaskId(visualCompletedTaskIds, task.id)));
-            const isFocusedTarget = Boolean(task && focusedTaskId && idsEqual(task.id, focusedTaskId));
-
-            return (
-              <button
-                className={`board-cell ${(x + y) % 2 === 0 ? "light" : "dark"} ${isSelected ? "selected" : ""} ${isVisuallyCompleted && !isBreaking ? "completed" : ""} ${isBreaking ? "breaking" : ""} ${isFocusedTarget ? "focus-target" : ""}`}
-                key={`${x}:${y}`}
-                type="button"
-                disabled={!task}
-                ref={(element) => {
-                  if (task) {
-                    pieceRefs.current[normalizeTaskId(task.id)] = element;
-                  }
-                }}
-                onClick={() => task && handleTaskClick(task)}
-                onFocus={() => task && setSelectedTask(task)}
-                onMouseEnter={() => task && setSelectedTask(task)}
-              >
-                {task && (
-                    <span className={`task-piece ${getPieceTone(task, isVisuallyCompleted && !isBreaking)} ${isBreaking ? "challenge-piece--breaking" : ""} ${isVisuallyCompleted && !isBreaking ? "challenge-piece--ghost" : ""}`}>
-                    <span className="piece-symbol">{difficultySymbols[task.difficulty]}</span>
-                    {isBreaking && (
-                      <>
-                        {breakFragments.map((fragment) => (
-                          <span className={`challenge-piece-fragment fragment-${fragment}`} key={fragment} />
-                        ))}
-                      </>
-                    )}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <aside className="challenge-side-panel">
-        <section>
-          <p className="eyebrow">PROGRESS</p>
-          <strong className="progress-placeholder">
-            {challenge.totalTaskCount === 0
-              ? "暂无任务"
-              : `${challenge.completedTaskCount} / ${challenge.totalTaskCount}`}
-          </strong>
-          <button
-            className="button leaderboard-panel-link"
-            type="button"
-            onClick={() => navigate(`/challenges/${challenge.id}/leaderboard`)}
-          >
-            查看排行榜
-          </button>
-          {canOpenAdminSummary && (
-            <div className="challenge-admin-actions">
-              <button
-                className="button leaderboard-panel-link"
-                type="button"
-                onClick={() => navigate(`/admin/challenges/${challenge.id}/edit`)}
-              >
-                编辑挑战
-              </button>
-              <button
-                className="button leaderboard-panel-link"
-                type="button"
-                onClick={() => navigate(`/admin/challenges/${challenge.id}/tasks/new`)}
-              >
-                管理任务
-              </button>
-              <button
-                className="button leaderboard-panel-link"
-                type="button"
-                onClick={() => navigate(`/challenges/${challenge.id}/admin`)}
-              >
-                管理统计
-              </button>
-            </div>
-          )}
-        </section>
-
-        <section>
-          <p className="eyebrow">SELECTED</p>
-          {selectedTask ? (
-            <div className="selected-task">
-              <h2>{selectedTask.title}</h2>
-              <div className="selected-task-facts">
-                <span>难度：{difficultyNames[selectedTask.difficulty]}</span>
-                <span>类型：{selectedTask.taskType === 1 ? "算法题" : "文件题"}</span>
-                <span>分数：{selectedTask.score}</span>
-                <span>
-                  状态：
-                  <span className={selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "status-passed" : undefined}>
-                    {selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "已完成" : "未完成"}
-                  </span>
-                </span>
+        <aside className="challenge-side-panel challenge-side-panel-v8">
+          <section className="challenge-side-section-v8">
+            <div className="challenge-side-heading-v8">
+              <div>
+                <p className="eyebrow">PROGRESS</p>
+                <span>我的挑战进度</span>
               </div>
+              <strong>
+                {challenge.totalTaskCount === 0
+                  ? "—"
+                  : `${challenge.completedTaskCount} / ${challenge.totalTaskCount}`}
+              </strong>
             </div>
-          ) : (
-            <p className="muted">选择棋盘上的棋子查看题目信息。</p>
-          )}
-        </section>
-      </aside>
+            <div className="challenge-progress-track" aria-hidden="true">
+              <span style={{ width: `${getProgressPercent(challenge.completedTaskCount, challenge.totalTaskCount)}%` }} />
+            </div>
+            <button
+              className="button primary leaderboard-panel-link"
+              type="button"
+              onClick={() => navigate(`/challenges/${challenge.id}/leaderboard`)}
+            >
+              查看排行榜
+            </button>
+            {canOpenAdminSummary && (
+              <div className="challenge-admin-actions challenge-admin-actions-v8">
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => navigate(`/admin/challenges/${challenge.id}/edit`)}
+                >
+                  编辑挑战
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => navigate(`/admin/challenges/${challenge.id}/tasks/new`)}
+                >
+                  管理任务
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => navigate(`/challenges/${challenge.id}/admin`)}
+                >
+                  管理统计
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="challenge-side-section-v8 challenge-selected-section-v8">
+            <p className="eyebrow">SELECTED TASK</p>
+            {selectedTask ? (
+              <div className="selected-task selected-task-v8">
+                <div className="selected-task-title-v8">
+                  <span className="selected-task-piece-v8">{difficultySymbols[selectedTask.difficulty]}</span>
+                  <div>
+                    <h2>{selectedTask.title}</h2>
+                    <span>{difficultyNames[selectedTask.difficulty]} · {selectedTask.taskType === 1 ? "算法题" : "文件题"}</span>
+                  </div>
+                </div>
+                <div className="selected-task-facts selected-task-facts-v8">
+                  <div><span>分数</span><strong>{selectedTask.score}</strong></div>
+                  <div>
+                    <span>状态</span>
+                    <strong className={selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "status-passed" : undefined}>
+                      {selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "已完成" : "未完成"}
+                    </strong>
+                  </div>
+                </div>
+                <button className="button" type="button" onClick={() => handleTaskClick(selectedTask)}>
+                  进入任务
+                </button>
+              </div>
+            ) : (
+              <p className="muted">将鼠标移到棋子上查看任务信息。</p>
+            )}
+          </section>
+        </aside>
+      </div>
     </section>
   );
+}
+
+function getProgressPercent(completed: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, Math.round((completed / total) * 100)));
 }
 
 function getPieceTone(task: ChallengeTaskDto, isVisuallyCompleted: boolean) {

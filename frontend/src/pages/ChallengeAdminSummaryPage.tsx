@@ -173,22 +173,24 @@ export function ChallengeAdminSummaryPage() {
     return <div className="empty-state">暂无管理统计数据</div>;
   }
 
+  const overallCompletionRate = getCompletionRate(summary.totalCompletionCount, summary.participantCount * summary.totalTaskCount);
+
   return (
-    <section className="challenge-page admin-summary-page">
-      <div className="leaderboard-header">
+    <section className="challenge-page admin-summary-page ui-v2-page analytics-v2-page challenge-admin-summary-v2-page challenge-admin-summary-v8-page">
+      <div className="leaderboard-header ui-v2-page-header challenge-admin-header-v8">
         <div>
           <p className="eyebrow">CHALLENGE ADMIN</p>
           <h1>{summary.challengeTitle}</h1>
-          <p>参与人数统计进入过该挑战或已有完成记录的用户。</p>
+          <p>查看参与者进度、逐题完成情况与文件题评分状态。</p>
         </div>
-        <div className="button-row">
+        <div className="button-row challenge-admin-toolbar-v8">
           <button
             className="button"
             disabled={exportingCsv !== null}
             type="button"
             onClick={() => handleExportCsv("users")}
           >
-            {exportingCsv === "users" ? "导出中..." : "导出用户总览 CSV"}
+            {exportingCsv === "users" ? "导出中..." : "导出用户 CSV"}
           </button>
           <button
             className="button"
@@ -196,7 +198,7 @@ export function ChallengeAdminSummaryPage() {
             type="button"
             onClick={() => handleExportCsv("tasks")}
           >
-            {exportingCsv === "tasks" ? "导出中..." : "导出逐题明细 CSV"}
+            {exportingCsv === "tasks" ? "导出中..." : "导出逐题 CSV"}
           </button>
           <Link className="button" to={`/challenges/${summary.challengeId}`}>
             返回棋盘
@@ -204,212 +206,274 @@ export function ChallengeAdminSummaryPage() {
         </div>
       </div>
 
-      <div className="admin-metrics">
+      <div className="admin-metrics challenge-admin-metrics-v8">
         <Metric label="总任务数" value={summary.totalTaskCount} />
         <Metric label="参与人数" value={summary.participantCount} />
         <Metric label="总完成次数" value={summary.totalCompletionCount} />
+        <Metric label="总体完成率" value={`${overallCompletionRate}%`} />
       </div>
 
       {notice && <div className="quiet-note success">{notice}</div>}
       {actionError && <div className="alert error">{actionError}</div>}
 
-      <div className="admin-summary-grid">
-        <section className="admin-panel">
-          <div className="admin-panel-header">
+      <section className="admin-panel challenge-admin-panel-v8">
+        <div className="admin-panel-header challenge-admin-panel-header-v8">
+          <div>
             <p className="eyebrow">USERS</p>
             <h2>用户进度</h2>
+            <p>选择用户后可在下方查看完整逐题状态。</p>
           </div>
+          <span className="context-chip">{summary.users.length} 名参与者</span>
+        </div>
 
-          {summary.users.length === 0 ? (
-            <div className="empty-state">暂无参与者</div>
-          ) : (
-            <div className="table-wrap leaderboard-table-wrap">
-              <table className="leaderboard-table">
-                <thead>
-                  <tr>
-                    <th>用户</th>
-                    <th>完成题数</th>
-                    <th>总分</th>
-                    <th>最后完成</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.users.map((user) => (
+        {summary.users.length === 0 ? (
+          <div className="empty-state">暂无参与者</div>
+        ) : (
+          <div className="table-wrap leaderboard-table-wrap challenge-admin-table-wrap-v8">
+            <table className="leaderboard-table challenge-admin-table-v8">
+              <thead>
+                <tr>
+                  <th>用户</th>
+                  <th>完成进度</th>
+                  <th>总分</th>
+                  <th>最后完成</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.users.map((user) => {
+                  const progress = getCompletionRate(user.completedTaskCount, summary.totalTaskCount);
+
+                  return (
                     <tr className={selectedUser?.userId === user.userId ? "admin-selected-row" : ""} key={user.userId}>
                       <td>
-                        <div className="leaderboard-user">
+                        <div className="leaderboard-user challenge-admin-user-v8">
                           {user.avatarUrl ? (
                             <img src={user.avatarUrl} alt={user.userName} />
                           ) : (
                             <span className="leaderboard-avatar-placeholder">{user.userName.slice(0, 1).toUpperCase()}</span>
                           )}
-                          <span>{user.userName}</span>
+                          <div>
+                            <strong>{user.userName}</strong>
+                            <span>{user.completedTaskCount} / {summary.totalTaskCount} 题</span>
+                          </div>
                         </div>
                       </td>
                       <td>
-                        {user.completedTaskCount} / {summary.totalTaskCount}
+                        <div className="challenge-admin-progress-v8">
+                          <div className="challenge-progress-track"><span style={{ width: `${progress}%` }} /></div>
+                          <span>{progress}%</span>
+                        </div>
                       </td>
-                      <td>{user.totalScore}</td>
+                      <td><strong className="challenge-admin-score-v8">{user.totalScore}</strong></td>
                       <td>{formatDate(user.lastCompletedAt)}</td>
                       <td>
                         <button className="button" type="button" onClick={() => setSelectedUser(user)}>
-                          查看详情
+                          查看
                         </button>
                       </td>
                     </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="admin-panel challenge-admin-panel-v8">
+        <div className="admin-panel-header challenge-admin-panel-header-v8">
+          <div>
+            <p className="eyebrow">TASKS</p>
+            <h2>题目完成统计</h2>
+            <p>汇总每道题的类型、难度、分数与参与者完成情况。</p>
+          </div>
+          <span className="context-chip">{summary.tasks.length} 道任务</span>
+        </div>
+        <div className="table-wrap leaderboard-table-wrap challenge-admin-table-wrap-v8">
+          <table className="leaderboard-table challenge-admin-table-v8 challenge-task-stat-table-v8">
+            <thead>
+              <tr>
+                <th>题目</th>
+                <th>类型</th>
+                <th>难度</th>
+                <th>分数</th>
+                <th>完成情况</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.tasks.map((task) => {
+                const progress = getCompletionRate(task.completedUserCount, summary.participantCount);
+
+                return (
+                  <tr key={task.taskId}>
+                    <td><strong className="challenge-admin-task-title-v8">{task.title}</strong></td>
+                    <td><span className="challenge-admin-badge-v8">{taskTypeNames[task.taskType]}</span></td>
+                    <td><span className="challenge-admin-badge-v8 subtle">{difficultyNames[task.difficulty]}</span></td>
+                    <td>{task.score}</td>
+                    <td>
+                      <div className="challenge-admin-progress-v8">
+                        <div className="challenge-progress-track"><span style={{ width: `${progress}%` }} /></div>
+                        <span>{task.completedUserCount} / {summary.participantCount || 0}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <Link className="button" to={`/challenges/${summary.challengeId}/admin/tasks/${task.taskId}`}>
+                        查看
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="admin-panel challenge-admin-panel-v8 challenge-user-detail-v8">
+        <div className="admin-panel-header challenge-admin-panel-header-v8">
+          <div>
+            <p className="eyebrow">DETAIL</p>
+            <h2>{selectedUser ? `${selectedUser.userName} 的逐题状态` : "用户逐题状态"}</h2>
+            <p>查看每道任务的完成状态、得分与提交记录。</p>
+          </div>
+        </div>
+
+        {selectedUser ? (
+          <>
+            <div className="challenge-selected-user-summary-v8">
+              <div className="leaderboard-user challenge-admin-user-v8">
+                {selectedUser.avatarUrl ? (
+                  <img src={selectedUser.avatarUrl} alt={selectedUser.userName} />
+                ) : (
+                  <span className="leaderboard-avatar-placeholder">{selectedUser.userName.slice(0, 1).toUpperCase()}</span>
+                )}
+                <div>
+                  <strong>{selectedUser.userName}</strong>
+                  <span>当前选择用户</span>
+                </div>
+              </div>
+              <div><span>完成题数</span><strong>{selectedUser.completedTaskCount} / {summary.totalTaskCount}</strong></div>
+              <div><span>累计得分</span><strong>{selectedUser.totalScore}</strong></div>
+              <div><span>最后完成</span><strong>{formatDate(selectedUser.lastCompletedAt)}</strong></div>
+            </div>
+
+            <div className="table-wrap leaderboard-table-wrap challenge-admin-table-wrap-v8">
+              <table className="leaderboard-table challenge-admin-table-v8 challenge-user-task-table-v8">
+                <thead>
+                  <tr>
+                    <th>题目</th>
+                    <th>类型</th>
+                    <th>难度</th>
+                    <th>状态</th>
+                    <th>得分</th>
+                    <th>评分</th>
+                    <th>完成时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedUser.taskStatuses.map((status) => (
+                    <Fragment key={status.taskId}>
+                      <tr key={status.taskId}>
+                        <td><strong className="challenge-admin-task-title-v8">{status.taskTitle}</strong></td>
+                        <td><span className="challenge-admin-badge-v8">{taskTypeNames[status.taskType]}</span></td>
+                        <td><span className="challenge-admin-badge-v8 subtle">{difficultyNames[status.difficulty]}</span></td>
+                        <td>
+                          <span className={`challenge-admin-status-v8 ${status.isCompleted ? "completed" : "pending"}`}>
+                            {status.isCompleted ? "已完成" : "未完成"}
+                          </span>
+                        </td>
+                        <td>{status.completedScore ?? "—"}</td>
+                        <td>
+                          {status.taskType === 2 && status.fileSubmissionId ? (
+                            <ReviewSummary status={status} />
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                        <td>{formatDate(status.completedAt)}</td>
+                        <td>
+                          <div className="challenge-admin-row-actions-v8">
+                            {status.submissionId && (
+                              <Link className="button" to={`/submissions/${status.submissionId}`}>
+                                提交
+                              </Link>
+                            )}
+                            {status.fileSubmissionId && (
+                              <button
+                                className="button"
+                                disabled={downloadingId === status.fileSubmissionId}
+                                type="button"
+                                onClick={() => handleDownload(status)}
+                              >
+                                {downloadingId === status.fileSubmissionId ? "下载中..." : "下载"}
+                              </button>
+                            )}
+                            {status.taskType === 2 && status.fileSubmissionId && (
+                              <button className="button" type="button" onClick={() => openReviewForm(status)}>
+                                评分
+                              </button>
+                            )}
+                            {!status.submissionId && !status.fileSubmissionId && <span className="muted">—</span>}
+                          </div>
+                        </td>
+                      </tr>
+                      {reviewTarget?.fileSubmissionId === status.fileSubmissionId && (
+                        <tr className="review-row">
+                          <td colSpan={8}>
+                            <div className="review-form">
+                              <label>
+                                分数（0 - {status.score}）
+                                <input
+                                  max={status.score}
+                                  min={0}
+                                  type="number"
+                                  value={reviewScore}
+                                  onChange={(event) => setReviewScore(event.target.value)}
+                                />
+                              </label>
+                              <label>
+                                评语
+                                <textarea
+                                  maxLength={2000}
+                                  value={reviewComment}
+                                  onChange={(event) => setReviewComment(event.target.value)}
+                                />
+                              </label>
+                              <div className="button-row">
+                                <button className="button" disabled={isReviewing} type="button" onClick={() => setReviewTarget(null)}>
+                                  取消
+                                </button>
+                                <button className="button primary" disabled={isReviewing} type="button" onClick={handleSubmitReview}>
+                                  {isReviewing ? "保存中..." : "保存评分"}
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </section>
-
-        <section className="admin-panel">
-          <div className="admin-panel-header">
-            <p className="eyebrow">TASKS</p>
-            <h2>题目完成统计</h2>
-          </div>
-          <div className="table-wrap leaderboard-table-wrap">
-            <table className="leaderboard-table">
-              <thead>
-                <tr>
-                  <th>题目</th>
-                  <th>类型</th>
-                  <th>难度</th>
-                  <th>分数</th>
-                  <th>完成人数</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.tasks.map((task) => (
-                  <tr key={task.taskId}>
-                    <td>{task.title}</td>
-                    <td>{taskTypeNames[task.taskType]}</td>
-                    <td>{difficultyNames[task.difficulty]}</td>
-                    <td>{task.score}</td>
-                    <td>{task.completedUserCount}</td>
-                    <td>
-                      <Link className="button" to={`/challenges/${summary.challengeId}/admin/tasks/${task.taskId}`}>
-                        查看详情
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-
-      <section className="admin-panel">
-        <div className="admin-panel-header">
-          <p className="eyebrow">DETAIL</p>
-          <h2>{selectedUser ? `${selectedUser.userName} 的逐题状态` : "用户逐题状态"}</h2>
-        </div>
-
-        {selectedUser ? (
-          <div className="table-wrap leaderboard-table-wrap">
-            <table className="leaderboard-table">
-              <thead>
-                <tr>
-                  <th>题目</th>
-                  <th>类型</th>
-                  <th>难度</th>
-                  <th>状态</th>
-                  <th>得分</th>
-                  <th>评分</th>
-                  <th>完成时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedUser.taskStatuses.map((status) => (
-                  <Fragment key={status.taskId}>
-                    <tr key={status.taskId}>
-                      <td>{status.taskTitle}</td>
-                      <td>{taskTypeNames[status.taskType]}</td>
-                      <td>{difficultyNames[status.difficulty]}</td>
-                      <td>{status.isCompleted ? "已完成" : "未完成"}</td>
-                      <td>{status.completedScore ?? "-"}</td>
-                      <td>
-                        {status.taskType === 2 && status.fileSubmissionId ? (
-                          <ReviewSummary status={status} />
-                        ) : (
-                          <span className="muted">-</span>
-                        )}
-                      </td>
-                      <td>{formatDate(status.completedAt)}</td>
-                      <td>
-                        {status.submissionId && (
-                          <Link className="button" to={`/submissions/${status.submissionId}`}>
-                            查看提交
-                          </Link>
-                        )}
-                        {status.fileSubmissionId && (
-                          <button
-                            className="button"
-                            disabled={downloadingId === status.fileSubmissionId}
-                            type="button"
-                            onClick={() => handleDownload(status)}
-                          >
-                            {downloadingId === status.fileSubmissionId ? "下载中..." : "下载文件"}
-                          </button>
-                        )}
-                        {status.taskType === 2 && status.fileSubmissionId && (
-                          <button className="button" type="button" onClick={() => openReviewForm(status)}>
-                            评分
-                          </button>
-                        )}
-                        {!status.submissionId && !status.fileSubmissionId && <span className="muted">-</span>}
-                      </td>
-                    </tr>
-                    {reviewTarget?.fileSubmissionId === status.fileSubmissionId && (
-                      <tr className="review-row">
-                        <td colSpan={8}>
-                          <div className="review-form">
-                            <label>
-                              分数（0 - {status.score}）
-                              <input
-                                max={status.score}
-                                min={0}
-                                type="number"
-                                value={reviewScore}
-                                onChange={(event) => setReviewScore(event.target.value)}
-                              />
-                            </label>
-                            <label>
-                              评语
-                              <textarea
-                                maxLength={2000}
-                                value={reviewComment}
-                                onChange={(event) => setReviewComment(event.target.value)}
-                              />
-                            </label>
-                            <div className="button-row">
-                              <button className="button" disabled={isReviewing} type="button" onClick={() => setReviewTarget(null)}>
-                                取消
-                              </button>
-                              <button className="button primary" disabled={isReviewing} type="button" onClick={handleSubmitReview}>
-                                {isReviewing ? "保存中..." : "保存评分"}
-                              </button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          </>
         ) : (
           <div className="empty-state">选择用户查看逐题状态</div>
         )}
       </section>
     </section>
   );
+}
+
+function getCompletionRate(completed: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, Math.round((completed / total) * 100)));
 }
 
 function ReviewSummary({ status }: { status: ChallengeAdminUserTaskStatus }) {
@@ -431,7 +495,7 @@ function ReviewSummary({ status }: { status: ChallengeAdminUserTaskStatus }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="admin-metric">
       <span>{label}</span>

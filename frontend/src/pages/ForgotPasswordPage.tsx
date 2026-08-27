@@ -65,14 +65,15 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <main className="auth-layout">
-      <section className="auth-card">
+    <main className="auth-layout auth-v2-layout">
+      <section className="auth-card auth-v2-card">
         <div className="auth-brand">
           <img src="/brand/unrealstudio-logo.png" alt="UNREALSTUDIO" />
           <span>虚幻工作室网上答题平台</span>
         </div>
-        <div className="page-header">
+        <div className="page-header auth-v2-header">
           <div>
+            <p className="eyebrow">ACCOUNT RECOVERY</p>
             <h1>找回密码</h1>
             <p>通过账号邮箱接收验证码并重置密码。若邮箱存在，验证码将会发送。</p>
           </div>

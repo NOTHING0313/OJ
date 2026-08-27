@@ -187,7 +187,7 @@ export function ChallengeTaskAnswerPage() {
   }
 
   return (
-    <section className="challenge-page task-detail-layout file-task-layout">
+    <section className="challenge-page task-detail-layout file-task-layout ui-v2-page challenge-task-v2-page challenge-answer-v2-page">
       <article className="task-statement file-task-main">
         <Link className="subtle-link" to={`/challenges/${challenge.id}`}>
           返回棋盘

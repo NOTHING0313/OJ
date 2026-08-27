@@ -266,13 +266,16 @@ export function AccountSettingsPage() {
   const avatarUrl = account.avatarUrl || currentUser?.avatarUrl;
   const avatarInitial = (account.userName || currentUser?.userName || "U").slice(0, 1).toUpperCase();
 
+  const roleLabel = accountRoleLabel(account.role);
+  const roleClass = accountRoleClass(account.role);
+
   return (
-    <section className="account-settings-page">
-      <div className="page-header">
+    <section className="account-settings-page ui-v2-page account-settings-v2-page account-settings-v3-page">
+      <div className="page-header ui-v2-page-header account-settings-header-v3">
         <div>
           <p className="eyebrow">ACCOUNT</p>
           <h1>账号设置</h1>
-          <p>维护头像、手机号和账号安全信息。</p>
+          <p>管理个人资料、界面偏好、手机号与账号安全。</p>
         </div>
         <Link className="button" to="/profile/me">
           返回个人中心
@@ -285,138 +288,228 @@ export function AccountSettingsPage() {
         </div>
       )}
 
-      <div className="account-settings-grid">
-        <section className="admin-panel account-card">
-          <div className="admin-panel-header">
-            <h2>基本资料</h2>
-          </div>
-          <div className="account-avatar-block">
-            {avatarUrl ? (
-              <img className="account-avatar-preview" src={avatarUrl} alt={account.userName} />
-            ) : (
-              <span className="account-avatar-fallback">{avatarInitial}</span>
-            )}
-            <div>
-              <strong>{account.userName}</strong>
-              <p className="muted">{account.email}</p>
-              <button className="button primary" type="button" disabled={isUploading} onClick={() => fileInputRef.current?.click()}>
-                {isUploading ? "上传中..." : "上传头像"}
-              </button>
-              <input ref={fileInputRef} className="visually-hidden-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleAvatarChange} />
+      <section className="account-overview-card-v3">
+        <div className="account-overview-identity-v3">
+          {avatarUrl ? (
+            <img className="account-overview-avatar-v3" src={avatarUrl} alt={account.userName} />
+          ) : (
+            <span className="account-overview-avatar-v3 account-avatar-fallback">{avatarInitial}</span>
+          )}
+          <div className="account-overview-copy-v3">
+            <div className="account-overview-title-row-v3">
+              <h2>{account.userName}</h2>
+              <div className="account-overview-badges-v3">
+                <span className={`admin-user-badge ${roleClass}`}>{roleLabel}</span>
+                <span className={`admin-user-badge ${account.isBlacklisted ? "admin-user-status-blacklisted" : "admin-user-status-active"}`}>
+                  {account.isBlacklisted ? "已限制" : "账号正常"}
+                </span>
+                <span className={`admin-user-badge ${account.phoneNumberConfirmed ? "admin-user-status-active" : "admin-user-role-answerer"}`}>
+                  {account.phoneNumberConfirmed ? "手机已绑定" : "手机未绑定"}
+                </span>
+              </div>
             </div>
+            <p>{account.email}</p>
+            <span>头像和账号身份信息会用于个人中心、榜单与管理页面展示。</span>
           </div>
-        </section>
+        </div>
 
-        <section className="admin-panel account-card account-wallpaper-card">
-          <BackgroundAppearanceEditor
-            value={wallpaperEditorValue}
-            onChange={updateWallpaperFromEditor}
-            onSave={handleSaveWallpaper}
-            onClear={handleClearWallpaper}
-            isSaving={isSavingWallpaper}
-            title="个人壁纸"
-            description="个人背景仅在 Root 配置风格下生效。启用后覆盖 Root 背景；清除后自动回退 Root 背景。"
-            previewTitle={appearance.backgroundImageUrl ? "个人壁纸预览" : "尚未设置个人壁纸"}
-            previewDescription="调整位置、缩放和遮罩后可实时查看效果。"
-            saveLabel="保存个人壁纸"
-            uploadLabel="上传壁纸"
-            clearLabel="清除壁纸"
-            onNotice={setNotice}
-            onError={setError}
-          />
-        </section>
+        <div className="account-overview-actions-v3">
+          <button className="button primary" type="button" disabled={isUploading} onClick={() => fileInputRef.current?.click()}>
+            {isUploading ? "上传中..." : "更换头像"}
+          </button>
+          <input ref={fileInputRef} className="visually-hidden-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleAvatarChange} />
+        </div>
+      </section>
 
-        <section className="admin-panel account-card">
-          <div className="admin-panel-header">
-            <h2>界面风格</h2>
+      <section className="account-section-v3 account-personalization-section-v3">
+        <div className="account-section-heading-v3">
+          <div>
+            <p className="eyebrow">PERSONALIZATION</p>
+            <h2>外观与个性化</h2>
           </div>
-          <div className="theme-choice-group">
-            <label className="theme-choice-card">
-              <input
-                type="radio"
-                name="theme"
-                checked={currentTheme === "default"}
-                onChange={() => setTheme("default")}
-              />
-              <span>
-                <strong>默认风格</strong>
-                <small>保持当前暗色界面，不显示 Root 配置背景。</small>
-              </span>
-            </label>
-            <label className="theme-choice-card">
-              <input
-                type="radio"
-                name="theme"
-                checked={currentTheme === "mystic-background"}
-                onChange={() => setTheme("mystic-background")}
-              />
-              <span>
-                <strong>Root 配置风格</strong>
-                <small>使用 Root 为各页面配置的背景和半透明界面；该选择只保存在当前浏览器。</small>
-              </span>
-            </label>
-          </div>
-        </section>
+          <p>配置账号专属背景与浏览器界面风格，不影响其他用户。</p>
+        </div>
 
-        <section className="admin-panel account-card">
-          <div className="admin-panel-header">
-            <h2>手机号绑定</h2>
-          </div>
-          <form className="form-stack account-security-form" onSubmit={handleVerifyPhone}>
-            <div className="profile-fact">
-              <span>当前手机号</span>
-              <strong>{account.phoneNumberConfirmed ? account.phoneNumberMasked ?? "已绑定" : "未绑定"}</strong>
+        <div className="account-personalization-grid-v3">
+          <section className="admin-panel account-card account-wallpaper-card account-wallpaper-card-v3">
+            <BackgroundAppearanceEditor
+              value={wallpaperEditorValue}
+              onChange={updateWallpaperFromEditor}
+              onSave={handleSaveWallpaper}
+              onClear={handleClearWallpaper}
+              isSaving={isSavingWallpaper}
+              title="个人壁纸"
+              description="仅在 Root 配置风格下生效。启用后覆盖平台背景，清除后自动回退到 Root 背景。"
+              previewTitle={appearance.backgroundImageUrl ? "个人壁纸预览" : "尚未设置个人壁纸"}
+              previewDescription="调整位置、缩放和遮罩后可实时查看效果。"
+              saveLabel="保存个人壁纸"
+              uploadLabel="上传壁纸"
+              clearLabel="清除壁纸"
+              onNotice={setNotice}
+              onError={setError}
+            />
+          </section>
+
+          <section className="admin-panel account-card account-theme-card-v3">
+            <div className="admin-panel-header">
+              <div>
+                <p className="eyebrow">THEME</p>
+                <h2>界面风格</h2>
+              </div>
             </div>
-            <label>
-              新手机号
-              <input value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="请输入 11 位手机号" inputMode="tel" />
-            </label>
-            <div className="inline-action-row">
-              <label>
-                验证码
-                <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="6 位验证码" inputMode="numeric" maxLength={6} />
+            <p className="account-card-description-v3">选择当前浏览器使用的界面方案。</p>
+            <div className="theme-choice-group">
+              <label className={`theme-choice-card ${currentTheme === "default" ? "active" : ""}`}>
+                <input
+                  type="radio"
+                  name="theme"
+                  checked={currentTheme === "default"}
+                  onChange={() => setTheme("default")}
+                />
+                <span>
+                  <strong>默认暗色</strong>
+                  <small>使用稳定的深色界面，不展示站点背景图。</small>
+                </span>
+                <span className="theme-choice-state-v3">{currentTheme === "default" ? "当前" : "选择"}</span>
               </label>
-              <button className="button" type="button" disabled={isSendingCode} onClick={handleSendCode}>
-                {isSendingCode ? "发送中..." : "发送验证码"}
-              </button>
-            </div>
-            {debugCode && <div className="quiet-note">开发环境验证码：{debugCode}</div>}
-            <button className="button primary" type="submit" disabled={isVerifying}>
-              {isVerifying ? "绑定中..." : "绑定 / 修改手机号"}
-            </button>
-          </form>
-        </section>
-
-        <section className="admin-panel account-card account-danger-zone">
-          <div className="admin-panel-header">
-            <h2>账号安全</h2>
-          </div>
-          <p className="muted">
-            注销会匿名化账号资料，但保留历史提交与挑战记录用于平台统计。
-          </p>
-          <form className="form-stack account-security-form" onSubmit={handleDeleteAccount}>
-            <label>
-              当前密码
-              <input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} autoComplete="current-password" />
-            </label>
-            <div className="inline-action-row">
-              <label>
-                邮箱验证码
-                <input value={deleteCode} onChange={(event) => setDeleteCode(event.target.value)} placeholder="6 位验证码" inputMode="numeric" maxLength={6} />
+              <label className={`theme-choice-card ${currentTheme === "mystic-background" ? "active" : ""}`}>
+                <input
+                  type="radio"
+                  name="theme"
+                  checked={currentTheme === "mystic-background"}
+                  onChange={() => setTheme("mystic-background")}
+                />
+                <span>
+                  <strong>沉浸背景</strong>
+                  <small>使用 Root 页面背景与半透明面板，并叠加你的个人壁纸配置。</small>
+                </span>
+                <span className="theme-choice-state-v3">{currentTheme === "mystic-background" ? "当前" : "选择"}</span>
               </label>
-              <button className="button danger-button" type="button" disabled={isSendingDeleteCode} onClick={handleSendDeleteCode}>
-                {isSendingDeleteCode ? "发送中..." : "发送注销验证码"}
-              </button>
             </div>
-            {deleteDebugCode && <div className="quiet-note">开发环境注销验证码：{deleteDebugCode}</div>}
-            <button className="button danger-button solid" type="submit" disabled={isDeletingAccount}>
-              {isDeletingAccount ? "注销中..." : "确认注销账号"}
-            </button>
-          </form>
-        </section>
-      </div>
+          </section>
+        </div>
+      </section>
+
+      <section className="account-section-v3">
+        <div className="account-section-heading-v3">
+          <div>
+            <p className="eyebrow">SECURITY</p>
+            <h2>登录与安全</h2>
+          </div>
+          <p>管理手机号验证，并在需要时注销账号。</p>
+        </div>
+
+        <div className="account-security-grid-v3">
+          <section className="admin-panel account-card account-phone-card-v3">
+            <div className="admin-panel-header account-card-title-v3">
+              <div>
+                <span className="account-card-icon-v3">01</span>
+                <div>
+                  <h2>手机号绑定</h2>
+                  <p>用于身份验证与账号恢复。</p>
+                </div>
+              </div>
+              <span className={`admin-user-badge ${account.phoneNumberConfirmed ? "admin-user-status-active" : "admin-user-role-answerer"}`}>
+                {account.phoneNumberConfirmed ? "已绑定" : "未绑定"}
+              </span>
+            </div>
+
+            <form className="form-stack account-security-form account-security-form-v3" onSubmit={handleVerifyPhone}>
+              <div className="account-current-value-v3">
+                <span>当前手机号</span>
+                <strong>{account.phoneNumberConfirmed ? account.phoneNumberMasked ?? "已绑定" : "尚未绑定手机号"}</strong>
+              </div>
+
+              <label>
+                新手机号
+                <input value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="请输入 11 位手机号" inputMode="tel" />
+              </label>
+
+              <div className="inline-action-row">
+                <label>
+                  验证码
+                  <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="6 位验证码" inputMode="numeric" maxLength={6} />
+                </label>
+                <button className="button" type="button" disabled={isSendingCode} onClick={handleSendCode}>
+                  {isSendingCode ? "发送中..." : "发送验证码"}
+                </button>
+              </div>
+
+              {debugCode && <div className="quiet-note">开发环境验证码：{debugCode}</div>}
+
+              <button className="button primary" type="submit" disabled={isVerifying}>
+                {isVerifying ? "保存中..." : account.phoneNumberConfirmed ? "修改绑定手机号" : "绑定手机号"}
+              </button>
+            </form>
+          </section>
+
+          <section className="admin-panel account-card account-danger-zone account-danger-zone-v3">
+            <div className="admin-panel-header account-card-title-v3">
+              <div>
+                <span className="account-card-icon-v3 danger">!</span>
+                <div>
+                  <h2>注销账号</h2>
+                  <p>永久操作，执行前需要密码与邮箱验证码。</p>
+                </div>
+              </div>
+              <span className="account-danger-label-v3">危险操作</span>
+            </div>
+
+            <div className="account-danger-note-v3">
+              注销后账号资料会匿名化，历史提交与挑战记录仍会保留用于平台统计。此操作不可恢复。
+            </div>
+
+            <form className="form-stack account-security-form account-security-form-v3" onSubmit={handleDeleteAccount}>
+              <label>
+                当前密码
+                <input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} autoComplete="current-password" placeholder="输入当前账号密码" />
+              </label>
+
+              <div className="inline-action-row">
+                <label>
+                  邮箱验证码
+                  <input value={deleteCode} onChange={(event) => setDeleteCode(event.target.value)} placeholder="6 位验证码" inputMode="numeric" maxLength={6} />
+                </label>
+                <button className="button danger-button" type="button" disabled={isSendingDeleteCode} onClick={handleSendDeleteCode}>
+                  {isSendingDeleteCode ? "发送中..." : "发送验证码"}
+                </button>
+              </div>
+
+              {deleteDebugCode && <div className="quiet-note">开发环境注销验证码：{deleteDebugCode}</div>}
+
+              <button className="button danger-button solid" type="submit" disabled={isDeletingAccount}>
+                {isDeletingAccount ? "注销中..." : "确认注销账号"}
+              </button>
+            </form>
+          </section>
+        </div>
+      </section>
     </section>
   );
+}
+
+function accountRoleLabel(role: number) {
+  if (role === 3) {
+    return "Root";
+  }
+
+  if (role === 2) {
+    return "出题人";
+  }
+
+  return "答题人";
+}
+
+function accountRoleClass(role: number) {
+  if (role === 3) {
+    return "admin-user-role-root";
+  }
+
+  if (role === 2) {
+    return "admin-user-role-problem-setter";
+  }
+
+  return "admin-user-role-answerer";
 }
 
 function createDefaultUserAppearance(): UserAppearance {

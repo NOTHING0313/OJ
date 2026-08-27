@@ -44,15 +44,18 @@ export function ProblemListPage() {
   }, []);
 
   return (
-    <section className="page-section problem-list-page">
-      <div className="page-header">
+    <section className="page-section problem-list-page ui-v2-page problem-list-v2-page">
+      <div className="page-header ui-v2-page-header">
         <div>
+          <p className="eyebrow">PROBLEMS</p>
           <h1>题目列表</h1>
           <p>查看当前可用题目，进入详情后提交代码。</p>
         </div>
-        <Link className="button primary" to="/admin/problems/new">
-          创建题目
-        </Link>
+        {canEdit && (
+          <Link className="button primary" to="/admin/problems/new">
+            创建题目
+          </Link>
+        )}
       </div>
 
       {isLoading && <div className="state-line">加载中...</div>}

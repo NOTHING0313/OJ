@@ -40,7 +40,7 @@ export function ChallengeTaskDetailPage() {
   }
 
   return (
-    <section className="challenge-page task-detail-layout">
+    <section className="challenge-page task-detail-layout ui-v2-page challenge-task-v2-page">
       <article className="task-statement">
         <Link className="subtle-link" to={`/challenges/${challenge.id}`}>
           返回棋盘

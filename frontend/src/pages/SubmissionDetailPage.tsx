@@ -79,9 +79,10 @@ export function SubmissionDetailPage() {
   }
 
   return (
-    <section className="page-section">
-      <div className="page-header">
+    <section className="page-section ui-v2-page submission-detail-v2-page">
+      <div className="page-header ui-v2-page-header">
         <div>
+          <p className="eyebrow">SUBMISSION</p>
           <h1>提交详情</h1>
           <p>{submission.problemTitle} · {submission.id}</p>
         </div>
@@ -107,11 +108,11 @@ export function SubmissionDetailPage() {
       <div className="detail-grid">
         <div>
           <span>状态</span>
-          <strong className={getStatusClassName(submission.status)}>{statusLabel(submission.status)}</strong>
+          <strong><span className={`submission-status-badge submission-status-${statusTone(submission.status)}`}>{statusLabel(submission.status)}</span></strong>
         </div>
         <div>
           <span>语言</span>
-          <strong>{languageLabel(submission.language)}</strong>
+          <strong><span className="submission-language-badge">{languageLabel(submission.language)}</span></strong>
         </div>
         <div>
           <span>用户</span>
@@ -123,11 +124,11 @@ export function SubmissionDetailPage() {
         </div>
         <div>
           <span>耗时</span>
-          <strong>{submission.timeUsedMs ?? "-"} ms</strong>
+          <strong>{formatMetric(submission.timeUsedMs, "ms")}</strong>
         </div>
         <div>
           <span>内存</span>
-          <strong>{submission.memoryUsedKb ?? "-"} KB</strong>
+          <strong>{formatMetric(submission.memoryUsedKb, "KB")}</strong>
         </div>
         <div>
           <span>完成时间</span>
@@ -164,9 +165,9 @@ export function SubmissionDetailPage() {
             {submission.caseResults.map((caseResult, index) => (
               <tr key={caseResult.id}>
                 <td>{index + 1}</td>
-                <td><span className={getStatusClassName(caseResult.status)}>{statusLabel(caseResult.status)}</span></td>
-                <td>{caseResult.timeUsedMs ?? "-"} ms</td>
-                <td>{caseResult.memoryUsedKb ?? "-"} KB</td>
+                <td><span className={`submission-status-badge submission-status-${statusTone(caseResult.status)}`}>{statusLabel(caseResult.status)}</span></td>
+                <td>{formatMetric(caseResult.timeUsedMs, "ms")}</td>
+                <td>{formatMetric(caseResult.memoryUsedKb, "KB")}</td>
                 <td className="pre-line output-cell">{caseResult.isRedacted ? <span className="redacted-output">隐藏测试点已脱敏</span> : caseResult.actualOutput ?? "-"}</td>
                 <td className="pre-line output-cell">{caseResult.isRedacted ? <span className="redacted-output">隐藏测试点已脱敏</span> : caseResult.expectedOutput ?? "-"}</td>
                 <td className="pre-line output-cell">{caseResult.errorMessage ?? "-"}</td>
@@ -180,8 +181,30 @@ export function SubmissionDetailPage() {
   );
 }
 
-function getStatusClassName(status: number) {
-  return status === acceptedStatus ? "status-accepted" : undefined;
+function statusTone(status: number) {
+  switch (status) {
+    case 1:
+      return "pending";
+    case 2:
+      return "judging";
+    case 3:
+      return "accepted";
+    case 4:
+      return "wrong-answer";
+    case 5:
+    case 6:
+      return "limit";
+    case 7:
+      return "runtime-error";
+    case 8:
+      return "compile-error";
+    default:
+      return "system-error";
+  }
+}
+
+function formatMetric(value: number | null, unit: string) {
+  return value === null ? "—" : `${value} ${unit}`;
 }
 
 async function copySource(sourceCode: string, setCopyNotice: (value: string | null) => void) {

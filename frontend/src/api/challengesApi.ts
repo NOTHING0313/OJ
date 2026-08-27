@@ -1,4 +1,5 @@
 import { baseUrl, request } from "./httpClient";
+import type { RankHistory } from "./leaderboardsApi";
 
 export type ChallengeTaskType = 1 | 2;
 export type ChallengeTaskDifficulty = 1 | 2 | 3 | 4 | 5 | 6;
@@ -118,6 +119,31 @@ export interface ChallengeLeaderboard {
   entries: ChallengeLeaderboardEntry[];
 }
 
+export interface ChallengeLeaderboardProgress {
+  challengeId: string;
+  challengeTitle: string;
+  tasks: ChallengeLeaderboardProgressTask[];
+  users: ChallengeLeaderboardProgressUser[];
+}
+
+export interface ChallengeLeaderboardProgressTask {
+  taskId: string;
+  title: string;
+  score: number;
+}
+
+export interface ChallengeLeaderboardProgressUser {
+  userId: string;
+  userName: string;
+  avatarUrl: string | null;
+  rank: number | null;
+  completedTaskCount: number;
+  totalScore: number;
+  lastCompletedAt: string | null;
+  isCurrentUser: boolean;
+  completedTaskIds: string[];
+}
+
 export interface ChallengeAdminSummary {
   challengeId: string;
   challengeTitle: string;
@@ -218,6 +244,14 @@ export function deleteChallengeTask(challengeId: string, taskId: string) {
 
 export function getChallengeLeaderboard(challengeId: string) {
   return request<ChallengeLeaderboard>(`/api/challenges/${challengeId}/leaderboard`);
+}
+
+export function getChallengeLeaderboardProgress(challengeId: string) {
+  return request<ChallengeLeaderboardProgress>(`/api/challenges/${challengeId}/leaderboard/progress`);
+}
+
+export function getChallengeLeaderboardHistory(challengeId: string, days = 10) {
+  return request<RankHistory>(`/api/challenges/${challengeId}/leaderboard/history?days=${days}`);
 }
 
 export function getChallengeAdminSummary(challengeId: string) {

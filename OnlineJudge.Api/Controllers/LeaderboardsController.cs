@@ -22,6 +22,19 @@ public class LeaderboardsController(ILeaderboardService leaderboardService) : Co
         return Ok(result.Value);
     }
 
+    [HttpGet("users/history")]
+    public async Task<IActionResult> GetGlobalUserHistory([FromQuery] int days = 10, CancellationToken cancellationToken = default)
+    {
+        var result = await leaderboardService.GetGlobalUserRankHistoryAsync(days, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return BadRequest(result.ErrorMessage);
+        }
+
+        return Ok(result.Value);
+    }
+
     [HttpGet("challenges")]
     public async Task<IActionResult> GetChallenges(CancellationToken cancellationToken)
     {

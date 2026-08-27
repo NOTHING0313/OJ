@@ -153,8 +153,8 @@ export function AdminChallengeEditorPage() {
   }
 
   return (
-    <section className="challenge-page admin-editor-page">
-      <div className="leaderboard-header">
+    <section className="challenge-page admin-editor-page ui-v2-page editor-v2-page challenge-editor-v2-page">
+      <div className="leaderboard-header ui-v2-page-header">
         <div>
           <p className="eyebrow">CHALLENGE EDITOR</p>
           <h1>{isEditMode ? "编辑挑战" : "创建挑战"}</h1>

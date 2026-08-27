@@ -132,9 +132,10 @@ export function AdminProblemEditorPage() {
   }
 
   return (
-    <section className="page-section narrow problem-editor-page">
-      <div className="page-header">
+    <section className="page-section narrow problem-editor-page ui-v2-page editor-v2-page problem-editor-v2-page">
+      <div className="page-header ui-v2-page-header">
         <div>
+          <p className="eyebrow">PROBLEM EDITOR</p>
           <h1>{isEditMode ? "编辑题目" : "创建题目"}</h1>
           <p>维护题面、输入输出说明和基础限制。</p>
         </div>

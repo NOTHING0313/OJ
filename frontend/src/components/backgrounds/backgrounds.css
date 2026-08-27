@@ -1,0 +1,388 @@
+.oj-app-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #06080d;
+}
+
+.oj-bg-base,
+.oj-bg-grid,
+.oj-bg-noise,
+.oj-bg-vignette,
+.oj-bg-effect,
+.oj-bg-orb,
+.oj-bg-beams,
+.oj-bg-rings {
+  position: absolute;
+  inset: 0;
+}
+
+.oj-bg-base {
+  background:
+    radial-gradient(circle at 18% -8%, rgba(91, 84, 204, 0.095), transparent 34rem),
+    radial-gradient(circle at 86% 12%, rgba(43, 101, 202, 0.07), transparent 32rem),
+    linear-gradient(180deg, #06080d 0%, #090c12 42%, #07090e 100%);
+}
+
+.oj-bg-orb {
+  inset: auto;
+  width: min(38vw, 590px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(54px) saturate(1.18);
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  animation: ojAmbientDrift 18s ease-in-out infinite alternate;
+}
+
+.oj-bg-orb-primary {
+  top: -15%;
+  left: -9%;
+  background: radial-gradient(circle, rgba(133, 102, 255, 0.9) 0%, rgba(91, 65, 238, 0.42) 42%, transparent 72%);
+}
+
+.oj-bg-orb-secondary {
+  top: 1%;
+  right: -11%;
+  width: min(35vw, 540px);
+  background: radial-gradient(circle, rgba(64, 146, 255, 0.74) 0%, rgba(38, 93, 225, 0.34) 45%, transparent 74%);
+  animation-delay: -5s;
+  animation-duration: 22s;
+}
+
+.oj-bg-orb-lower {
+  bottom: -23%;
+  left: 31%;
+  width: min(38vw, 580px);
+  background: radial-gradient(circle, rgba(135, 78, 244, 0.58) 0%, rgba(84, 54, 189, 0.24) 47%, transparent 75%);
+  animation-delay: -10s;
+  animation-duration: 25s;
+}
+
+.oj-bg-grid {
+  background-image:
+    linear-gradient(rgba(144, 154, 188, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(144, 154, 188, 0.04) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 92% 76% at 50% 26%, #000 12%, rgba(0, 0, 0, 0.82) 52%, transparent 88%);
+  -webkit-mask-image: radial-gradient(ellipse 92% 76% at 50% 26%, #000 12%, rgba(0, 0, 0, 0.82) 52%, transparent 88%);
+  opacity: 0.34;
+}
+
+.oj-bg-noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.62'/%3E%3C/svg%3E");
+  background-size: 190px 190px;
+  mix-blend-mode: soft-light;
+  opacity: 0.028;
+}
+
+.oj-bg-vignette {
+  background:
+    radial-gradient(ellipse 94% 84% at 50% 40%, transparent 50%, rgba(0, 0, 0, 0.1) 78%, rgba(0, 0, 0, 0.32) 100%),
+    linear-gradient(180deg, rgba(2, 3, 7, 0.01), rgba(2, 3, 7, 0.08));
+}
+
+.oj-bg-effect {
+  overflow: hidden;
+}
+
+.oj-bg-effect-darkveil {
+  opacity: 0.66;
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 62%, rgba(0, 0, 0, 0.64) 84%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, rgba(0, 0, 0, 0.64) 84%, transparent 100%);
+}
+
+.oj-darkveil-canvas,
+.oj-dot-field,
+.oj-dot-field canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.oj-dot-field {
+  position: absolute;
+  inset: 0;
+}
+
+.oj-dot-field canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* Dot field now lives only in the lower quarter of the viewport.
+   The canvas itself is a short band; density also decreases from bottom to top. */
+.oj-bg-effect-dots {
+  inset: auto 0 0;
+  height: clamp(210px, 30vh, 320px);
+  opacity: 0.96;
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(to bottom, transparent 0%, transparent 14%, rgba(0, 0, 0, 0.14) 30%, rgba(0, 0, 0, 0.66) 58%, #000 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 14%, rgba(0, 0, 0, 0.14) 30%, rgba(0, 0, 0, 0.66) 58%, #000 100%);
+}
+
+.oj-bg-beams {
+  inset: -18% -12% -12%;
+  background:
+    linear-gradient(112deg, transparent 18%, rgba(91, 91, 255, 0.08) 31%, rgba(110, 96, 255, 0.015) 41%, transparent 52%),
+    linear-gradient(118deg, transparent 44%, rgba(53, 130, 255, 0.055) 55%, transparent 66%);
+  filter: blur(18px);
+  opacity: 0.52;
+  mix-blend-mode: screen;
+  transform: translate3d(-18vw, 3vh, 0) scale(1.12);
+  animation: ojBeamSweep 16s ease-in-out infinite alternate;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.86), rgba(0, 0, 0, 0.55) 66%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.86), rgba(0, 0, 0, 0.55) 66%, transparent 100%);
+}
+
+.oj-bg-rings {
+  inset: auto -12vw -23vh auto;
+  width: min(56vw, 780px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle at center, rgba(126, 111, 255, 0.11) 0 1px, transparent 1px 34px);
+  mask-image: radial-gradient(circle, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.58) 48%, transparent 74%);
+  -webkit-mask-image: radial-gradient(circle, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.58) 48%, transparent 74%);
+  opacity: 0.56;
+  transform-origin: center;
+  animation: ojRingBreath 13s ease-in-out infinite alternate, ojRingRotate 52s linear infinite;
+}
+
+.oj-app-background--auth .oj-bg-base {
+  background:
+    radial-gradient(circle at 50% 10%, rgba(106, 89, 255, 0.13), transparent 32rem),
+    radial-gradient(circle at 14% 72%, rgba(46, 105, 205, 0.075), transparent 30rem),
+    linear-gradient(180deg, #05070b 0%, #080a10 58%, #06080c 100%);
+}
+
+.oj-app-background--auth .oj-bg-grid {
+  opacity: 0.12;
+}
+
+.oj-app-background--auth .oj-bg-orb-primary {
+  animation-duration: 13s;
+}
+
+.oj-app-background--leaderboard .oj-bg-base,
+.oj-app-background--challenge .oj-bg-base {
+  background:
+    linear-gradient(180deg, rgba(9, 11, 19, 0.24), rgba(6, 8, 13, 0.72)),
+    radial-gradient(circle at 50% 0%, rgba(58, 74, 158, 0.095), transparent 42rem),
+    #06080d;
+}
+
+.oj-app-background--leaderboard .oj-bg-grid,
+.oj-app-background--challenge .oj-bg-grid {
+  opacity: 0.07;
+}
+
+.oj-app-background--leaderboard .oj-bg-orb-primary,
+.oj-app-background--challenge .oj-bg-orb-primary {
+  top: -17%;
+  left: -8%;
+  width: min(36vw, 560px);
+  filter: blur(48px) saturate(1.24);
+  animation: ojLeaderboardPrimary 13.5s cubic-bezier(0.45, 0.02, 0.38, 1) infinite alternate;
+}
+
+.oj-app-background--leaderboard .oj-bg-orb-secondary,
+.oj-app-background--challenge .oj-bg-orb-secondary {
+  top: 5%;
+  right: -9%;
+  width: min(34vw, 520px);
+  filter: blur(52px) saturate(1.2);
+  animation: ojLeaderboardSecondary 17s cubic-bezier(0.42, 0.02, 0.36, 1) infinite alternate;
+}
+
+.oj-app-background--leaderboard .oj-bg-orb-lower,
+.oj-app-background--challenge .oj-bg-orb-lower {
+  bottom: -25%;
+  left: 35%;
+  animation-duration: 20s;
+}
+
+.oj-app-background--challenge .oj-bg-effect-dots {
+  opacity: 0.72;
+}
+
+.oj-app-background--challenge .oj-bg-orb-primary,
+.oj-app-background--challenge .oj-bg-orb-secondary {
+  animation-duration: 18s;
+}
+
+.oj-app-background--data .oj-bg-grid {
+  opacity: 0.25;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.18) 72%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.18) 72%, transparent 100%);
+}
+
+.oj-app-background--data .oj-bg-orb-primary {
+  animation-duration: 20s;
+}
+
+.oj-app-background--profile .oj-bg-grid {
+  opacity: 0.1;
+}
+
+.oj-app-background--profile .oj-bg-orb-primary {
+  left: -14%;
+  top: 10%;
+  animation-duration: 21s;
+}
+
+.oj-app-background--quiet .oj-bg-orb {
+  opacity: 0.07;
+  animation-duration: 38s;
+}
+
+.oj-app-background--quiet .oj-bg-grid {
+  opacity: 0.12;
+}
+
+.oj-app-background--quiet .oj-bg-noise {
+  opacity: 0.018;
+}
+
+.oj-app-background--wallpaper {
+  background: transparent;
+}
+
+.oj-app-background--wallpaper .oj-bg-base,
+.oj-app-background--wallpaper .oj-bg-grid {
+  display: none;
+}
+
+.oj-app-background--wallpaper .oj-bg-noise {
+  opacity: 0.018;
+}
+
+.oj-app-background--wallpaper .oj-bg-vignette {
+  background: radial-gradient(ellipse 92% 82% at 50% 40%, transparent 58%, rgba(0, 0, 0, 0.22) 100%);
+}
+
+@keyframes ojAmbientDrift {
+  0% {
+    transform: translate3d(-6vw, -3vh, 0) scale(0.9);
+    opacity: 0.14;
+  }
+  30% {
+    transform: translate3d(4vw, 6vh, 0) scale(1.08);
+    opacity: 0.42;
+  }
+  66% {
+    transform: translate3d(15vw, 1vh, 0) scale(0.98);
+    opacity: 0.24;
+  }
+  100% {
+    transform: translate3d(20vw, 10vh, 0) scale(1.12);
+    opacity: 0.38;
+  }
+}
+
+@keyframes ojLeaderboardPrimary {
+  0% {
+    transform: translate3d(-8vw, -4vh, 0) scale(0.9);
+    opacity: 0.23;
+  }
+  34% {
+    transform: translate3d(5vw, 7vh, 0) scale(1.12);
+    opacity: 0.72;
+  }
+  68% {
+    transform: translate3d(19vw, 0, 0) scale(0.95);
+    opacity: 0.34;
+  }
+  100% {
+    transform: translate3d(29vw, 10vh, 0) scale(1.16);
+    opacity: 0.66;
+  }
+}
+
+@keyframes ojLeaderboardSecondary {
+  0% {
+    transform: translate3d(6vw, -2vh, 0) scale(0.96);
+    opacity: 0.18;
+  }
+  44% {
+    transform: translate3d(-10vw, 10vh, 0) scale(1.14);
+    opacity: 0.54;
+  }
+  100% {
+    transform: translate3d(-24vw, 2vh, 0) scale(0.94);
+    opacity: 0.28;
+  }
+}
+
+@keyframes ojBeamSweep {
+  0% {
+    transform: translate3d(-22vw, -1vh, 0) scale(1.08);
+    opacity: 0.28;
+  }
+  48% {
+    transform: translate3d(4vw, 5vh, 0) scale(1.16);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate3d(22vw, 0, 0) scale(1.1);
+    opacity: 0.34;
+  }
+}
+
+@keyframes ojRingBreath {
+  0% {
+    opacity: 0.34;
+    scale: 0.94;
+  }
+  100% {
+    opacity: 0.66;
+    scale: 1.05;
+  }
+}
+
+@keyframes ojRingRotate {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+
+@media (max-width: 760px) {
+  .oj-bg-grid {
+    background-size: 54px 54px;
+    opacity: 0.22;
+  }
+
+  .oj-bg-orb {
+    filter: blur(52px);
+  }
+
+  .oj-bg-effect-darkveil {
+    opacity: 0.48;
+  }
+
+  .oj-bg-effect-dots {
+    height: clamp(190px, 28vh, 250px);
+    opacity: 0.74;
+  }
+
+  .oj-bg-beams {
+    opacity: 0.36;
+  }
+
+  .oj-bg-rings {
+    width: 92vw;
+    right: -42vw;
+    bottom: -18vh;
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oj-bg-orb,
+  .oj-bg-beams,
+  .oj-bg-rings {
+    animation: none !important;
+    transform: none !important;
+  }
+}

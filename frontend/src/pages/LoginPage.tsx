@@ -39,14 +39,15 @@ export function LoginPage() {
   }
 
   return (
-    <main className="auth-layout">
-      <section className="auth-card">
+    <main className="auth-layout auth-v2-layout">
+      <section className="auth-card auth-v2-card">
         <div className="auth-brand">
           <img src="/brand/unrealstudio-logo.png" alt="UNREALSTUDIO" />
           <span>虚幻工作室网上答题平台</span>
         </div>
-        <div className="page-header">
+        <div className="page-header auth-v2-header">
           <div>
+            <p className="eyebrow">WELCOME BACK</p>
             <h1>登录</h1>
             <p>进入虚幻工作室网上答题平台。</p>
           </div>

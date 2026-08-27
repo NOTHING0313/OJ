@@ -87,14 +87,15 @@ export function RegisterPage() {
   }
 
   return (
-    <main className="auth-layout">
-      <section className="auth-card">
+    <main className="auth-layout auth-v2-layout">
+      <section className="auth-card auth-v2-card">
         <div className="auth-brand">
           <img src="/brand/unrealstudio-logo.png" alt="UNREALSTUDIO" />
           <span>虚幻工作室网上答题平台</span>
         </div>
-        <div className="page-header">
+        <div className="page-header auth-v2-header">
           <div>
+            <p className="eyebrow">CREATE ACCOUNT</p>
             <h1>注册账号</h1>
             <p>注册后默认成为答题人账号。请先完成邮箱验证码校验。</p>
           </div>

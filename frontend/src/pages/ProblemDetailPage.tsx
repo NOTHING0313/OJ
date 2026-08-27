@@ -160,10 +160,11 @@ export function ProblemDetailPage() {
   }
 
   return (
-    <section className="page-section two-column problem-detail-layout">
-      <article className="problem-content">
-        <div className="page-header compact">
+    <section className="page-section two-column problem-detail-layout ui-v2-page problem-detail-v2-page">
+      <article className="problem-content problem-content-v2">
+        <div className="page-header compact ui-v2-page-header">
           <div>
+            <p className="eyebrow">PROBLEM</p>
             <h1>{problem.title}</h1>
             <p>
               {problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {sampleScoreTotal} 分
@@ -275,7 +276,7 @@ export function ProblemDetailPage() {
         </section>
       </article>
 
-      <aside className="submit-panel">
+      <aside className="submit-panel submit-panel-v2">
         <h2>提交代码</h2>
         <form onSubmit={handleSubmit} className="form-stack">
           <label>

@@ -43,8 +43,30 @@ export interface ChallengeLeaderboardTopEntry {
   lastCompletedAt: string | null;
 }
 
+export interface RankHistory {
+  days: RankHistoryDay[];
+}
+
+export interface RankHistoryDay {
+  date: string;
+  entries: RankHistoryEntry[];
+}
+
+export interface RankHistoryEntry {
+  userId: string;
+  userName: string;
+  rank: number;
+  totalScore: number;
+  completedTaskCount: number;
+  isCurrentUser: boolean;
+}
+
 export function getGlobalUserLeaderboard() {
   return request<GlobalUserLeaderboard>("/api/leaderboards/users");
+}
+
+export function getGlobalUserRankHistory(days = 10) {
+  return request<RankHistory>(`/api/leaderboards/users/history?days=${days}`);
 }
 
 export function getChallengeLeaderboardIndex() {

@@ -5,6 +5,7 @@ import {
   type UserAppearance
 } from "../api/accountApi";
 import { useAuth } from "../auth/AuthContext";
+import { AppBackground } from "../components/backgrounds/AppBackground";
 import {
   createDefaultSiteAppearance,
   getSiteAppearance,
@@ -141,6 +142,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           <div style={{ background: `rgba(0, 0, 0, ${effectiveBackground.overlayOpacity})` }} />
         </div>
       )}
+      <AppBackground pathname={location.pathname} hasCustomWallpaper={Boolean(backgroundUrl && effectiveBackground)} />
       <div className="site-theme-content" style={contentStyle}>{children}</div>
     </ThemeContext.Provider>
   );

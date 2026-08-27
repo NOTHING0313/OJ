@@ -156,10 +156,11 @@ export function AdminTestCaseEditorPage() {
   }
 
   return (
-    <section className="page-section two-column test-case-editor-page">
+    <section className="page-section two-column test-case-editor-page ui-v2-page testcase-editor-v2-page">
       <article>
-        <div className="page-header compact">
+        <div className="page-header compact ui-v2-page-header">
           <div>
+            <p className="eyebrow">TEST CASES</p>
             <h1>测试用例配置</h1>
             <p>{problem.title}</p>
           </div>

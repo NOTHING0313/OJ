@@ -197,8 +197,8 @@ export function ChallengeAdminTaskDetailPage() {
   }
 
   return (
-    <section className="challenge-page admin-task-detail-page">
-      <div className="leaderboard-header">
+    <section className="challenge-page admin-task-detail-page ui-v2-page analytics-v2-page challenge-admin-task-v2-page">
+      <div className="leaderboard-header ui-v2-page-header">
         <div>
           <p className="eyebrow">TASK DETAIL</p>
           <h1>{task.title}</h1>

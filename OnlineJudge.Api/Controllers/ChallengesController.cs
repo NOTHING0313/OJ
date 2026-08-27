@@ -46,6 +46,34 @@ public class ChallengesController(IChallengeService challengeService) : Controll
         return Ok(result.Value);
     }
 
+    [AllowAnonymous]
+    [HttpGet("{id:guid}/leaderboard/progress")]
+    public async Task<IActionResult> GetLeaderboardProgress(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await challengeService.GetLeaderboardProgressAsync(id, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return ToFailureResult(result.ErrorMessage);
+        }
+
+        return Ok(result.Value);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("{id:guid}/leaderboard/history")]
+    public async Task<IActionResult> GetLeaderboardHistory(Guid id, [FromQuery] int days = 10, CancellationToken cancellationToken = default)
+    {
+        var result = await challengeService.GetLeaderboardHistoryAsync(id, days, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return ToFailureResult(result.ErrorMessage);
+        }
+
+        return Ok(result.Value);
+    }
+
     [Authorize]
     [HttpGet("{id:guid}/admin-summary")]
     public async Task<IActionResult> GetAdminSummary(Guid id, CancellationToken cancellationToken)

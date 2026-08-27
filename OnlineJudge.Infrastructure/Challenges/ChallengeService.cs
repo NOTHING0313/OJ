@@ -4,6 +4,7 @@ using OnlineJudge.Application.Challenges.Requests;
 using OnlineJudge.Application.Challenges.Services;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
+using OnlineJudge.Application.Leaderboards.Dtos;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
@@ -149,6 +150,224 @@ public class ChallengeService(
             TotalTaskCount = totalTaskCount,
             Entries = entries
         });
+    }
+
+    public async Task<Result<ChallengeLeaderboardProgressDto>> GetLeaderboardProgressAsync(Guid challengeId, CancellationToken cancellationToken = default)
+    {
+        var challenge = await dbContext.Challenges
+            .AsNoTracking()
+            .FirstOrDefaultAsync(challenge => challenge.Id == challengeId, cancellationToken);
+
+        if (challenge is null)
+        {
+            return Result<ChallengeLeaderboardProgressDto>.Failure("Challenge not found.");
+        }
+
+        var userResult = await GetOptionalCurrentUserAsync(cancellationToken);
+        if (userResult.IsFailure)
+        {
+            return Result<ChallengeLeaderboardProgressDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
+        }
+
+        var current = userResult.Value;
+        if (!CanViewLeaderboard(current, challenge))
+        {
+            return Result<ChallengeLeaderboardProgressDto>.Failure("Forbidden.");
+        }
+
+        var tasks = await dbContext.ChallengeTasks
+            .AsNoTracking()
+            .Where(task => task.ChallengeId == challengeId)
+            .OrderBy(task => task.BoardY)
+            .ThenBy(task => task.BoardX)
+            .ThenBy(task => task.CreatedAt)
+            .Select(task => new ChallengeLeaderboardProgressTaskDto
+            {
+                TaskId = task.Id,
+                Title = task.Title,
+                Score = task.Score
+            })
+            .ToListAsync(cancellationToken);
+
+        var participantRows = await (
+                from participant in dbContext.ChallengeParticipants.AsNoTracking()
+                join user in dbContext.Users.AsNoTracking() on participant.UserId equals user.Id
+                where participant.ChallengeId == challengeId && !user.IsBlacklisted
+                select new ChallengeProgressUserRow
+                {
+                    UserId = user.Id,
+                    UserName = user.UserName,
+                    AvatarUrl = user.AvatarUrl
+                })
+            .ToListAsync(cancellationToken);
+
+        var completionRows = await (
+                from completion in dbContext.ChallengeTaskCompletions.AsNoTracking()
+                join user in dbContext.Users.AsNoTracking() on completion.UserId equals user.Id
+                where completion.ChallengeId == challengeId && !user.IsBlacklisted
+                select new ChallengeProgressCompletionRow
+                {
+                    UserId = user.Id,
+                    UserName = user.UserName,
+                    AvatarUrl = user.AvatarUrl,
+                    TaskId = completion.ChallengeTaskId,
+                    Score = completion.Score,
+                    CompletedAt = completion.CompletedAt
+                })
+            .ToListAsync(cancellationToken);
+
+        var users = participantRows
+            .Concat(completionRows.Select(row => new ChallengeProgressUserRow
+            {
+                UserId = row.UserId,
+                UserName = row.UserName,
+                AvatarUrl = row.AvatarUrl
+            }))
+            .GroupBy(row => row.UserId)
+            .Select(group => group.First())
+            .ToList();
+
+        var completionMap = completionRows
+            .GroupBy(row => row.UserId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        var rankedUsers = users
+            .Select(user =>
+            {
+                var userCompletions = completionMap.GetValueOrDefault(user.UserId) ?? [];
+                return new
+                {
+                    User = user,
+                    Completions = userCompletions,
+                    CompletedTaskCount = userCompletions.Count,
+                    TotalScore = userCompletions.Sum(row => row.Score),
+                    LastCompletedAt = userCompletions.Count == 0 ? (DateTimeOffset?)null : userCompletions.Max(row => row.CompletedAt)
+                };
+            })
+            .OrderByDescending(entry => entry.TotalScore)
+            .ThenByDescending(entry => entry.CompletedTaskCount)
+            .ThenBy(entry => entry.LastCompletedAt ?? DateTimeOffset.MaxValue)
+            .ThenBy(entry => entry.User.UserName)
+            .ToList();
+
+        var rankedCompletionUsers = rankedUsers.Where(entry => entry.CompletedTaskCount > 0).ToList();
+        var rankMap = rankedCompletionUsers
+            .Select((entry, index) => new { entry.User.UserId, Rank = index + 1 })
+            .ToDictionary(entry => entry.UserId, entry => entry.Rank);
+
+        var progressUsers = rankedUsers
+            .Select(entry => new ChallengeLeaderboardProgressUserDto
+            {
+                UserId = entry.User.UserId,
+                UserName = entry.User.UserName,
+                AvatarUrl = entry.User.AvatarUrl,
+                Rank = rankMap.TryGetValue(entry.User.UserId, out var rank) ? rank : null,
+                CompletedTaskCount = entry.CompletedTaskCount,
+                TotalScore = entry.TotalScore,
+                LastCompletedAt = entry.LastCompletedAt,
+                IsCurrentUser = current?.Id == entry.User.UserId,
+                CompletedTaskIds = entry.Completions.Select(row => row.TaskId).Distinct().ToList()
+            })
+            .ToList();
+
+        return Result<ChallengeLeaderboardProgressDto>.Success(new ChallengeLeaderboardProgressDto
+        {
+            ChallengeId = challenge.Id,
+            ChallengeTitle = challenge.Title,
+            Tasks = tasks,
+            Users = progressUsers
+        });
+    }
+
+    public async Task<Result<RankHistoryDto>> GetLeaderboardHistoryAsync(Guid challengeId, int days = 10, CancellationToken cancellationToken = default)
+    {
+        var challenge = await dbContext.Challenges
+            .AsNoTracking()
+            .FirstOrDefaultAsync(challenge => challenge.Id == challengeId, cancellationToken);
+
+        if (challenge is null)
+        {
+            return Result<RankHistoryDto>.Failure("Challenge not found.");
+        }
+
+        var userResult = await GetOptionalCurrentUserAsync(cancellationToken);
+        if (userResult.IsFailure)
+        {
+            return Result<RankHistoryDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
+        }
+
+        var current = userResult.Value;
+        if (!CanViewLeaderboard(current, challenge))
+        {
+            return Result<RankHistoryDto>.Failure("Forbidden.");
+        }
+
+        days = Math.Clamp(days, 2, 10);
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var historyStart = todayStart.AddDays(-(days - 1));
+        var historyEnd = todayStart.AddDays(1);
+
+        var rows = await (
+                from completion in dbContext.ChallengeTaskCompletions.AsNoTracking()
+                join user in dbContext.Users.AsNoTracking() on completion.UserId equals user.Id
+                where completion.ChallengeId == challengeId
+                    && !user.IsBlacklisted
+                    && completion.CompletedAt < historyEnd
+                select new ChallengeProgressCompletionRow
+                {
+                    UserId = user.Id,
+                    UserName = user.UserName,
+                    AvatarUrl = user.AvatarUrl,
+                    TaskId = completion.ChallengeTaskId,
+                    Score = completion.Score,
+                    CompletedAt = completion.CompletedAt
+                })
+            .ToListAsync(cancellationToken);
+
+        var history = new RankHistoryDto
+        {
+            Days = Enumerable.Range(0, days)
+                .Select(offset =>
+                {
+                    var dayStart = historyStart.AddDays(offset);
+                    var cutoff = offset == days - 1 ? now.AddTicks(1) : dayStart.AddDays(1);
+                    var entries = rows
+                        .Where(row => row.CompletedAt < cutoff)
+                        .GroupBy(row => new { row.UserId, row.UserName })
+                        .Select(group => new
+                        {
+                            group.Key.UserId,
+                            group.Key.UserName,
+                            CompletedTaskCount = group.Count(),
+                            TotalScore = group.Sum(row => row.Score),
+                            LastCompletedAt = group.Max(row => row.CompletedAt)
+                        })
+                        .OrderByDescending(entry => entry.TotalScore)
+                        .ThenByDescending(entry => entry.CompletedTaskCount)
+                        .ThenBy(entry => entry.LastCompletedAt)
+                        .ThenBy(entry => entry.UserName)
+                        .Select((entry, index) => new RankHistoryEntryDto
+                        {
+                            UserId = entry.UserId,
+                            UserName = entry.UserName,
+                            Rank = index + 1,
+                            TotalScore = entry.TotalScore,
+                            CompletedTaskCount = entry.CompletedTaskCount,
+                            IsCurrentUser = current?.Id == entry.UserId
+                        })
+                        .ToList();
+
+                    return new RankHistoryDayDto
+                    {
+                        Date = DateOnly.FromDateTime(dayStart.UtcDateTime),
+                        Entries = entries
+                    };
+                })
+                .ToList()
+        };
+
+        return Result<RankHistoryDto>.Success(history);
     }
 
     public async Task<Result<ChallengeAdminSummaryDto>> GetAdminSummaryAsync(Guid challengeId, CancellationToken cancellationToken = default)
@@ -1475,6 +1694,30 @@ public class ChallengeService(
             6 => "国王",
             _ => difficulty.ToString()
         };
+    }
+
+    private sealed class ChallengeProgressUserRow
+    {
+        public Guid UserId { get; set; }
+
+        public string UserName { get; set; } = string.Empty;
+
+        public string? AvatarUrl { get; set; }
+    }
+
+    private sealed class ChallengeProgressCompletionRow
+    {
+        public Guid UserId { get; set; }
+
+        public string UserName { get; set; } = string.Empty;
+
+        public string? AvatarUrl { get; set; }
+
+        public Guid TaskId { get; set; }
+
+        public int Score { get; set; }
+
+        public DateTimeOffset CompletedAt { get; set; }
     }
 
     private async Task EnsureParticipantAsync(Guid challengeId, Guid userId, DateTimeOffset joinedAt, CancellationToken cancellationToken)

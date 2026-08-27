@@ -65,6 +65,79 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
         });
     }
 
+    public async Task<Result<RankHistoryDto>> GetGlobalUserRankHistoryAsync(int days = 10, CancellationToken cancellationToken = default)
+    {
+        days = Math.Clamp(days, 2, 10);
+        var currentUserId = await GetCurrentUserIdAsync(cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var historyStart = todayStart.AddDays(-(days - 1));
+        var historyEnd = todayStart.AddDays(1);
+
+        var rows = await (
+                from completion in dbContext.ChallengeTaskCompletions.AsNoTracking()
+                join challenge in dbContext.Challenges.AsNoTracking() on completion.ChallengeId equals challenge.Id
+                join user in dbContext.Users.AsNoTracking() on completion.UserId equals user.Id
+                where challenge.IsPublished
+                    && !user.IsBlacklisted
+                    && completion.CompletedAt < historyEnd
+                select new GlobalHistoryRow
+                {
+                    UserId = completion.UserId,
+                    UserName = user.UserName,
+                    ChallengeId = completion.ChallengeId,
+                    Score = completion.Score,
+                    CompletedAt = completion.CompletedAt
+                })
+            .ToListAsync(cancellationToken);
+
+        var history = new RankHistoryDto
+        {
+            Days = Enumerable.Range(0, days)
+                .Select(offset =>
+                {
+                    var dayStart = historyStart.AddDays(offset);
+                    var cutoff = offset == days - 1 ? now.AddTicks(1) : dayStart.AddDays(1);
+                    var entries = rows
+                        .Where(row => row.CompletedAt < cutoff)
+                        .GroupBy(row => new { row.UserId, row.UserName })
+                        .Select(group => new
+                        {
+                            group.Key.UserId,
+                            group.Key.UserName,
+                            CompletedChallengeCount = group.Select(row => row.ChallengeId).Distinct().Count(),
+                            CompletedTaskCount = group.Count(),
+                            TotalScore = group.Sum(row => row.Score),
+                            LastCompletedAt = group.Max(row => row.CompletedAt)
+                        })
+                        .OrderByDescending(entry => entry.TotalScore)
+                        .ThenByDescending(entry => entry.CompletedTaskCount)
+                        .ThenByDescending(entry => entry.CompletedChallengeCount)
+                        .ThenBy(entry => entry.LastCompletedAt)
+                        .ThenBy(entry => entry.UserName)
+                        .Select((entry, index) => new RankHistoryEntryDto
+                        {
+                            UserId = entry.UserId,
+                            UserName = entry.UserName,
+                            Rank = index + 1,
+                            TotalScore = entry.TotalScore,
+                            CompletedTaskCount = entry.CompletedTaskCount,
+                            IsCurrentUser = currentUserId == entry.UserId
+                        })
+                        .ToList();
+
+                    return new RankHistoryDayDto
+                    {
+                        Date = DateOnly.FromDateTime(dayStart.UtcDateTime),
+                        Entries = entries
+                    };
+                })
+                .ToList()
+        };
+
+        return Result<RankHistoryDto>.Success(history);
+    }
+
     public async Task<Result<ChallengeLeaderboardIndexDto>> GetChallengeLeaderboardIndexAsync(CancellationToken cancellationToken = default)
     {
         var challenges = await dbContext.Challenges
@@ -178,6 +251,19 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
         {
             Challenges = summaries
         });
+    }
+
+    private sealed class GlobalHistoryRow
+    {
+        public Guid UserId { get; set; }
+
+        public string UserName { get; set; } = string.Empty;
+
+        public Guid ChallengeId { get; set; }
+
+        public int Score { get; set; }
+
+        public DateTimeOffset CompletedAt { get; set; }
     }
 
     private async Task<Guid?> GetCurrentUserIdAsync(CancellationToken cancellationToken)
