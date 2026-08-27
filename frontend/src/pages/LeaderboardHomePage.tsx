@@ -1,28 +1,183 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  getChallengeLeaderboardIndex,
+  getGlobalUserLeaderboard,
+  type ChallengeLeaderboardIndex,
+  type GlobalUserLeaderboard
+} from "../api/leaderboardsApi";
 
 export function LeaderboardHomePage() {
+  const [globalLeaderboard, setGlobalLeaderboard] = useState<GlobalUserLeaderboard | null>(null);
+  const [challengeIndex, setChallengeIndex] = useState<ChallengeLeaderboardIndex | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let ignore = false;
+
+    Promise.all([getGlobalUserLeaderboard(), getChallengeLeaderboardIndex()])
+      .then(([globalData, challengeData]) => {
+        if (!ignore) {
+          setGlobalLeaderboard(globalData);
+          setChallengeIndex(challengeData);
+          setError(null);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : "榜单概览加载失败");
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const entries = globalLeaderboard?.entries ?? [];
+  const challenges = challengeIndex?.challenges ?? [];
+  const topUser = entries[0];
+  const participantCount = challenges.reduce((sum, challenge) => sum + challenge.participantCount, 0);
+
   return (
-    <section className="challenge-page leaderboard-page">
-      <div className="leaderboard-header">
+    <section className="challenge-page leaderboard-page leaderboard-v2-page">
+      <div className="leaderboard-header leaderboard-v2-header">
         <div>
           <p className="eyebrow">LEADERBOARDS</p>
           <h1>榜单中心</h1>
-          <p>从全局积分到单个挑战，查看虚幻工作室网上答题平台的排名情况。</p>
+          <p>从全局积分到单个挑战，快速查看平台上的排名、参与和完成情况。</p>
         </div>
+        <span className="leaderboard-live-badge">实时榜单</span>
       </div>
 
-      <div className="leaderboard-hub-grid">
-        <Link className="leaderboard-hub-card" to="/leaderboards/users">
-          <span className="eyebrow">GLOBAL</span>
-          <h2>全局用户榜单</h2>
-          <p>统计所有已发布挑战中的总分、完成题数和完成挑战数。</p>
-        </Link>
-        <Link className="leaderboard-hub-card" to="/leaderboards/challenges">
-          <span className="eyebrow">CHALLENGES</span>
-          <h2>挑战榜单</h2>
-          <p>浏览所有已发布挑战的 Top 3 和完整排行榜入口。</p>
-        </Link>
+      {error && <div className="leaderboard-inline-note">榜单概览暂不可用：{error}</div>}
+
+      <div className="leaderboard-overview-grid">
+        <article className="leaderboard-overview-card">
+          <span>上榜用户</span>
+          <strong>{isLoading ? "—" : entries.length}</strong>
+          <small>完成挑战并进入全局榜单的用户</small>
+        </article>
+        <article className="leaderboard-overview-card">
+          <span>已发布挑战</span>
+          <strong>{isLoading ? "—" : challenges.length}</strong>
+          <small>当前可参与并计入榜单的挑战</small>
+        </article>
+        <article className="leaderboard-overview-card">
+          <span>挑战参与人次</span>
+          <strong>{isLoading ? "—" : participantCount}</strong>
+          <small>所有已发布挑战的参与人数汇总</small>
+        </article>
+        <article className="leaderboard-overview-card leaderboard-overview-card-accent">
+          <span>当前最高总分</span>
+          <strong>{isLoading ? "—" : topUser?.totalScore ?? 0}</strong>
+          <small>{topUser ? `${topUser.userName} 暂居全局第一` : "暂无全局排名记录"}</small>
+        </article>
+      </div>
+
+      <div className="leaderboard-v2-hub-grid">
+        <article className="leaderboard-v2-feature-card">
+          <div className="leaderboard-v2-feature-header">
+            <div>
+              <p className="eyebrow">GLOBAL</p>
+              <h2>全局用户榜单</h2>
+              <p>按总分、完成题数和完成挑战数查看平台整体排名。</p>
+            </div>
+            <Link className="button leaderboard-v2-primary-link" to="/leaderboards/users">
+              查看完整榜单
+            </Link>
+          </div>
+
+          <div className="leaderboard-preview-list">
+            {isLoading ? (
+              <div className="leaderboard-preview-empty">正在加载领先用户...</div>
+            ) : entries.length === 0 ? (
+              <div className="leaderboard-preview-empty">暂无用户进入全局榜单</div>
+            ) : (
+              entries.slice(0, 3).map((entry) => (
+                <div className="leaderboard-preview-row" key={entry.userId}>
+                  <span className={`leaderboard-rank ${getRankClass(entry.rank)}`}>{entry.rank}</span>
+                  <span className="leaderboard-preview-user">
+                    {entry.avatarUrl ? (
+                      <img src={entry.avatarUrl} alt={entry.userName} />
+                    ) : (
+                      <span className="leaderboard-avatar-placeholder">{entry.userName.slice(0, 1).toUpperCase()}</span>
+                    )}
+                    <span>
+                      <strong>{entry.userName}</strong>
+                      <small>
+                        {entry.completedChallengeCount} 挑战 · {entry.completedTaskCount} 题
+                      </small>
+                    </span>
+                  </span>
+                  <span className="leaderboard-preview-score">
+                    <strong>{entry.totalScore}</strong>
+                    <small>总分</small>
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
+
+        <article className="leaderboard-v2-feature-card">
+          <div className="leaderboard-v2-feature-header">
+            <div>
+              <p className="eyebrow">CHALLENGES</p>
+              <h2>挑战榜单</h2>
+              <p>浏览已发布挑战的参与情况、完成进度和领先用户。</p>
+            </div>
+            <Link className="button leaderboard-v2-primary-link" to="/leaderboards/challenges">
+              浏览挑战榜单
+            </Link>
+          </div>
+
+          <div className="leaderboard-challenge-preview-list">
+            {isLoading ? (
+              <div className="leaderboard-preview-empty">正在加载挑战...</div>
+            ) : challenges.length === 0 ? (
+              <div className="leaderboard-preview-empty">暂无已发布挑战</div>
+            ) : (
+              challenges.slice(0, 3).map((challenge) => (
+                <Link className="leaderboard-challenge-preview-row" to={`/challenges/${challenge.challengeId}/leaderboard`} key={challenge.challengeId}>
+                  <span className="leaderboard-challenge-preview-main">
+                    <strong>{challenge.title}</strong>
+                    <small>
+                      {challenge.totalTaskCount} 个任务 · {challenge.participantCount} 人参与
+                    </small>
+                  </span>
+                  <span className="leaderboard-challenge-preview-meta">
+                    <strong>{challenge.completedUserCount}</strong>
+                    <small>已完成</small>
+                  </span>
+                </Link>
+              ))
+            )}
+          </div>
+        </article>
       </div>
     </section>
   );
+}
+
+function getRankClass(rank: number) {
+  if (rank === 1) {
+    return "top-one";
+  }
+
+  if (rank === 2) {
+    return "top-two";
+  }
+
+  if (rank === 3) {
+    return "top-three";
+  }
+
+  return "";
 }

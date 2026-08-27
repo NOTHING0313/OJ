@@ -15,6 +15,7 @@ export function AdminProblemListPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [openMenuProblemId, setOpenMenuProblemId] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -42,6 +43,17 @@ export function AdminProblemListPage() {
     };
   }, []);
 
+  useEffect(() => {
+    function closeMenu(event: globalThis.MouseEvent) {
+      if (event.target instanceof Element && !event.target.closest(".management-actions")) {
+        setOpenMenuProblemId(null);
+      }
+    }
+
+    document.addEventListener("mousedown", closeMenu);
+    return () => document.removeEventListener("mousedown", closeMenu);
+  }, []);
+
   const filteredProblems = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
 
@@ -65,10 +77,19 @@ export function AdminProblemListPage() {
   const totalPages = Math.max(1, Math.ceil(filteredProblems.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedProblems = filteredProblems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const filtersAreDefault = keyword.length === 0 && publishFilter === "all";
 
   function resetFilters(update: () => void) {
     update();
     setPage(1);
+    setOpenMenuProblemId(null);
+  }
+
+  function resetAllFilters() {
+    setKeyword("");
+    setPublishFilter("all");
+    setPage(1);
+    setOpenMenuProblemId(null);
   }
 
   async function handleDeleteClick(event: MouseEvent, problem: ProblemListItemDto) {
@@ -81,6 +102,8 @@ export function AdminProblemListPage() {
 
     try {
       setDeletingId(problem.id);
+      setOpenMenuProblemId(null);
+      setNotice(null);
       await deleteProblem(problem.id);
       setProblems((current) => current.filter((item) => item.id !== problem.id));
       setNotice("题目已删除。");
@@ -92,88 +115,134 @@ export function AdminProblemListPage() {
     }
   }
 
-  function stopActionPropagation(event: MouseEvent) {
-    event.stopPropagation();
-  }
-
-  if (isLoading) {
-    return <div className="state-line">正在加载题目管理列表...</div>;
-  }
-
   return (
-    <section className="challenge-page admin-challenge-page">
-      <div className="leaderboard-header">
+    <section className="challenge-page management-v2-page admin-problem-v2-page">
+      <div className="leaderboard-header management-header">
         <div>
           <p className="eyebrow">PROBLEM ADMIN</p>
           <h1>题目管理</h1>
-          <p>维护算法题、题面、限制和测试用例。</p>
+          <p>维护算法题、题面、资源限制与测试用例。</p>
         </div>
-        <Link className="button primary" to="/admin/problems/new">
-          创建题目
-        </Link>
+        <div className="management-header-actions">
+          <span className="management-total">共 {problems.length} 道题目</span>
+          <Link className="button primary" to="/admin/problems/new">创建题目</Link>
+        </div>
       </div>
 
       {notice && <div className="quiet-note success">{notice}</div>}
       {error && <div className="alert error">{error}</div>}
 
-      <div className="admin-filter-bar">
-        <label>
-          搜索
-          <input placeholder="题目标题" value={keyword} onChange={(event) => resetFilters(() => setKeyword(event.target.value))} />
+      <div className="management-toolbar problem-management-toolbar">
+        <label className="management-search-field">
+          <span>搜索</span>
+          <input placeholder="搜索题目标题" value={keyword} onChange={(event) => resetFilters(() => setKeyword(event.target.value))} />
         </label>
         <label>
-          发布状态
+          <span>发布状态</span>
           <select value={publishFilter} onChange={(event) => resetFilters(() => setPublishFilter(event.target.value as PublishFilter))}>
-            <option value="all">全部</option>
-            <option value="published">已发布</option>
-            <option value="draft">未发布</option>
+            <option value="all">状态：全部</option>
+            <option value="published">状态：已发布</option>
+            <option value="draft">状态：未发布</option>
           </select>
         </label>
+        <button className="button management-toolbar-reset" type="button" disabled={filtersAreDefault} onClick={resetAllFilters}>重置</button>
       </div>
 
-      {filteredProblems.length === 0 ? (
-        <div className="empty-state">暂无匹配的题目</div>
+      {isLoading ? (
+        <div className="management-state-panel">正在加载题目...</div>
+      ) : filteredProblems.length === 0 ? (
+        <div className="management-state-panel management-empty-state">
+          <strong>未找到匹配题目</strong>
+          <p>调整搜索条件或重置筛选后重试。</p>
+          <button className="button" type="button" disabled={filtersAreDefault} onClick={resetAllFilters}>重置筛选</button>
+        </div>
       ) : (
-        <div className="admin-challenge-list">
-          {pagedProblems.map((problem) => (
-            <article className="admin-challenge-card" key={problem.id}>
-              <div>
-                <span className="challenge-status">{problem.isPublished ? "已发布" : "草稿"}</span>
-                <h2>{problem.title}</h2>
-                <div className="challenge-time">
-                  <span>创建：{formatDate(problem.createdAt)}</span>
-                  <span>时间限制：{problem.timeLimitMs} ms</span>
-                  <span>内存限制：{problem.memoryLimitMb} MB</span>
-                </div>
-              </div>
-              <div className="admin-challenge-card-actions">
-                <Link className="button" to={`/admin/problems/${problem.id}/edit`} onClick={stopActionPropagation}>
-                  编辑
-                </Link>
-                <Link className="button" to={`/admin/problems/${problem.id}/test-cases`} onClick={stopActionPropagation}>
-                  测试用例
-                </Link>
-                <Link className="button" to={`/problems/${problem.id}`} onClick={stopActionPropagation}>
-                  查看题目
-                </Link>
-                <button className="button" disabled={deletingId === problem.id} type="button" onClick={(event) => handleDeleteClick(event, problem)}>
-                  {deletingId === problem.id ? "删除中..." : "删除"}
-                </button>
-              </div>
-            </article>
-          ))}
+        <div className="table-wrap management-table-wrap">
+          <table className="management-table problem-management-table">
+            <thead>
+              <tr>
+                <th>题目</th>
+                <th>判题模式</th>
+                <th>状态</th>
+                <th>资源限制</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedProblems.map((problem, index) => {
+                const createdAt = formatDateTime(problem.createdAt);
+                const isMenuOpen = openMenuProblemId === problem.id;
+                const isDeleting = deletingId === problem.id;
+
+                return (
+                  <tr key={problem.id}>
+                    <td>
+                      <div className="management-identity-copy">
+                        <Link className="management-title-link" to={`/problems/${problem.id}`} title={problem.title}>{problem.title}</Link>
+                        <span>{problem.judgeMode === 2 ? "函数题" : "标准输入输出题"}</span>
+                      </div>
+                    </td>
+                    <td><ProblemModeBadge judgeMode={problem.judgeMode} /></td>
+                    <td><PublishBadge isPublished={problem.isPublished} /></td>
+                    <td>
+                      <div className="management-limit-stack">
+                        <span>{problem.timeLimitMs} ms</span>
+                        <span>{problem.memoryLimitMb} MB</span>
+                      </div>
+                    </td>
+                    <td>
+                      <time className="management-date-time" dateTime={problem.createdAt}>
+                        <strong>{createdAt.date}</strong>
+                        <span>{createdAt.time}</span>
+                      </time>
+                    </td>
+                    <td>
+                      <div className="management-row-actions">
+                        <Link className="button management-view-link" to={`/problems/${problem.id}`}>查看</Link>
+                        <div className="management-actions">
+                          <button
+                            className="button management-more-button"
+                            type="button"
+                            aria-haspopup="menu"
+                            aria-expanded={isMenuOpen}
+                            aria-label={`管理题目 ${problem.title}`}
+                            disabled={isDeleting}
+                            onClick={() => setOpenMenuProblemId(isMenuOpen ? null : problem.id)}
+                          >
+                            …
+                          </button>
+                          {isMenuOpen && (
+                            <div className={index >= pagedProblems.length - 2 ? "management-action-menu management-action-menu-align-up" : "management-action-menu"} role="menu">
+                              <Link to={`/admin/problems/${problem.id}/edit`} role="menuitem" onClick={() => setOpenMenuProblemId(null)}>编辑题目</Link>
+                              <Link to={`/admin/problems/${problem.id}/test-cases`} role="menuitem" onClick={() => setOpenMenuProblemId(null)}>管理测试用例</Link>
+                              <button className="management-danger-action" type="button" role="menuitem" disabled={isDeleting} onClick={(event) => void handleDeleteClick(event, problem)}>
+                                {isDeleting ? "删除中..." : "删除题目"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <Pagination
-        page={currentPage}
-        pageSize={pageSize}
-        totalCount={filteredProblems.length}
-        totalPages={totalPages}
-        onPageChange={setPage}
-      />
+      <Pagination page={currentPage} pageSize={pageSize} totalCount={filteredProblems.length} totalPages={totalPages} onPageChange={setPage} />
     </section>
   );
+}
+
+function ProblemModeBadge({ judgeMode }: { judgeMode: ProblemListItemDto["judgeMode"] }) {
+  return <span className={`management-badge management-mode-${judgeMode === 2 ? "function" : "standard"}`}>{judgeMode === 2 ? "函数题" : "标准输入输出"}</span>;
+}
+
+function PublishBadge({ isPublished }: { isPublished: boolean }) {
+  return <span className={`management-badge management-status-${isPublished ? "published" : "draft"}`}>{isPublished ? "已发布" : "未发布"}</span>;
 }
 
 function Pagination({
@@ -190,30 +259,36 @@ function Pagination({
   onPageChange: (page: number) => void;
 }) {
   return (
-    <div className="pagination-row">
-      <span>
-        共 {totalCount} 条，每页 {pageSize} 条，第 {page} / {totalPages} 页
-      </span>
+    <div className="pagination-row management-pagination">
+      <span>共 {totalCount} 条 · 每页 {pageSize} 条 · 第 {page} / {totalPages} 页</span>
       <div className="button-row">
-        <button className="button" disabled={page <= 1} type="button" onClick={() => onPageChange(page - 1)}>
-          上一页
-        </button>
-        <button className="button" disabled={page >= totalPages} type="button" onClick={() => onPageChange(page + 1)}>
-          下一页
-        </button>
+        <button className="button" disabled={page <= 1} type="button" onClick={() => onPageChange(page - 1)}>上一页</button>
+        <button className="button" disabled={page >= totalPages} type="button" onClick={() => onPageChange(page + 1)}>下一页</button>
       </div>
     </div>
   );
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { date: "-", time: "-" };
+  }
+
+  const parts = new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(value));
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const readPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    date: `${readPart("year")}-${readPart("month")}-${readPart("day")}`,
+    time: `${readPart("hour")}:${readPart("minute")}`
+  };
 }
 
 function getDeleteProblemErrorMessage(error: unknown) {

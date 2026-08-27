@@ -6,7 +6,7 @@ import {
   type JudgeStatus,
   type SubmissionQueryItem
 } from "../api/submissionsApi";
-import { formatDate, languageLabel, statusLabel } from "../utils/labels";
+import { languageLabel, statusLabel } from "../utils/labels";
 
 const pageSize = 20;
 
@@ -32,6 +32,7 @@ export function MySubmissionsPage() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(page, totalPages);
+  const filtersAreDefault = !problemKeyword && status === "" && language === "";
 
   async function loadSubmissions() {
     try {
@@ -60,48 +61,63 @@ export function MySubmissionsPage() {
     setPage(1);
   }
 
+  function resetAllFilters() {
+    setProblemKeyword("");
+    setStatus("");
+    setLanguage("");
+    setPage(1);
+  }
+
   return (
-    <section className="challenge-page submissions-page">
-      <div className="leaderboard-header">
+    <section className="challenge-page submissions-page submission-v2-page">
+      <div className="leaderboard-header submission-header">
         <div>
           <p className="eyebrow">SUBMISSIONS</p>
           <h1>我的提交</h1>
           <p>查看自己的判题记录、筛选状态和语言，并进入提交详情。</p>
         </div>
+        <span className="submission-total">共 {totalCount} 条提交</span>
       </div>
 
       {error && <div className="alert error">{error}</div>}
 
-      <div className="admin-filter-bar">
-        <label>
-          题目
+      <div className="submission-toolbar submission-toolbar-my">
+        <label className="submission-search-field">
+          <span>题目</span>
           <input
             disabled={Boolean(problemId)}
-            placeholder={problemId ? "已按题目筛选" : "题目关键字"}
+            placeholder={problemId ? "已按题目筛选" : "搜索题目标题"}
             value={problemKeyword}
             onChange={(event) => resetFilters(() => setProblemKeyword(event.target.value))}
           />
         </label>
         <label>
-          状态
+          <span>状态</span>
           <select value={status} onChange={(event) => resetFilters(() => setStatus(parseStatus(event.target.value)))}>
-            <option value="">全部</option>
+            <option value="">状态：全部</option>
             <StatusOptions />
           </select>
         </label>
         <label>
-          语言
+          <span>语言</span>
           <select value={language} onChange={(event) => resetFilters(() => setLanguage(parseLanguage(event.target.value)))}>
-            <option value="">全部</option>
+            <option value="">语言：全部</option>
             <LanguageOptions />
           </select>
         </label>
+        <button className="button submission-toolbar-reset" type="button" disabled={filtersAreDefault} onClick={resetAllFilters}>
+          重置
+        </button>
       </div>
 
       {isLoading ? (
-        <div className="state-line">正在加载提交记录...</div>
+        <div className="submission-state-panel">正在加载提交记录...</div>
       ) : items.length === 0 ? (
-        <div className="empty-state">暂无提交记录</div>
+        <div className="submission-state-panel submission-empty-state">
+          <strong>未找到匹配的提交</strong>
+          <p>{problemId ? "当前题目下暂无符合条件的提交记录。" : "调整筛选条件或重置筛选后重试。"}</p>
+          <button className="button" type="button" disabled={filtersAreDefault} onClick={resetAllFilters}>重置筛选</button>
+        </div>
       ) : (
         <SubmissionTable items={items} showUser={false} />
       )}
@@ -119,8 +135,8 @@ export function MySubmissionsPage() {
 
 export function SubmissionTable({ items, showUser }: { items: SubmissionQueryItem[]; showUser: boolean }) {
   return (
-    <div className="table-wrap leaderboard-table-wrap">
-      <table className="leaderboard-table">
+    <div className="table-wrap submission-table-wrap">
+      <table className={`submission-table ${showUser ? "submission-table-admin" : "submission-table-mine"}`}>
         <thead>
           <tr>
             <th>提交时间</th>
@@ -137,22 +153,27 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
         <tbody>
           {items.map((item) => (
             <tr key={item.id}>
-              <td>{formatDate(item.createdAt)}</td>
+              <td><SubmissionDateTime value={item.createdAt} /></td>
               <td>
-                <Link to={`/problems/${item.problemId}`}>{item.problemTitle}</Link>
-              </td>
-              {showUser && <td>{item.userName}</td>}
-              <td>{languageLabel(item.language)}</td>
-              <td>
-                <span className={getStatusClassName(item.status)}>{statusLabel(item.status)}</span>
-              </td>
-              <td>{item.timeUsedMs ?? "-"} ms</td>
-              <td>{item.memoryUsedKb ?? "-"} KB</td>
-              <td>{formatDate(item.finishedAt)}</td>
-              <td>
-                <Link className="button" to={`/submissions/${item.id}`}>
-                  查看详情
+                <Link className="submission-problem-link" title={item.problemTitle} to={`/problems/${item.problemId}`}>
+                  {item.problemTitle}
                 </Link>
+              </td>
+              {showUser && (
+                <td>
+                  <div className="submission-user-cell">
+                    <span className="submission-user-avatar-placeholder">{item.userName.slice(0, 1).toUpperCase()}</span>
+                    <span title={item.userName}>{item.userName}</span>
+                  </div>
+                </td>
+              )}
+              <td><span className="submission-language-badge">{languageLabel(item.language)}</span></td>
+              <td><SubmissionStatusBadge status={item.status} /></td>
+              <td><span className="submission-metric">{formatMetric(item.timeUsedMs, "ms")}</span></td>
+              <td><span className="submission-metric">{formatMetric(item.memoryUsedKb, "KB")}</span></td>
+              <td><SubmissionDateTime value={item.finishedAt} /></td>
+              <td>
+                <Link className="button submission-view-link" to={`/submissions/${item.id}`}>查看</Link>
               </td>
             </tr>
           ))}
@@ -162,8 +183,75 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
   );
 }
 
-function getStatusClassName(status: JudgeStatus) {
-  return status === 3 ? "status-accepted" : undefined;
+function SubmissionStatusBadge({ status }: { status: JudgeStatus }) {
+  return <span className={`submission-status-badge submission-status-${statusTone(status)}`}>{statusLabel(status)}</span>;
+}
+
+function SubmissionDateTime({ value }: { value: string | null }) {
+  const dateTime = formatSubmissionDateTime(value);
+  if (!dateTime) {
+    return <span className="submission-empty-value">—</span>;
+  }
+
+  return (
+    <time className="submission-date-time" dateTime={value ?? undefined}>
+      <strong>{dateTime.date}</strong>
+      <span>{dateTime.time}</span>
+    </time>
+  );
+}
+
+function statusTone(status: JudgeStatus) {
+  switch (status) {
+    case 1:
+      return "pending";
+    case 2:
+      return "judging";
+    case 3:
+      return "accepted";
+    case 4:
+      return "wrong-answer";
+    case 5:
+      return "limit";
+    case 6:
+      return "limit";
+    case 7:
+      return "runtime-error";
+    case 8:
+      return "compile-error";
+    case 9:
+      return "system-error";
+  }
+}
+
+function formatMetric(value: number | null, unit: string) {
+  return value === null ? "—" : `${value} ${unit}`;
+}
+
+function formatSubmissionDateTime(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const readPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    date: `${readPart("year")}-${readPart("month")}-${readPart("day")}`,
+    time: `${readPart("hour")}:${readPart("minute")}`
+  };
 }
 
 export function LanguageOptions() {
@@ -214,17 +302,11 @@ export function Pagination({
   onPageChange: (page: number) => void;
 }) {
   return (
-    <div className="pagination-row">
-      <span>
-        共 {totalCount} 条，每页 {pageSize} 条，第 {page} / {totalPages} 页
-      </span>
+    <div className="pagination-row submission-pagination">
+      <span>共 {totalCount} 条 · 每页 {pageSize} 条 · 第 {page} / {totalPages} 页</span>
       <div className="button-row">
-        <button className="button" disabled={page <= 1} type="button" onClick={() => onPageChange(page - 1)}>
-          上一页
-        </button>
-        <button className="button" disabled={page >= totalPages} type="button" onClick={() => onPageChange(page + 1)}>
-          下一页
-        </button>
+        <button className="button" disabled={page <= 1} type="button" onClick={() => onPageChange(page - 1)}>上一页</button>
+        <button className="button" disabled={page >= totalPages} type="button" onClick={() => onPageChange(page + 1)}>下一页</button>
       </div>
     </div>
   );
