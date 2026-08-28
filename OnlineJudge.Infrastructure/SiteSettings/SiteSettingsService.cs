@@ -79,7 +79,18 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
             BackgroundEnabled = request.Theme.BackgroundEnabled,
             BackgroundOverlayOpacity = request.Theme.BackgroundOverlayOpacity,
             PanelOpacity = request.Theme.PanelOpacity,
-            PanelBlur = request.Theme.PanelBlur
+            PanelBlur = request.Theme.PanelBlur,
+            PanelColor = request.Theme.PanelColor,
+            PanelBorderOpacity = request.Theme.PanelBorderOpacity,
+            TextPrimaryColor = request.Theme.TextPrimaryColor,
+            TextSecondaryColor = request.Theme.TextSecondaryColor,
+            TextMutedColor = request.Theme.TextMutedColor,
+            AccentColor = request.Theme.AccentColor,
+            NavOpacity = request.Theme.NavOpacity,
+            NavBlur = request.Theme.NavBlur,
+            NavTextColor = request.Theme.NavTextColor,
+            NavActiveColor = request.Theme.NavActiveColor,
+            FontPreset = request.Theme.FontPreset
         };
 
         foreach (var pageKey in SupportedPageKeys)
@@ -105,7 +116,8 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
                 ImageUrl = imageUrl,
                 PositionX = source.PositionX,
                 PositionY = source.PositionY,
-                Scale = source.Scale
+                Scale = source.Scale,
+                OverlayOpacity = source.OverlayOpacity
             };
         }
 
@@ -185,7 +197,18 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
                 BackgroundEnabled = false,
                 BackgroundOverlayOpacity = 0.65,
                 PanelOpacity = 0.72,
-                PanelBlur = 12
+                PanelBlur = 12,
+                PanelColor = "#11141A",
+                PanelBorderOpacity = 0.14,
+                TextPrimaryColor = "#F2F4F8",
+                TextSecondaryColor = "#AEB6CA",
+                TextMutedColor = "#7F8798",
+                AccentColor = "#6E7BFF",
+                NavOpacity = 0.58,
+                NavBlur = 18,
+                NavTextColor = "#D9DEE9",
+                NavActiveColor = "#F2F4F8",
+                FontPreset = "system"
             }
         };
 
@@ -197,7 +220,8 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
                 ImageUrl = null,
                 PositionX = 50,
                 PositionY = 50,
-                Scale = 1
+                Scale = 1,
+                OverlayOpacity = null
             };
         }
 
@@ -219,7 +243,24 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
                 : 0.72,
             PanelBlur = appearance.Theme.PanelBlur is >= 0 and <= 30
                 ? appearance.Theme.PanelBlur
-                : 12
+                : 12,
+            PanelColor = IsHexColor(appearance.Theme.PanelColor) ? appearance.Theme.PanelColor.ToUpperInvariant() : "#11141A",
+            PanelBorderOpacity = appearance.Theme.PanelBorderOpacity is >= 0 and <= 0.5
+                ? appearance.Theme.PanelBorderOpacity
+                : 0.14,
+            TextPrimaryColor = IsHexColor(appearance.Theme.TextPrimaryColor) ? appearance.Theme.TextPrimaryColor.ToUpperInvariant() : "#F2F4F8",
+            TextSecondaryColor = IsHexColor(appearance.Theme.TextSecondaryColor) ? appearance.Theme.TextSecondaryColor.ToUpperInvariant() : "#AEB6CA",
+            TextMutedColor = IsHexColor(appearance.Theme.TextMutedColor) ? appearance.Theme.TextMutedColor.ToUpperInvariant() : "#7F8798",
+            AccentColor = IsHexColor(appearance.Theme.AccentColor) ? appearance.Theme.AccentColor.ToUpperInvariant() : "#6E7BFF",
+            NavOpacity = appearance.Theme.NavOpacity is >= 0.35 and <= 1
+                ? appearance.Theme.NavOpacity
+                : 0.58,
+            NavBlur = appearance.Theme.NavBlur is >= 0 and <= 30
+                ? appearance.Theme.NavBlur
+                : 18,
+            NavTextColor = IsHexColor(appearance.Theme.NavTextColor) ? appearance.Theme.NavTextColor.ToUpperInvariant() : "#D9DEE9",
+            NavActiveColor = IsHexColor(appearance.Theme.NavActiveColor) ? appearance.Theme.NavActiveColor.ToUpperInvariant() : "#F2F4F8",
+            FontPreset = IsFontPreset(appearance.Theme.FontPreset) ? appearance.Theme.FontPreset : "system"
         };
 
         foreach (var pageKey in SupportedPageKeys)
@@ -235,7 +276,8 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
                 ImageUrl = TryNormalizeUploadedImagePath(source.ImageUrl, null, out var normalizedUrl) ? normalizedUrl : null,
                 PositionX = source.PositionX is >= 0 and <= 100 ? source.PositionX : 50,
                 PositionY = source.PositionY is >= 0 and <= 100 ? source.PositionY : 50,
-                Scale = source.Scale is >= 0.5 and <= 2.5 ? source.Scale : 1
+                Scale = source.Scale is >= 0.5 and <= 2.5 ? source.Scale : 1,
+                OverlayOpacity = source.OverlayOpacity is >= 0 and <= 1 ? source.OverlayOpacity : null
             };
         }
 
@@ -286,6 +328,37 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
             return "Panel blur must be between 0 and 30.";
         }
 
+        if (!IsHexColor(theme.PanelColor)
+            || !IsHexColor(theme.TextPrimaryColor)
+            || !IsHexColor(theme.TextSecondaryColor)
+            || !IsHexColor(theme.TextMutedColor)
+            || !IsHexColor(theme.AccentColor)
+            || !IsHexColor(theme.NavTextColor)
+            || !IsHexColor(theme.NavActiveColor))
+        {
+            return "Theme colors must use #RRGGBB format.";
+        }
+
+        if (theme.PanelBorderOpacity is < 0 or > 0.5)
+        {
+            return "Panel border opacity must be between 0 and 0.5.";
+        }
+
+        if (theme.NavOpacity is < 0.35 or > 1)
+        {
+            return "Navigation opacity must be between 0.35 and 1.";
+        }
+
+        if (theme.NavBlur is < 0 or > 30)
+        {
+            return "Navigation blur must be between 0 and 30.";
+        }
+
+        if (!IsFontPreset(theme.FontPreset))
+        {
+            return "Unsupported font preset.";
+        }
+
         return null;
     }
 
@@ -306,7 +379,24 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
             return $"Background scale for {pageKey} must be between 0.5 and 2.5.";
         }
 
+        if (page.OverlayOpacity is < 0 or > 1)
+        {
+            return $"Background overlay opacity for {pageKey} must be between 0 and 1.";
+        }
+
         return null;
+    }
+
+    private static bool IsHexColor(string? color)
+    {
+        return color is { Length: 7 }
+            && color[0] == '#'
+            && color.Skip(1).All(Uri.IsHexDigit);
+    }
+
+    private static bool IsFontPreset(string? preset)
+    {
+        return preset is "system" or "readable" or "mono";
     }
 
     private static bool TryNormalizeUploadedImagePath(string? url, string? requestHost, out string? normalizedPath)

@@ -110,7 +110,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const contentStyle = currentTheme === "mystic-background"
     ? {
         "--site-panel-opacity": String(siteAppearance.theme.panelOpacity),
-        "--site-panel-blur": `${siteAppearance.theme.panelBlur}px`
+        "--site-panel-blur": `${siteAppearance.theme.panelBlur}px`,
+        "--site-panel-color": siteAppearance.theme.panelColor,
+        "--oj-panel-bg": hexToRgba(siteAppearance.theme.panelColor, siteAppearance.theme.panelOpacity),
+        "--oj-input-bg": hexToRgba(siteAppearance.theme.panelColor, Math.min(siteAppearance.theme.panelOpacity + 0.08, 0.98)),
+        "--oj-panel-border": `rgba(255, 255, 255, ${siteAppearance.theme.panelBorderOpacity})`,
+        "--oj-text-primary": siteAppearance.theme.textPrimaryColor,
+        "--oj-text-secondary": siteAppearance.theme.textSecondaryColor,
+        "--oj-text-muted": siteAppearance.theme.textMutedColor,
+        "--oj-accent": siteAppearance.theme.accentColor,
+        "--oj-nav-bg": hexToRgba("#05080F", siteAppearance.theme.navOpacity),
+        "--oj-nav-blur": `${siteAppearance.theme.navBlur}px`,
+        "--oj-nav-text": siteAppearance.theme.navTextColor,
+        "--oj-nav-active": siteAppearance.theme.navActiveColor,
+        "--oj-font-family": resolveFontFamily(siteAppearance.theme.fontPreset)
       } as CSSProperties
     : undefined;
 
@@ -247,9 +260,29 @@ function resolveEffectiveBackground(userAppearance: UserAppearance | null, siteA
 
   return {
     ...siteBackground,
-    overlayOpacity: siteAppearance.theme.backgroundOverlayOpacity,
+    overlayOpacity: siteBackground.overlayOpacity ?? siteAppearance.theme.backgroundOverlayOpacity,
     source: "site"
   };
+}
+
+function hexToRgba(hex: string, opacity: number) {
+  const normalized = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.slice(1) : "11141A";
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+function resolveFontFamily(preset: SiteAppearance["theme"]["fontPreset"]) {
+  if (preset === "readable") {
+    return '"Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif';
+  }
+
+  if (preset === "mono") {
+    return '"Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, monospace';
+  }
+
+  return 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 }
 
 function readStoredTheme(): ThemeName {

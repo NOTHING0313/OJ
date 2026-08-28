@@ -23,6 +23,13 @@ public class SiteSettingsServiceTests
         Assert.Equal(0.65, result.Value.Theme.BackgroundOverlayOpacity);
         Assert.Equal(0.72, result.Value.Theme.PanelOpacity);
         Assert.Equal(12, result.Value.Theme.PanelBlur);
+        Assert.Equal("#11141A", result.Value.Theme.PanelColor);
+        Assert.Equal(0.14, result.Value.Theme.PanelBorderOpacity);
+        Assert.Equal("#F2F4F8", result.Value.Theme.TextPrimaryColor);
+        Assert.Equal("#6E7BFF", result.Value.Theme.AccentColor);
+        Assert.Equal(0.58, result.Value.Theme.NavOpacity);
+        Assert.Equal(18, result.Value.Theme.NavBlur);
+        Assert.Equal("system", result.Value.Theme.FontPreset);
         Assert.Contains("global", result.Value.Pages.Keys);
         Assert.Contains("file-task", result.Value.Pages.Keys);
     }
@@ -41,9 +48,15 @@ public class SiteSettingsServiceTests
         Assert.Equal(0.5, result.Value.Theme.BackgroundOverlayOpacity);
         Assert.Equal(0.7, result.Value.Theme.PanelOpacity);
         Assert.Equal(14, result.Value.Theme.PanelBlur);
+        Assert.Equal("#101820", result.Value.Theme.PanelColor);
+        Assert.Equal("#F8FAFC", result.Value.Theme.TextPrimaryColor);
+        Assert.Equal("#7080FF", result.Value.Theme.AccentColor);
+        Assert.Equal(0.76, result.Value.Theme.NavOpacity);
+        Assert.Equal("readable", result.Value.Theme.FontPreset);
         Assert.Equal("/uploads/images/problems.png", result.Value.Pages["problems"].ImageUrl);
         Assert.True(result.Value.Pages["problems"].Enabled);
         Assert.Equal(1.2, result.Value.Pages["problems"].Scale);
+        Assert.Equal(0.35, result.Value.Pages["problems"].OverlayOpacity);
 
         var setting = await dbContext.SiteSettings.SingleAsync();
         Assert.Equal("appearance", setting.Key);
@@ -129,6 +142,62 @@ public class SiteSettingsServiceTests
     }
 
     [Theory]
+    [InlineData("#fff")]
+    [InlineData("FFFFFF")]
+    [InlineData("#GGGGGG")]
+    public async Task UpdateSiteAppearance_RejectsInvalidThemeColor(string color)
+    {
+        await using var dbContext = CreateDbContext();
+        var service = new SiteSettingsService(dbContext);
+        var request = CreateRequest();
+        request.Theme.PanelColor = color;
+
+        var result = await service.UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Theme colors must use #RRGGBB format.", result.ErrorMessage);
+    }
+
+    [Theory]
+    [InlineData(-0.01)]
+    [InlineData(1.01)]
+    public async Task UpdateSiteAppearance_RejectsInvalidPageOverlay(double opacity)
+    {
+        await using var dbContext = CreateDbContext();
+        var service = new SiteSettingsService(dbContext);
+        var request = CreateRequest();
+        request.Pages["problems"].OverlayOpacity = opacity;
+
+        var result = await service.UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Background overlay opacity for problems must be between 0 and 1.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task OldStructuredAppearance_GetsNewThemeDefaults()
+    {
+        await using var dbContext = CreateDbContext();
+        dbContext.SiteSettings.Add(new SiteSetting
+        {
+            Id = Guid.NewGuid(),
+            Key = "appearance",
+            Value = "{\"theme\":{\"backgroundEnabled\":true,\"backgroundOverlayOpacity\":0.4,\"panelOpacity\":0.7,\"panelBlur\":8},\"pages\":{\"global\":{\"enabled\":true,\"imageUrl\":\"/uploads/images/old.png\",\"positionX\":50,\"positionY\":50,\"scale\":1}}}",
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await dbContext.SaveChangesAsync();
+        var service = new SiteSettingsService(dbContext);
+
+        var result = await service.GetAppearanceAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("#11141A", result.Value!.Theme.PanelColor);
+        Assert.Equal("#F2F4F8", result.Value.Theme.TextPrimaryColor);
+        Assert.Equal("system", result.Value.Theme.FontPreset);
+        Assert.Null(result.Value.Pages["global"].OverlayOpacity);
+    }
+
+    [Theory]
     [InlineData(0.49)]
     [InlineData(2.51)]
     public async Task UpdateSiteAppearance_RejectsInvalidScale(double scale)
@@ -195,7 +264,18 @@ public class SiteSettingsServiceTests
                 BackgroundEnabled = true,
                 BackgroundOverlayOpacity = 0.5,
                 PanelOpacity = 0.7,
-                PanelBlur = 14
+                PanelBlur = 14,
+                PanelColor = "#101820",
+                PanelBorderOpacity = 0.18,
+                TextPrimaryColor = "#F8FAFC",
+                TextSecondaryColor = "#C2CAD8",
+                TextMutedColor = "#8893A5",
+                AccentColor = "#7080FF",
+                NavOpacity = 0.76,
+                NavBlur = 12,
+                NavTextColor = "#DDE3ED",
+                NavActiveColor = "#FFFFFF",
+                FontPreset = "readable"
             },
             Pages = new Dictionary<string, SitePageBackgroundDto>
             {
@@ -213,7 +293,8 @@ public class SiteSettingsServiceTests
                     ImageUrl = pageImageUrl,
                     PositionX = 52,
                     PositionY = 46,
-                    Scale = 1.2
+                    Scale = 1.2,
+                    OverlayOpacity = 0.35
                 }
             }
         };

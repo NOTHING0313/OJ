@@ -15,11 +15,24 @@ export type SitePageKey =
   | "file-task"
   | "submissions";
 
+export type SiteFontPreset = "system" | "readable" | "mono";
+
 export interface SiteAppearanceTheme {
   backgroundEnabled: boolean;
   backgroundOverlayOpacity: number;
   panelOpacity: number;
   panelBlur: number;
+  panelColor: string;
+  panelBorderOpacity: number;
+  textPrimaryColor: string;
+  textSecondaryColor: string;
+  textMutedColor: string;
+  accentColor: string;
+  navOpacity: number;
+  navBlur: number;
+  navTextColor: string;
+  navActiveColor: string;
+  fontPreset: SiteFontPreset;
 }
 
 export interface SitePageBackground {
@@ -28,6 +41,7 @@ export interface SitePageBackground {
   positionX: number;
   positionY: number;
   scale: number;
+  overlayOpacity: number | null;
 }
 
 export interface SiteAppearance {
@@ -67,7 +81,8 @@ export function createDefaultPageBackground(): SitePageBackground {
     imageUrl: null,
     positionX: 50,
     positionY: 50,
-    scale: 1
+    scale: 1,
+    overlayOpacity: null
   };
 }
 
@@ -83,7 +98,18 @@ export function createDefaultSiteAppearance(): SiteAppearance {
       backgroundEnabled: false,
       backgroundOverlayOpacity: 0.65,
       panelOpacity: 0.72,
-      panelBlur: 12
+      panelBlur: 12,
+      panelColor: "#11141A",
+      panelBorderOpacity: 0.14,
+      textPrimaryColor: "#F2F4F8",
+      textSecondaryColor: "#AEB6CA",
+      textMutedColor: "#7F8798",
+      accentColor: "#6E7BFF",
+      navOpacity: 0.58,
+      navBlur: 18,
+      navTextColor: "#D9DEE9",
+      navActiveColor: "#F2F4F8",
+      fontPreset: "system"
     },
     pages
   };
@@ -106,9 +132,20 @@ export function normalizeSiteAppearance(value: SiteAppearance | any): SiteAppear
 
   fallback.theme = {
     backgroundEnabled: Boolean(value.theme?.backgroundEnabled),
-    backgroundOverlayOpacity: readNumber(value.theme?.backgroundOverlayOpacity, 0.65),
-    panelOpacity: readNumber(value.theme?.panelOpacity, 0.72),
-    panelBlur: readNumber(value.theme?.panelBlur, 12)
+    backgroundOverlayOpacity: readBoundedNumber(value.theme?.backgroundOverlayOpacity, 0.65, 0, 1),
+    panelOpacity: readBoundedNumber(value.theme?.panelOpacity, 0.72, 0.35, 0.95),
+    panelBlur: readBoundedNumber(value.theme?.panelBlur, 12, 0, 30),
+    panelColor: readColor(value.theme?.panelColor, "#11141A"),
+    panelBorderOpacity: readBoundedNumber(value.theme?.panelBorderOpacity, 0.14, 0, 0.5),
+    textPrimaryColor: readColor(value.theme?.textPrimaryColor, "#F2F4F8"),
+    textSecondaryColor: readColor(value.theme?.textSecondaryColor, "#AEB6CA"),
+    textMutedColor: readColor(value.theme?.textMutedColor, "#7F8798"),
+    accentColor: readColor(value.theme?.accentColor, "#6E7BFF"),
+    navOpacity: readBoundedNumber(value.theme?.navOpacity, 0.58, 0.35, 1),
+    navBlur: readBoundedNumber(value.theme?.navBlur, 18, 0, 30),
+    navTextColor: readColor(value.theme?.navTextColor, "#D9DEE9"),
+    navActiveColor: readColor(value.theme?.navActiveColor, "#F2F4F8"),
+    fontPreset: readFontPreset(value.theme?.fontPreset)
   };
 
   for (const { key } of sitePageOptions) {
@@ -116,9 +153,10 @@ export function normalizeSiteAppearance(value: SiteAppearance | any): SiteAppear
     fallback.pages[key] = {
       enabled: Boolean(source.enabled),
       imageUrl: normalizeUploadedImagePath(source.imageUrl),
-      positionX: readNumber(source.positionX, 50),
-      positionY: readNumber(source.positionY, 50),
-      scale: readNumber(source.scale, 1)
+      positionX: readBoundedNumber(source.positionX, 50, 0, 100),
+      positionY: readBoundedNumber(source.positionY, 50, 0, 100),
+      scale: readBoundedNumber(source.scale, 1, 0.5, 2.5),
+      overlayOpacity: source.overlayOpacity == null ? null : readBoundedNumber(source.overlayOpacity, fallback.theme.backgroundOverlayOpacity, 0, 1)
     };
   }
 
@@ -147,4 +185,17 @@ function readLegacyPage(pages: Record<string, SitePageBackground> | undefined, k
 
 function readNumber(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function readBoundedNumber(value: unknown, fallback: number, min: number, max: number) {
+  const number = readNumber(value, fallback);
+  return number >= min && number <= max ? number : fallback;
+}
+
+function readColor(value: unknown, fallback: string) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : fallback;
+}
+
+function readFontPreset(value: unknown): SiteFontPreset {
+  return value === "readable" || value === "mono" ? value : "system";
 }
