@@ -16,6 +16,13 @@ public class LeaderboardSeasonsController(ILeaderboardSeasonService seasonServic
         return result.IsFailure ? BadRequest(result.ErrorMessage) : Ok(result.Value);
     }
 
+    [HttpGet("/api/leaderboard-seasons/current/summary")]
+    public async Task<IActionResult> GetCurrentSummary(CancellationToken cancellationToken)
+    {
+        var result = await seasonService.GetCurrentPublicSummaryAsync(cancellationToken);
+        return result.IsFailure ? BadRequest(result.ErrorMessage) : Ok(result.Value);
+    }
+
     [HttpGet("current/problems/{problemId:guid}")]
     public async Task<IActionResult> GetCurrentProblem(Guid problemId, CancellationToken cancellationToken)
     {

@@ -950,6 +950,45 @@ public class LeaderboardSeasonTests
         Assert.DoesNotContain("Task.Delay", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task PublicSummary_UsesEffectiveLifecycleStatusWithoutCompetitionData()
+    {
+        await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddMinutes(1));
+        var service = fixture.PublicSeasonService();
+
+        var scheduled = (await service.GetCurrentPublicSummaryAsync()).Value!.Season!;
+        Assert.Equal(LeaderboardSeasonStatus.Scheduled, scheduled.Status);
+        Assert.Equal(fixture.Season.Name, scheduled.Name);
+
+        fixture.Time.Set(fixture.Season.StartAt);
+        var active = (await service.GetCurrentPublicSummaryAsync()).Value!.Season!;
+        Assert.Equal(LeaderboardSeasonStatus.Active, active.Status);
+
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        var published = (await service.GetCurrentPublicSummaryAsync()).Value!.Season!;
+        Assert.Equal(LeaderboardSeasonStatus.Public, published.Status);
+
+        var json = JsonSerializer.Serialize(published);
+        Assert.DoesNotContain("Problem", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Entry", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Challenge", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("User", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PublicSummary_ReturnsEmptyWhenThereIsNoCurrentSeason()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Season.IsCurrent = false;
+        await fixture.Db.SaveChangesAsync();
+
+        var summary = await fixture.PublicSeasonService().GetCurrentPublicSummaryAsync();
+
+        Assert.True(summary.IsSuccess);
+        Assert.Null(summary.Value!.Season);
+    }
+
     private static int Count(string value, string token) => (value.Length - value.Replace(token, string.Empty, StringComparison.Ordinal).Length) / token.Length;
 
     private static string ProjectRoot() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));

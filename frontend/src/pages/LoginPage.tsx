@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { AuthStudioLayout } from "../components/auth/AuthStudioLayout";
 import { PasswordInput } from "../components/PasswordInput";
 
 export function LoginPage() {
@@ -40,50 +41,40 @@ export function LoginPage() {
   }
 
   return (
-    <main className="auth-layout auth-v2-layout">
-      <section className="auth-card auth-v2-card">
-        <div className="auth-brand">
-          <img src="/brand/unrealstudio-logo.png" alt="UNREALSTUDIO" />
-          <span>虚幻工作室网上答题平台</span>
-        </div>
-        <div className="page-header auth-v2-header">
-          <div>
-            <p className="eyebrow">WELCOME BACK</p>
-            <h1>登录</h1>
-            <p>进入虚幻工作室网上答题平台。</p>
-          </div>
-        </div>
-
-        <form className="form-stack" onSubmit={handleSubmit}>
-          <label>
-            账号
-            <input value={account} onChange={(event) => setAccount(event.target.value)} autoComplete="username" />
-          </label>
-          <label>
-            密码
+    <AuthStudioLayout title="欢迎回来">
+      <form className="auth-studio-form" onSubmit={handleSubmit} aria-busy={isSubmitting}>
+          <label htmlFor="login-account">账号 / 邮箱</label>
+          <input
+            id="login-account"
+            value={account}
+            onChange={(event) => setAccount(event.target.value)}
+            autoComplete="username"
+            required
+          />
+          <label htmlFor="login-password">密码</label>
+          <div id="login-password-field">
             <PasswordInput
+              id="login-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="current-password"
+              required
             />
-          </label>
+          </div>
           <label className="checkbox-line">
             <input type="checkbox" checked={rememberAccount} onChange={(event) => setRememberAccount(event.target.checked)} />
             记住账号
           </label>
-          {error && <div className="alert error">{error}</div>}
+          {error && <div className="alert error" role="alert">{error}</div>}
           <button className="button primary" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "登录中..." : "登录"}
+            {isSubmitting ? "正在进入…" : "进入工作室"}
           </button>
-        </form>
+      </form>
 
-        <p className="muted">
-          没有账号？<Link to="/register">立即注册</Link>
-        </p>
-        <p className="muted">
-          忘记密码？<Link to="/forgot-password">邮箱找回</Link>
-        </p>
-      </section>
-    </main>
+        <div className="auth-studio-links">
+          <Link to="/register">注册</Link>
+          <Link to="/forgot-password">找回密码</Link>
+        </div>
+    </AuthStudioLayout>
   );
 }

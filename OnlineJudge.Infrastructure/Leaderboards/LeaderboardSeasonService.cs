@@ -57,6 +57,34 @@ public sealed class LeaderboardSeasonService(
         return Result<SeasonLeaderboardDto>.Success(await BuildLeaderboardAsync(season, viewer, useArchive: effectiveStatus == LeaderboardSeasonStatus.Public, cancellationToken));
     }
 
+    public async Task<Result<LeaderboardSeasonPublicSummaryResponseDto>> GetCurrentPublicSummaryAsync(CancellationToken cancellationToken = default)
+    {
+        var season = await dbContext.LeaderboardSeasons.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.IsCurrent, cancellationToken);
+        if (season is null)
+        {
+            return Result<LeaderboardSeasonPublicSummaryResponseDto>.Success(new LeaderboardSeasonPublicSummaryResponseDto());
+        }
+
+        var effectiveStatus = LeaderboardSeasonLifecycle.GetEffectiveStatus(season, timeProvider.GetUtcNow());
+        if (effectiveStatus == LeaderboardSeasonStatus.Archived)
+        {
+            return Result<LeaderboardSeasonPublicSummaryResponseDto>.Success(new LeaderboardSeasonPublicSummaryResponseDto());
+        }
+
+        return Result<LeaderboardSeasonPublicSummaryResponseDto>.Success(new LeaderboardSeasonPublicSummaryResponseDto
+        {
+            Season = new LeaderboardSeasonPublicSummaryDto
+            {
+                Name = season.Name,
+                Status = effectiveStatus,
+                StartAt = season.StartAt,
+                FreezeAt = season.FreezeAt,
+                PublicUntil = season.PublicUntil
+            }
+        });
+    }
+
     public async Task<Result<SeasonLeaderboardDto>> GetCurrentAuditLeaderboardAsync(CancellationToken cancellationToken = default)
     {
         var userResult = await RequireProblemSetterAsync(cancellationToken);

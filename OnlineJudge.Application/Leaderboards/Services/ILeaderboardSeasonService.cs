@@ -8,6 +8,8 @@ public interface ILeaderboardSeasonService
 {
     Task<Result<SeasonLeaderboardDto>> GetCurrentLeaderboardAsync(CancellationToken cancellationToken = default);
 
+    Task<Result<LeaderboardSeasonPublicSummaryResponseDto>> GetCurrentPublicSummaryAsync(CancellationToken cancellationToken = default);
+
     Task<Result<SeasonLeaderboardDto>> GetCurrentAuditLeaderboardAsync(CancellationToken cancellationToken = default);
 
     Task<Result<SeasonProblemLeaderboardDto>> GetCurrentProblemLeaderboardAsync(Guid problemId, CancellationToken cancellationToken = default);

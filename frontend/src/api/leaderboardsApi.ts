@@ -70,6 +70,18 @@ export interface RankHistoryEntry {
 export type LeaderboardSeasonStatus = 1 | 2 | 3 | 4 | 5;
 export type LeaderboardJudgeLanguage = 1 | 2 | 3;
 
+export interface LeaderboardSeasonPublicSummaryResponse {
+  season: LeaderboardSeasonPublicSummary | null;
+}
+
+export interface LeaderboardSeasonPublicSummary {
+  name: string;
+  status: LeaderboardSeasonStatus;
+  startAt: string;
+  freezeAt: string;
+  publicUntil: string;
+}
+
 export interface LeaderboardPerformanceBonusTier {
   maxRatioPercentage: number;
   bonusPercentage: number;
@@ -262,6 +274,10 @@ export function getChallengeLeaderboardIndex() {
 
 export function getCurrentSeasonLeaderboard() {
   return request<SeasonLeaderboard>("/api/leaderboards/season/current");
+}
+
+export function getCurrentSeasonPublicSummary() {
+  return request<LeaderboardSeasonPublicSummaryResponse>("/api/leaderboard-seasons/current/summary");
 }
 
 export function getCurrentSeasonProblemLeaderboard(problemId: string) {

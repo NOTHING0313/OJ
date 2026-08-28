@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register, sendRegisterEmailCode } from "../api/authApi";
+import { AuthStudioLayout } from "../components/auth/AuthStudioLayout";
 import { PasswordInput } from "../components/PasswordInput";
 
 export function RegisterPage() {
@@ -88,58 +89,36 @@ export function RegisterPage() {
   }
 
   return (
-    <main className="auth-layout auth-v2-layout">
-      <section className="auth-card auth-v2-card">
-        <div className="auth-brand">
-          <img src="/brand/unrealstudio-logo.png" alt="UNREALSTUDIO" />
-          <span>虚幻工作室网上答题平台</span>
-        </div>
-        <div className="page-header auth-v2-header">
-          <div>
-            <p className="eyebrow">CREATE ACCOUNT</p>
-            <h1>注册账号</h1>
-            <p>注册后默认成为答题人账号。请先完成邮箱验证码校验。</p>
-          </div>
-        </div>
-
-        <form className="form-stack" onSubmit={handleSubmit}>
-          <label>
-            用户名
-            <input value={userName} onChange={(event) => setUserName(event.target.value)} autoComplete="username" required />
-          </label>
-          <label>
-            邮箱
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
-          </label>
+    <AuthStudioLayout title="创建系统账号">
+      <form className="auth-studio-form" onSubmit={handleSubmit} aria-busy={isSubmitting || isSendingCode}>
+          <label htmlFor="register-username">用户名</label>
+          <input id="register-username" value={userName} onChange={(event) => setUserName(event.target.value)} autoComplete="username" required />
+          <label htmlFor="register-email">邮箱</label>
+          <input id="register-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
           <div className="inline-action-row">
-            <label>
-              邮箱验证码
-              <input value={emailCode} onChange={(event) => setEmailCode(event.target.value)} inputMode="numeric" maxLength={6} placeholder="6 位验证码" required />
-            </label>
+            <div className="auth-studio-field">
+              <label htmlFor="register-email-code">邮箱验证码</label>
+              <input id="register-email-code" value={emailCode} onChange={(event) => setEmailCode(event.target.value)} inputMode="numeric" maxLength={6} placeholder="6 位验证码" autoComplete="one-time-code" required />
+            </div>
             <button className="button" type="button" disabled={isSendingCode || cooldown > 0} onClick={handleSendCode}>
               {isSendingCode ? "发送中..." : cooldown > 0 ? `${cooldown}s` : "发送验证码"}
             </button>
           </div>
           {debugCode && <div className="quiet-note">开发环境验证码：{debugCode}</div>}
-          <label>
-            密码
-            <PasswordInput value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required />
-          </label>
-          <label>
-            确认密码
-            <PasswordInput value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" required />
-          </label>
+          <label htmlFor="register-password">密码</label>
+          <PasswordInput id="register-password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" required />
+          <label htmlFor="register-confirm-password">确认密码</label>
+          <PasswordInput id="register-confirm-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" required />
           {notice && <div className="quiet-note success">{notice}</div>}
-          {error && <div className="alert error">{error}</div>}
+          {error && <div className="alert error" role="alert">{error}</div>}
           <button className="button primary" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "注册中..." : "注册"}
+            {isSubmitting ? "正在创建…" : "创建系统账号"}
           </button>
-        </form>
+      </form>
 
-        <p className="muted">
-          已有账号？<Link to="/login">去登录</Link>
-        </p>
-      </section>
-    </main>
+        <div className="auth-studio-links">
+          <Link to="/login">返回登录</Link>
+        </div>
+    </AuthStudioLayout>
   );
 }
