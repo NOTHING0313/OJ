@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { createProblem, getProblem, updateProblem, type JudgeMode, type ProblemDetailDto } from "../api/problemsApi";
+import { createProblem, deleteJudgeAsset, getJudgeAssets, getProblem, updateProblem, uploadJudgeAsset, type JudgeLanguage, type JudgeMode, type ProblemDetailDto, type ProblemJudgeAssetDto } from "../api/problemsApi";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 
 interface FunctionParameterEditor {
@@ -48,6 +48,10 @@ export function AdminProblemEditorPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(isEditMode);
   const [isSaving, setIsSaving] = useState(false);
+  const [judgeAssets, setJudgeAssets] = useState<ProblemJudgeAssetDto[]>([]);
+  const [uploadingLanguage, setUploadingLanguage] = useState<JudgeLanguage | null>(null);
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+  const [judgeAssetError, setJudgeAssetError] = useState<string | null>(null);
 
   const functionTypes = useMemo(() => buildFunctionTypes(customTypes), [customTypes]);
   const customFieldTypes = useMemo(() => buildCustomFieldTypes(customTypes), [customTypes]);
@@ -86,6 +90,19 @@ export function AdminProblemEditorPage() {
       .finally(() => {
         if (!ignore) {
           setIsLoading(false);
+        }
+      });
+
+    getJudgeAssets(id)
+      .then((assets) => {
+        if (!ignore) {
+          setJudgeAssets(assets);
+          setJudgeAssetError(null);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!ignore) {
+          setJudgeAssetError(err instanceof Error ? err.message : "隐藏编译文件加载失败");
         }
       });
 
@@ -245,6 +262,13 @@ export function AdminProblemEditorPage() {
           <>
             <MarkdownEditor label="输入说明" value={inputDescription} onChange={setInputDescription} required />
             <MarkdownEditor label="输出说明" value={outputDescription} onChange={setOutputDescription} required />
+            <section className="content-block">
+              <h2>隐藏编译文件</h2>
+              <p className="muted-text">这些文件仅在服务器编译提交时使用，不会展示给答题人。</p>
+              {renderJudgeAssetUpload(1, "C++17", ".cpp,.cc,.cxx,.h,.hpp")}
+              {renderJudgeAssetUpload(2, "C11", ".c,.h")}
+              {renderJudgeAssetUpload(3, "C#", ".cs")}
+            </section>
           </>
         ) : (
           <section className="content-block">
@@ -388,6 +412,7 @@ export function AdminProblemEditorPage() {
               添加参数
             </button>
 
+            {renderJudgeAssetUpload(1, "C++17", ".cpp,.cc,.cxx,.h,.hpp")}
             <label>
               C++17 初始代码模板
               <textarea className="code-area" value={cpp17StarterCode} onChange={(event) => setCpp17StarterCode(event.target.value)} spellCheck={false} />
@@ -396,6 +421,7 @@ export function AdminProblemEditorPage() {
               根据函数配置生成模板
             </button>
 
+            {renderJudgeAssetUpload(2, "C11", ".c,.h")}
             <label>
               C11 初始代码模板
               <textarea className="code-area" value={c11StarterCode} onChange={(event) => setC11StarterCode(event.target.value)} spellCheck={false} />
@@ -404,6 +430,7 @@ export function AdminProblemEditorPage() {
               根据函数配置生成 C11 模板
             </button>
 
+            {renderJudgeAssetUpload(3, "C#", ".cs")}
             <label>
               C# 初始代码模板
               <textarea className="code-area" value={csharpStarterCode} onChange={(event) => setCSharpStarterCode(event.target.value)} spellCheck={false} />
@@ -438,6 +465,82 @@ export function AdminProblemEditorPage() {
 
   function addParameter() {
     setParameters((current) => [...current, { name: "", type: "int" }]);
+  }
+
+  function renderJudgeAssetUpload(language: JudgeLanguage, label: string, accept: string) {
+    const assets = judgeAssets.filter((asset) => asset.language === language);
+    return (
+      <div className="judge-asset-panel">
+        <div className="judge-asset-heading">
+          <strong>{label} 隐藏编译文件</strong>
+          <input
+            className="judge-asset-file-input"
+            type="file"
+            accept={accept}
+            disabled={!id || uploadingLanguage !== null}
+            onChange={(event) => void handleJudgeAssetUpload(language, event)}
+          />
+        </div>
+        {!id && <p className="judge-asset-hint">请先保存题目后上传隐藏编译文件。</p>}
+        {judgeAssetError && <p className="judge-asset-hint error-text">{judgeAssetError}</p>}
+        {assets.length > 0 && (
+          <ul className="judge-asset-list">
+            {assets.map((asset) => (
+              <li key={asset.id}>
+                <span title={asset.sha256}>{asset.originalFileName}</span>
+                <small>{formatFileSize(asset.fileSizeBytes)}</small>
+                <button className="button danger" type="button" disabled={deletingAssetId === asset.id} onClick={() => void handleDeleteJudgeAsset(asset)}>
+                  {deletingAssetId === asset.id ? "删除中..." : "删除"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  async function handleJudgeAssetUpload(language: JudgeLanguage, event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!id || !file) {
+      return;
+    }
+
+    setUploadingLanguage(language);
+    setError(null);
+    setNotice(null);
+    try {
+      await uploadJudgeAsset(id, language, file);
+      setJudgeAssets(await getJudgeAssets(id));
+      setJudgeAssetError(null);
+      setNotice("隐藏编译文件已上传。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "隐藏编译文件上传失败");
+    } finally {
+      input.value = "";
+      setUploadingLanguage(null);
+    }
+  }
+
+  async function handleDeleteJudgeAsset(asset: ProblemJudgeAssetDto) {
+    if (!id || !window.confirm(`确认删除隐藏编译文件 ${asset.originalFileName}？`)) {
+      return;
+    }
+
+    setDeletingAssetId(asset.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteJudgeAsset(id, asset.id);
+      setJudgeAssets(await getJudgeAssets(id));
+      setJudgeAssetError(null);
+      setNotice("隐藏编译文件已删除。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "隐藏编译文件删除失败");
+    } finally {
+      setDeletingAssetId(null);
+    }
   }
 
   function updateParameter(index: number, parameter: FunctionParameterEditor) {
@@ -588,6 +691,10 @@ export function AdminProblemEditorPage() {
       setCSharpStarterCode(defaultCSharpStarterCode(parsedFunctionName, parsedReturnType, parsedParameters, parsedCustomTypes));
     }
   }
+}
+
+function formatFileSize(bytes: number) {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 }
 
 function buildFunctionTypes(customTypes: FunctionCustomTypeEditor[]) {

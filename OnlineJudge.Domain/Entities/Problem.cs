@@ -63,5 +63,7 @@ public class Problem
 
     public List<ProblemCollaborator> Collaborators { get; set; } = [];
 
+    public List<ProblemJudgeAsset> JudgeAssets { get; set; } = [];
+
     public List<ChallengeTask> ChallengeTasks { get; set; } = [];
 }

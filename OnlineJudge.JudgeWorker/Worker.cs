@@ -58,6 +58,7 @@ public class Worker(
             await using var scope = scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<OnlineJudgeDbContext>();
             var runnerFactory = scope.ServiceProvider.GetRequiredService<IJudgeRunnerFactory>();
+            var compileAssetLoader = scope.ServiceProvider.GetRequiredService<IJudgeCompileAssetLoader>();
 
             logger.LogInformation("Processing submission. SubmissionId={SubmissionId}, Stage={Stage}", submissionId, "LoadSubmission");
 
@@ -98,7 +99,22 @@ public class Worker(
                 return;
             }
 
-            var judgeRequest = ToJudgeRequest(submission);
+            IReadOnlyList<JudgeCompileAsset> compileAssets;
+            try
+            {
+                compileAssets = await compileAssetLoader.LoadAsync(submission.ProblemId, submission.Language, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Failed to load judge compile assets. SubmissionId={SubmissionId}, Stage={Stage}", submissionId, "LoadCompileAssets");
+                submission.Status = JudgeStatus.SystemError;
+                submission.ErrorMessage = "Judge support files could not be loaded.";
+                submission.FinishedAt = DateTimeOffset.UtcNow;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            var judgeRequest = ToJudgeRequest(submission, compileAssets);
             var runner = runnerFactory.GetRunner(submission.Language);
 
             logger.LogInformation("Running judge runner. SubmissionId={SubmissionId}, Stage={Stage}, Language={Language}", submissionId, "RunJudge", submission.Language);
@@ -202,7 +218,7 @@ public class Worker(
         ChallengeProgressUpdater.TryApply(completion, earnedScore, isCompleted, task.Score, submission.Id, now);
     }
 
-    private static JudgeRequest ToJudgeRequest(Submission submission)
+    private static JudgeRequest ToJudgeRequest(Submission submission, IReadOnlyList<JudgeCompileAsset> compileAssets)
     {
         var problem = submission.Problem!;
 
@@ -217,6 +233,7 @@ public class Worker(
             TimeLimitMs = problem.TimeLimitMs,
             MemoryLimitMb = problem.MemoryLimitMb,
             CollectAllCaseResults = submission.ChallengeTaskId.HasValue,
+            CompileAssets = compileAssets,
             TestCases = problem.TestCases
                 .OrderBy(testCase => testCase.CreatedAt)
                 .Select(testCase => new JudgeCaseRequest

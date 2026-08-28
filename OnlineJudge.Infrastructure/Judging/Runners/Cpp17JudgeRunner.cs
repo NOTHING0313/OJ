@@ -7,12 +7,13 @@ namespace OnlineJudge.Infrastructure.Judging.Runners;
 
 public partial class Cpp17JudgeRunner(IJudgeSandbox judgeSandbox, IFunctionJudgeCodeBuilder functionJudgeCodeBuilder) : IJudgeRunner
 {
-    private static readonly LanguageJudgeProfile Profile = new()
+    internal static readonly LanguageJudgeProfile Profile = new()
     {
         Language = JudgeLanguage.Cpp17,
         DisplayName = "C++17",
         SourceFileName = "main.cpp",
         CompileCommand = "g++ main.cpp -std=c++17 -O2 -pipe -s -o main",
+        CompileAssetSourceExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".cpp", ".cc", ".cxx" },
         CompileMemoryLimitMb = 512,
         RunCommand = "./main",
         DockerImageName = "onlinejudge-cpp17-sandbox:latest"

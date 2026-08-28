@@ -22,5 +22,7 @@ public class JudgeRequest
 
     public bool CollectAllCaseResults { get; set; }
 
+    public IReadOnlyList<JudgeCompileAsset> CompileAssets { get; set; } = [];
+
     public IReadOnlyList<JudgeCaseRequest> TestCases { get; set; } = [];
 }

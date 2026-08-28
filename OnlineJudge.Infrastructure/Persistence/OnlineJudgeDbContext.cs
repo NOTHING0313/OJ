@@ -17,6 +17,8 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<ProblemCollaborator> ProblemCollaborators => Set<ProblemCollaborator>();
 
+    public DbSet<ProblemJudgeAsset> ProblemJudgeAssets => Set<ProblemJudgeAsset>();
+
     public DbSet<Challenge> Challenges => Set<Challenge>();
 
     public DbSet<ChallengeTask> ChallengeTasks => Set<ChallengeTask>();

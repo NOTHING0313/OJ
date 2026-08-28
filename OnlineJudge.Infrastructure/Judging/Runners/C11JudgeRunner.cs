@@ -8,12 +8,13 @@ namespace OnlineJudge.Infrastructure.Judging.Runners;
 
 public partial class C11JudgeRunner(IJudgeSandbox judgeSandbox, C11FunctionJudgeCodeBuilder functionJudgeCodeBuilder) : IJudgeRunner
 {
-    private static readonly LanguageJudgeProfile Profile = new()
+    internal static readonly LanguageJudgeProfile Profile = new()
     {
         Language = JudgeLanguage.C11,
         DisplayName = "C11",
         SourceFileName = "main.c",
         CompileCommand = "gcc main.c -std=c11 -O2 -pipe -s -o main",
+        CompileAssetSourceExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".c" },
         CompileMemoryLimitMb = 512,
         RunCommand = "./main",
         DockerImageName = "onlinejudge-cpp17-sandbox:latest"

@@ -5,13 +5,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OnlineJudge.Application.Problems.Requests;
 using OnlineJudge.Application.Problems.Services;
+using OnlineJudge.Domain.Enums;
 
 namespace OnlineJudge.Api.Controllers;
 
 [ApiController]
 [Route("api/problems")]
-public class ProblemsController(IProblemService problemService) : ControllerBase
+public class ProblemsController(IProblemService problemService, IProblemJudgeAssetService judgeAssetService) : ControllerBase
 {
+    private const long MaxJudgeAssetRequestSize = 513 * 1024;
     private static readonly JsonSerializerOptions ExportJsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -133,6 +135,45 @@ public class ProblemsController(IProblemService problemService) : ControllerBase
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [HttpGet("{id:guid}/judge-assets")]
+    public async Task<IActionResult> GetJudgeAssets(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await judgeAssetService.GetAssetsAsync(id, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [Authorize(Policy = "RequireProblemSetter")]
+    [HttpPost("{id:guid}/judge-assets")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxJudgeAssetRequestSize)]
+    public async Task<IActionResult> CreateJudgeAsset(Guid id, [FromForm] JudgeLanguage language, [FromForm] IFormFile? file, CancellationToken cancellationToken)
+    {
+        if (file is null)
+        {
+            return BadRequest("File is required.");
+        }
+
+        await using var content = file.OpenReadStream();
+        var result = await judgeAssetService.CreateAssetAsync(id, new CreateProblemJudgeAssetRequest
+        {
+            Language = language,
+            OriginalFileName = file.FileName,
+            FileSizeBytes = file.Length,
+            Content = content
+        }, cancellationToken);
+
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [Authorize(Policy = "RequireProblemSetter")]
+    [HttpDelete("{id:guid}/judge-assets/{assetId:guid}")]
+    public async Task<IActionResult> DeleteJudgeAsset(Guid id, Guid assetId, CancellationToken cancellationToken)
+    {
+        var result = await judgeAssetService.DeleteAssetAsync(id, assetId, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : NoContent();
+    }
+
+    [Authorize(Policy = "RequireProblemSetter")]
     [HttpGet("{id:guid}/collaborators")]
     public async Task<IActionResult> GetCollaborators(Guid id, CancellationToken cancellationToken)
     {
@@ -181,6 +222,7 @@ public class ProblemsController(IProblemService problemService) : ControllerBase
             "Unauthorized." => Unauthorized(errorMessage),
             "Forbidden." or "Account is blacklisted." => Forbid(),
             "Problem not found." => NotFound(errorMessage),
+            "Judge asset not found." => NotFound(errorMessage),
             "User not found." or "Collaborator not found." => NotFound(errorMessage),
             "该题目已被挑战任务引用，请先移除相关挑战任务后再删除。" => Conflict(errorMessage),
             _ => BadRequest(errorMessage)

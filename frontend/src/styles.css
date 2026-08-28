@@ -9655,3 +9655,88 @@ h2 {
     padding: 12px;
   }
 }
+
+.problem-editor-v2-page .judge-asset-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(110, 123, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(110, 123, 255, 0.045);
+  padding: 12px;
+}
+
+.problem-editor-v2-page .judge-asset-heading,
+.problem-editor-v2-page .judge-asset-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.problem-editor-v2-page .judge-asset-heading strong {
+  color: #d8deeb;
+  font-size: 13px;
+}
+
+.problem-editor-v2-page .judge-asset-file-input {
+  max-width: 280px;
+  color: #929caf;
+  font-size: 12px;
+}
+
+.problem-editor-v2-page .judge-asset-file-input::file-selector-button {
+  margin-right: 10px;
+  border: 1px solid rgba(110, 123, 255, 0.28);
+  border-radius: 6px;
+  background: rgba(110, 123, 255, 0.14);
+  color: #c9ceff;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.problem-editor-v2-page .judge-asset-file-input:disabled::file-selector-button {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.problem-editor-v2-page .judge-asset-hint {
+  margin: 0;
+  color: #929caf;
+  font-size: 12px;
+}
+
+.problem-editor-v2-page .judge-asset-list {
+  display: grid;
+  gap: 7px;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0 4px 0 0;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(110, 123, 255, 0.5) rgba(255, 255, 255, 0.035);
+}
+
+.problem-editor-v2-page .judge-asset-list li {
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  padding-top: 7px;
+}
+
+.problem-editor-v2-page .judge-asset-list span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #d8deeb;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problem-editor-v2-page .judge-asset-list small {
+  color: #929caf;
+}
+
+.problem-editor-v2-page .judge-asset-list .button {
+  min-height: 30px;
+  padding: 5px 9px;
+}

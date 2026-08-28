@@ -759,15 +759,3 @@ function isSamplePrimitive(value: unknown) {
 function formatSampleKey(key: string) {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? key : JSON.stringify(key);
 }
-
-function formatJsonString(value?: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    return value;
-  }
-}

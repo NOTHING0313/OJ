@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
 
         services.AddScoped<IProblemService, ProblemService>();
+        services.AddScoped<IProblemJudgeAssetService, ProblemJudgeAssetService>();
         services.AddScoped<IChallengeService, ChallengeService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
         services.AddScoped<IProfileService, ProfileService>();
@@ -68,6 +69,8 @@ public static class DependencyInjection
         services.AddScoped<PasswordHasher>();
         services.AddScoped<JwtTokenGenerator>();
         services.AddScoped<IJudgeQueue, RedisJudgeQueue>();
+        services.AddSingleton<IProblemJudgeAssetStorage, ProblemJudgeAssetStorage>();
+        services.AddScoped<IJudgeCompileAssetLoader, JudgeCompileAssetLoader>();
         services.AddScoped<IJudgeSandbox, DockerJudgeSandbox>();
         services.AddScoped<IFunctionJudgeCodeBuilder, Cpp17FunctionJudgeCodeBuilder>();
         services.AddScoped<C11FunctionJudgeCodeBuilder>();

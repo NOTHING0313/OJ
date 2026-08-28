@@ -21,6 +21,20 @@ public class ProblemEditorSourceTests
         Assert.Contains("!starterCode.includes(`${csharpName}(`)", source);
     }
 
+    [Fact]
+    public void AdminProblemEditor_JudgeAssetsUseDedicatedApiAndDoNotEnterStarterCodeOrLocalStorage()
+    {
+        var editorSource = File.ReadAllText(ResolveRepoFile("frontend", "src", "pages", "AdminProblemEditorPage.tsx"));
+        var apiSource = File.ReadAllText(ResolveRepoFile("frontend", "src", "api", "problemsApi.ts"));
+
+        Assert.Contains("uploadJudgeAsset", editorSource);
+        Assert.Contains("getJudgeAssets", editorSource);
+        Assert.Contains("deleteJudgeAsset", editorSource);
+        Assert.Contains("body: formData", apiSource);
+        Assert.DoesNotContain("localStorage.setItem", editorSource);
+        Assert.DoesNotContain("judgeAssets", editorSource[editorSource.IndexOf("const payload", StringComparison.Ordinal)..editorSource.IndexOf("try {", editorSource.IndexOf("const payload", StringComparison.Ordinal), StringComparison.Ordinal)]);
+    }
+
     private static string ResolveRepoFile(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

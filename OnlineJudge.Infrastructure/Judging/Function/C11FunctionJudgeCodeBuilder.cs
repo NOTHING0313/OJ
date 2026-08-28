@@ -83,6 +83,7 @@ public class C11FunctionJudgeCodeBuilder
             FunctionSpecJson = request.FunctionSpecJson,
             TimeLimitMs = request.TimeLimitMs,
             MemoryLimitMb = request.MemoryLimitMb,
+            CompileAssets = request.CompileAssets,
             TestCases = convertedCases
         });
     }

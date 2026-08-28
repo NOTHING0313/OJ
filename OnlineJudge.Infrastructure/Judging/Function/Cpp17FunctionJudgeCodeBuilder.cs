@@ -60,6 +60,7 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
             FunctionSpecJson = request.FunctionSpecJson,
             TimeLimitMs = request.TimeLimitMs,
             MemoryLimitMb = request.MemoryLimitMb,
+            CompileAssets = request.CompileAssets,
             TestCases = convertedCases
         });
     }

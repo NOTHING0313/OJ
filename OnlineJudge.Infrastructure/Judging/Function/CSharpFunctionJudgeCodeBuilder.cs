@@ -62,6 +62,7 @@ public class CSharpFunctionJudgeCodeBuilder
             FunctionSpecJson = request.FunctionSpecJson,
             TimeLimitMs = request.TimeLimitMs,
             MemoryLimitMb = request.MemoryLimitMb,
+            CompileAssets = request.CompileAssets,
             TestCases = convertedCases
         });
     }

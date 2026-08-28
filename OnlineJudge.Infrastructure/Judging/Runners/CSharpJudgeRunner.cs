@@ -8,12 +8,13 @@ namespace OnlineJudge.Infrastructure.Judging.Runners;
 
 public partial class CSharpJudgeRunner(IJudgeSandbox judgeSandbox, CSharpFunctionJudgeCodeBuilder functionJudgeCodeBuilder) : IJudgeRunner
 {
-    private static readonly LanguageJudgeProfile Profile = new()
+    internal static readonly LanguageJudgeProfile Profile = new()
     {
         Language = JudgeLanguage.CSharp,
         DisplayName = "C#",
         SourceFileName = "Program.cs",
         CompileCommand = "dotnet build Main.csproj -c Release -o out --nologo --verbosity quiet",
+        IncludesCompileAssetsByDefault = true,
         CompileMemoryLimitMb = 1024,
         RunCommand = "dotnet out/Main.dll",
         DockerImageName = "onlinejudge-csharp-sandbox:latest",

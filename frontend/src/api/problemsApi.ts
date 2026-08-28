@@ -2,6 +2,7 @@ import { baseUrl, request } from "./httpClient";
 
 export type TestCaseVisibility = 1 | 2;
 export type JudgeMode = 1 | 2;
+export type JudgeLanguage = 1 | 2 | 3;
 
 export interface ProblemListItemDto {
   id: string;
@@ -42,6 +43,15 @@ export interface ProblemDetailDto {
   createdAt: string;
   updatedAt: string;
   testCases: TestCaseDto[];
+}
+
+export interface ProblemJudgeAssetDto {
+  id: string;
+  language: JudgeLanguage;
+  originalFileName: string;
+  fileSizeBytes: number;
+  sha256: string;
+  createdAt: string;
 }
 
 export interface CreateProblemRequest {
@@ -130,6 +140,27 @@ export function updateProblem(id: string, payload: UpdateProblemRequest) {
 
 export function deleteProblem(id: string) {
   return request<void>(`/api/problems/${id}`, {
+    method: "DELETE"
+  });
+}
+
+export function getJudgeAssets(problemId: string) {
+  return request<ProblemJudgeAssetDto[]>(`/api/problems/${problemId}/judge-assets`);
+}
+
+export function uploadJudgeAsset(problemId: string, language: JudgeLanguage, file: File) {
+  const formData = new FormData();
+  formData.append("language", String(language));
+  formData.append("file", file);
+
+  return request<ProblemJudgeAssetDto>(`/api/problems/${problemId}/judge-assets`, {
+    method: "POST",
+    body: formData
+  });
+}
+
+export function deleteJudgeAsset(problemId: string, assetId: string) {
+  return request<void>(`/api/problems/${problemId}/judge-assets/${assetId}`, {
     method: "DELETE"
   });
 }
