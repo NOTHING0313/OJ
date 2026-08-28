@@ -9,19 +9,28 @@ using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Judging.Function;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Infrastructure.ContentVisibility;
 
 namespace OnlineJudge.Infrastructure.Problems;
 
-public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser) : IProblemService
+public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy) : IProblemService
 {
     private const int AllAllowedLanguagesMask = 0b111;
     private const string ProblemReferencedByChallengeTaskMessage = "该题目已被挑战任务引用，请先移除相关挑战任务后再删除。";
 
+    public ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser)
+        : this(dbContext, currentUser, new ContentVisibilityPolicy(TimeProvider.System))
+    {
+    }
+
     public async Task<Result<IReadOnlyList<ProblemListItemDto>>> GetProblemsAsync(CancellationToken cancellationToken = default)
     {
-        var problems = await dbContext.Problems
+        var visibilityRole = await GetVisibilityRoleAsync(cancellationToken);
+        var query = dbContext.Problems
             .AsNoTracking()
-            .Where(problem => !problem.IsDeleted)
+            .Where(problem => !problem.IsDeleted);
+
+        var problems = await visibilityPolicy.ApplyProblemVisibility(query, visibilityRole)
             .OrderByDescending(problem => problem.CreatedAt)
             .Select(problem => new ProblemListItemDto
             {
@@ -40,8 +49,12 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
 
     public async Task<Result<ProblemDetailDto>> GetProblemAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var problem = await dbContext.Problems
+        var visibilityRole = await GetVisibilityRoleAsync(cancellationToken);
+        var query = dbContext.Problems
             .AsNoTracking()
+            .Where(problem => !problem.IsDeleted);
+
+        var problem = await visibilityPolicy.ApplyProblemVisibility(query, visibilityRole)
             .Include(problem => problem.TestCases.Where(testCase => !testCase.IsDeleted))
             .FirstOrDefaultAsync(problem => problem.Id == id && !problem.IsDeleted, cancellationToken);
 
@@ -644,6 +657,20 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         }
 
         return Result<User>.Success(user);
+    }
+
+    private async Task<UserRole?> GetVisibilityRoleAsync(CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated || currentUser.UserId is not { } userId)
+        {
+            return null;
+        }
+
+        return await dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId && !user.IsBlacklisted && !user.IsDeleted)
+            .Select(user => (UserRole?)user.Role)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     private async Task<bool> CanEditProblemAsync(User user, Problem problem, CancellationToken cancellationToken)

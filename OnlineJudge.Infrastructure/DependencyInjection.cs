@@ -30,6 +30,7 @@ using OnlineJudge.Infrastructure.Users;
 using StackExchange.Redis;
 using OnlineJudge.Infrastructure.Challenges;
 using OnlineJudge.Infrastructure.Email;
+using OnlineJudge.Infrastructure.ContentVisibility;
 
 namespace OnlineJudge.Infrastructure;
 
@@ -42,6 +43,9 @@ public static class DependencyInjection
 
         services.AddDbContext<OnlineJudgeDbContext>(options =>
             options.UseNpgsql(connectionString));
+
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<ContentVisibilityPolicy>();
 
         var redisConnectionString = configuration["Redis:ConnectionString"] ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));

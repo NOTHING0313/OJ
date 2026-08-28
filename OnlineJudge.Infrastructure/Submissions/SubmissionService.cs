@@ -9,11 +9,17 @@ using OnlineJudge.Application.Submissions.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Infrastructure.ContentVisibility;
 
 namespace OnlineJudge.Infrastructure.Submissions;
 
-public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judgeQueue, ICurrentUser currentUser) : ISubmissionService
+public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judgeQueue, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy) : ISubmissionService
 {
+    public SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judgeQueue, ICurrentUser currentUser)
+        : this(dbContext, judgeQueue, currentUser, new ContentVisibilityPolicy(TimeProvider.System))
+    {
+    }
+
     public async Task<Result<SubmissionDto>> CreateSubmissionAsync(CreateSubmissionRequest request, CancellationToken cancellationToken = default)
     {
         var userResult = await GetActiveCurrentUserAsync(cancellationToken);
@@ -32,9 +38,12 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             return Result<SubmissionDto>.Failure("Unsupported judge language.");
         }
 
-        var problem = await dbContext.Problems
+        var problemQuery = dbContext.Problems
             .AsNoTracking()
-            .FirstOrDefaultAsync(problem => problem.Id == request.ProblemId && !problem.IsDeleted, cancellationToken);
+            .Where(problem => !problem.IsDeleted);
+
+        var problem = await visibilityPolicy.ApplyProblemVisibility(problemQuery, userResult.Value.Role)
+            .FirstOrDefaultAsync(problem => problem.Id == request.ProblemId, cancellationToken);
 
         if (problem is null)
         {
@@ -62,6 +71,7 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             var challengeTaskValidation = await ValidateChallengeTaskSubmissionAsync(
                 request.ChallengeTaskId.Value,
                 request.ProblemId,
+                userResult.Value.Role,
                 cancellationToken);
 
             if (challengeTaskValidation.IsFailure)
@@ -367,7 +377,7 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
         };
     }
 
-    private async Task<Result> ValidateChallengeTaskSubmissionAsync(Guid challengeTaskId, Guid problemId, CancellationToken cancellationToken)
+    private async Task<Result> ValidateChallengeTaskSubmissionAsync(Guid challengeTaskId, Guid problemId, UserRole role, CancellationToken cancellationToken)
     {
         var task = await dbContext.ChallengeTasks
             .AsNoTracking()
@@ -389,8 +399,8 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             return Result.Failure("Challenge task does not match problem.");
         }
 
-        var now = DateTimeOffset.UtcNow;
-        if (now < task.Challenge.StartAt || now > task.Challenge.EndAt)
+        if (!visibilityPolicy.CanViewChallenge(role, task.Challenge)
+            || !visibilityPolicy.IsChallengeOpen(task.Challenge))
         {
             return Result.Failure("Challenge is not open.");
         }

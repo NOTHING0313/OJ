@@ -9,13 +9,20 @@ using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
 using System.Text;
+using OnlineJudge.Infrastructure.ContentVisibility;
 
 namespace OnlineJudge.Infrastructure.Challenges;
 
 public class ChallengeService(
     OnlineJudgeDbContext dbContext,
-    ICurrentUser currentUser) : IChallengeService
+    ICurrentUser currentUser,
+    ContentVisibilityPolicy visibilityPolicy) : IChallengeService
 {
+    public ChallengeService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser)
+        : this(dbContext, currentUser, new ContentVisibilityPolicy(TimeProvider.System))
+    {
+    }
+
     private const long MaxFileSubmissionSizeBytes = 50L * 1024 * 1024;
     private static readonly HashSet<string> AllowedZipContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -26,8 +33,12 @@ public class ChallengeService(
 
     public async Task<Result<IReadOnlyList<ChallengeListItemDto>>> GetChallengesAsync(CancellationToken cancellationToken = default)
     {
-        var challenges = await dbContext.Challenges
+        var visibilityRole = await GetVisibilityRoleAsync(cancellationToken);
+        var query = dbContext.Challenges
             .AsNoTracking()
+            .AsQueryable();
+
+        var challenges = await visibilityPolicy.ApplyChallengeVisibility(query, visibilityRole)
             .Include(challenge => challenge.Tasks)
             .OrderByDescending(challenge => challenge.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -48,7 +59,7 @@ public class ChallengeService(
                 CreatedAt = challenge.CreatedAt,
                 TotalTaskCount = challenge.Tasks.Count,
                 CompletedTaskCount = CountCompletedTasks(challenge, completions),
-                CanManage = CanManageChallengeForCurrentUser(challenge)
+                CanManage = CanManageChallengeForCurrentUser(challenge, visibilityRole)
             })
             .ToList();
 
@@ -57,8 +68,12 @@ public class ChallengeService(
 
     public async Task<Result<ChallengeDetailDto>> GetChallengeAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var challenge = await dbContext.Challenges
+        var visibilityRole = await GetVisibilityRoleAsync(cancellationToken);
+        var query = dbContext.Challenges
             .AsNoTracking()
+            .AsQueryable();
+
+        var challenge = await visibilityPolicy.ApplyChallengeVisibility(query, visibilityRole)
             .Include(challenge => challenge.Tasks)
             .FirstOrDefaultAsync(challenge => challenge.Id == id, cancellationToken);
 
@@ -69,7 +84,7 @@ public class ChallengeService(
 
         var completions = await GetCurrentUserCompletionsAsync([challenge.Id], cancellationToken);
 
-        return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, completions));
+        return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, completions, visibilityRole));
     }
 
     public async Task<Result<ChallengeLeaderboardDto>> GetLeaderboardAsync(Guid challengeId, CancellationToken cancellationToken = default)
@@ -92,7 +107,7 @@ public class ChallengeService(
         var user = userResult.Value;
         if (!CanViewLeaderboard(user, challenge))
         {
-            return Result<ChallengeLeaderboardDto>.Failure("Forbidden.");
+            return Result<ChallengeLeaderboardDto>.Failure("Challenge not found.");
         }
 
         var totalTaskCount = await dbContext.ChallengeTasks
@@ -172,7 +187,7 @@ public class ChallengeService(
         var current = userResult.Value;
         if (!CanViewLeaderboard(current, challenge))
         {
-            return Result<ChallengeLeaderboardProgressDto>.Failure("Forbidden.");
+            return Result<ChallengeLeaderboardProgressDto>.Failure("Challenge not found.");
         }
 
         var tasks = await dbContext.ChallengeTasks
@@ -302,11 +317,11 @@ public class ChallengeService(
         var current = userResult.Value;
         if (!CanViewLeaderboard(current, challenge))
         {
-            return Result<RankHistoryDto>.Failure("Forbidden.");
+            return Result<RankHistoryDto>.Failure("Challenge not found.");
         }
 
         days = Math.Clamp(days, 2, 10);
-        var now = DateTimeOffset.UtcNow;
+        var now = visibilityPolicy.UtcNow;
         var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var historyStart = todayStart.AddDays(-(days - 1));
         var historyEnd = todayStart.AddDays(1);
@@ -551,7 +566,7 @@ public class ChallengeService(
             return Result<ChallengeFileDownloadDto>.Failure("File submission not found.");
         }
 
-        if (!CanDownloadChallengeFile(userResult.Value, fileSubmission.Challenge, fileSubmission))
+        if (!CanDownloadChallengeFile(userResult.Value, fileSubmission))
         {
             return Result<ChallengeFileDownloadDto>.Failure("Forbidden.");
         }
@@ -594,9 +609,11 @@ public class ChallengeService(
 
         var task = await dbContext.ChallengeTasks
             .AsNoTracking()
+            .Include(task => task.Challenge)
             .FirstOrDefaultAsync(task => task.Id == taskId && task.ChallengeId == challengeId, cancellationToken);
 
-        if (task is null)
+        if (task is null || task.Challenge is null
+            || !visibilityPolicy.CanViewChallenge(userResult.Value.Role, task.Challenge))
         {
             return Result<ChallengeTaskFileSubmissionDto?>.Failure("Challenge task not found.");
         }
@@ -715,16 +732,21 @@ public class ChallengeService(
             return Result.Failure(userResult.ErrorMessage ?? "Unauthorized.");
         }
 
-        var challengeExists = await dbContext.Challenges
+        var challenge = await dbContext.Challenges
             .AsNoTracking()
-            .AnyAsync(challenge => challenge.Id == challengeId, cancellationToken);
+            .FirstOrDefaultAsync(challenge => challenge.Id == challengeId, cancellationToken);
 
-        if (!challengeExists)
+        if (challenge is null || !visibilityPolicy.CanViewChallenge(userResult.Value.Role, challenge))
         {
             return Result.Failure("Challenge not found.");
         }
 
-        await EnsureParticipantAsync(challengeId, userResult.Value.Id, DateTimeOffset.UtcNow, cancellationToken);
+        if (!visibilityPolicy.IsChallengeOpen(challenge))
+        {
+            return Result.Failure("Challenge is not open.");
+        }
+
+        await EnsureParticipantAsync(challengeId, userResult.Value.Id, visibilityPolicy.UtcNow, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
@@ -766,7 +788,7 @@ public class ChallengeService(
         dbContext.Challenges.Add(challenge);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, new Dictionary<Guid, ChallengeTaskCompletion>()));
+        return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, new Dictionary<Guid, ChallengeTaskCompletion>(), userResult.Value.Role));
     }
 
     public async Task<Result<ChallengeDetailDto>> UpdateChallengeAsync(Guid id, UpdateChallengeRequest request, CancellationToken cancellationToken = default)
@@ -813,7 +835,7 @@ public class ChallengeService(
 
         var completions = await GetCurrentUserCompletionsAsync([challenge.Id], cancellationToken);
 
-        return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, completions));
+        return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, completions, userResult.Value.Role));
     }
 
     public async Task<Result> DeleteChallengeAsync(Guid id, CancellationToken cancellationToken = default)
@@ -1016,7 +1038,12 @@ public class ChallengeService(
             return Result<ChallengeTaskFileSubmissionDto>.Failure("Challenge task is not a file upload task.");
         }
 
-        if (!IsChallengeOpen(task.Challenge))
+        if (!visibilityPolicy.CanViewChallenge(userResult.Value.Role, task.Challenge))
+        {
+            return Result<ChallengeTaskFileSubmissionDto>.Failure("Challenge task not found.");
+        }
+
+        if (!visibilityPolicy.IsChallengeOpen(task.Challenge))
         {
             return Result<ChallengeTaskFileSubmissionDto>.Failure("Challenge is not open.");
         }
@@ -1227,6 +1254,20 @@ public class ChallengeService(
         return Result<User?>.Success(user);
     }
 
+    private async Task<UserRole?> GetVisibilityRoleAsync(CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated || currentUser.UserId is not { } userId)
+        {
+            return null;
+        }
+
+        return await dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId && !user.IsBlacklisted && !user.IsDeleted)
+            .Select(user => (UserRole?)user.Role)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     private async Task<Dictionary<Guid, ChallengeTaskCompletion>> GetCurrentUserCompletionsAsync(IEnumerable<Guid> challengeIds, CancellationToken cancellationToken)
     {
         if (!currentUser.IsAuthenticated || currentUser.UserId is not { } userId)
@@ -1346,35 +1387,29 @@ public class ChallengeService(
         return user.Role == UserRole.Root || user.Role == UserRole.ProblemSetter && challenge.CreatedByUserId == user.Id;
     }
 
-    private bool CanManageChallengeForCurrentUser(Challenge challenge)
+    private bool CanManageChallengeForCurrentUser(Challenge challenge, UserRole? role)
     {
-        return currentUser.Role == UserRole.Root
-            || currentUser.UserId.HasValue && challenge.CreatedByUserId == currentUser.UserId.Value;
+        return role == UserRole.Root
+            || role == UserRole.ProblemSetter
+                && currentUser.UserId.HasValue
+                && challenge.CreatedByUserId == currentUser.UserId.Value;
     }
 
-    private static bool CanDownloadChallengeFile(User user, Challenge challenge, ChallengeTaskFileSubmission fileSubmission)
+    private static bool CanDownloadChallengeFile(User user, ChallengeTaskFileSubmission fileSubmission)
     {
         return user.Role == UserRole.Root
-            || challenge.CreatedByUserId == user.Id
+            || user.Role == UserRole.ProblemSetter
             || fileSubmission.UserId == user.Id;
     }
 
-    private static bool CanViewLeaderboard(User? user, Challenge challenge)
+    private bool CanViewLeaderboard(User? user, Challenge challenge)
     {
-        return challenge.IsPublished
-            || user?.Role == UserRole.Root
-            || user is not null && challenge.CreatedByUserId == user.Id;
+        return visibilityPolicy.CanViewChallenge(user?.Role, challenge);
     }
 
-    private static bool CanModifyAfterEnd(User user, Challenge challenge)
+    private bool CanModifyAfterEnd(User user, Challenge challenge)
     {
-        return user.Role == UserRole.Root || DateTimeOffset.UtcNow <= challenge.EndAt;
-    }
-
-    private static bool IsChallengeOpen(Challenge challenge)
-    {
-        var now = DateTimeOffset.UtcNow;
-        return now >= challenge.StartAt && now <= challenge.EndAt;
+        return user.Role == UserRole.Root || visibilityPolicy.UtcNow <= challenge.EndAt;
     }
 
     private Result ValidateZipFile(SubmitChallengeTaskFileRequest request)
@@ -1482,7 +1517,7 @@ public class ChallengeService(
         return challenge.Tasks.Count(task => completions.TryGetValue(task.Id, out var completion) && completion.IsCompleted);
     }
 
-    private ChallengeDetailDto ToDetailDto(Challenge challenge, IReadOnlyDictionary<Guid, ChallengeTaskCompletion> completions)
+    private ChallengeDetailDto ToDetailDto(Challenge challenge, IReadOnlyDictionary<Guid, ChallengeTaskCompletion> completions, UserRole? role)
     {
         return new ChallengeDetailDto
         {
@@ -1497,7 +1532,7 @@ public class ChallengeService(
             UpdatedAt = challenge.UpdatedAt,
             TotalTaskCount = challenge.Tasks.Count,
             CompletedTaskCount = CountCompletedTasks(challenge, completions),
-            CanManage = CanManageChallengeForCurrentUser(challenge),
+            CanManage = CanManageChallengeForCurrentUser(challenge, role),
             Tasks = challenge.Tasks
                 .OrderBy(task => task.BoardY)
                 .ThenBy(task => task.BoardX)
