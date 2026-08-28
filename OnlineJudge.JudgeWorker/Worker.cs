@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using OnlineJudge.Application.Challenges;
 using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Judging.Services;
+using OnlineJudge.Application.Leaderboards.Models;
+using OnlineJudge.Application.Leaderboards.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
@@ -59,6 +61,7 @@ public class Worker(
             var dbContext = scope.ServiceProvider.GetRequiredService<OnlineJudgeDbContext>();
             var runnerFactory = scope.ServiceProvider.GetRequiredService<IJudgeRunnerFactory>();
             var compileAssetLoader = scope.ServiceProvider.GetRequiredService<IJudgeCompileAssetLoader>();
+            var seasonScoreService = scope.ServiceProvider.GetRequiredService<ISeasonScoreService>();
 
             logger.LogInformation("Processing submission. SubmissionId={SubmissionId}, Stage={Stage}", submissionId, "LoadSubmission");
 
@@ -154,6 +157,14 @@ public class Worker(
             {
                 await UpsertChallengeTaskProgressAsync(dbContext, submission, judgeResult, judgedCases, cancellationToken);
             }
+
+            await seasonScoreService.ApplySubmissionResultAsync(new SeasonSubmissionResult(
+                submission.Id,
+                submission.ProblemId,
+                submission.UserId,
+                judgeResult.Status,
+                judgeResult.TimeUsedMs,
+                judgeResult.MemoryUsedKb), cancellationToken);
 
             logger.LogInformation(
                 "Updating submission with judge result. SubmissionId={SubmissionId}, Stage={Stage}, Status={Status}",

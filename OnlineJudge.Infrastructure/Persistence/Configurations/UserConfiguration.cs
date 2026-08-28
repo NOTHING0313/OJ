@@ -54,6 +54,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasDefaultValue(false)
             .IsRequired();
 
+        builder.Property(user => user.IsLeaderboardAnonymous)
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.Property(user => user.IsDeleted)
             .HasDefaultValue(false)
             .IsRequired();

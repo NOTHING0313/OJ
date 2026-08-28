@@ -46,6 +46,13 @@ export function updateAvatar(avatarUrl: string) {
   });
 }
 
+export function updateLeaderboardAnonymity(isLeaderboardAnonymous: boolean) {
+  return request<AccountUserDto>("/api/account/leaderboard-anonymity", {
+    method: "PUT",
+    body: JSON.stringify({ isLeaderboardAnonymous })
+  });
+}
+
 export function getMyAppearance() {
   return request<UserAppearance>("/api/account/appearance").then(normalizeUserAppearance);
 }

@@ -7,6 +7,7 @@ export interface AuthUserDto {
   avatarUrl: string | null;
   role: number;
   isBlacklisted: boolean;
+  isLeaderboardAnonymous: boolean;
 }
 
 export interface LoginResponse {

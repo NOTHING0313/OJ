@@ -1,12 +1,14 @@
 import type { RankHistory, RankHistoryEntry } from "../api/leaderboardsApi";
 
 interface CurrentRankEntry {
-  userId: string;
+  userId: string | null;
   userName: string;
   rank: number;
   totalScore: number;
   completedTaskCount: number;
   isCurrentUser: boolean;
+  alias: string | null;
+  isAnonymous: boolean;
 }
 
 export function mergeCurrentRankHistory(history: RankHistory | null, entries: CurrentRankEntry[]) {
@@ -24,7 +26,9 @@ export function mergeCurrentRankHistory(history: RankHistory | null, entries: Cu
       rank: entry.rank,
       totalScore: entry.totalScore,
       completedTaskCount: entry.completedTaskCount,
-      isCurrentUser: entry.isCurrentUser
+      isCurrentUser: entry.isCurrentUser,
+      alias: entry.alias,
+      isAnonymous: entry.isAnonymous
     }))
   };
 

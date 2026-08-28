@@ -169,6 +169,7 @@ public class AuthService(
             AvatarUrl = user.AvatarUrl,
             Role = user.Role,
             IsBlacklisted = user.IsBlacklisted,
+            IsLeaderboardAnonymous = user.IsLeaderboardAnonymous,
             CreatedAt = user.CreatedAt
         };
     }

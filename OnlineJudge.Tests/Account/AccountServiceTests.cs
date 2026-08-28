@@ -197,6 +197,23 @@ public class AccountServiceTests
     }
 
     [Fact]
+    public async Task Answerer_CanToggleOwnLeaderboardAnonymity()
+    {
+        await using var dbContext = CreateDbContext();
+        var userId = SeedUser(dbContext, "answerer", UserRole.Answerer);
+        var service = CreateService(dbContext, userId, new FakeSmsVerificationService());
+
+        var result = await service.UpdateLeaderboardAnonymityAsync(new UpdateLeaderboardAnonymityRequest
+        {
+            IsLeaderboardAnonymous = true
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.IsLeaderboardAnonymous);
+        Assert.True((await dbContext.Users.FindAsync(userId))!.IsLeaderboardAnonymous);
+    }
+
+    [Fact]
     public async Task SendBindPhoneCode_RejectsPhoneNumberUsedByAnotherUser()
     {
         await using var dbContext = CreateDbContext();

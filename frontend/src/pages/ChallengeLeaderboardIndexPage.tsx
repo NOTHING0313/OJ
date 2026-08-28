@@ -120,7 +120,9 @@ export function ChallengeLeaderboardIndexPage() {
                   rank: user.rank,
                   totalScore: user.totalScore,
                   completedTaskCount: user.completedTaskCount,
-                  isCurrentUser: user.isCurrentUser
+                  isCurrentUser: user.isCurrentUser,
+                  alias: user.alias,
+                  isAnonymous: user.isAnonymous
                 }))
             )
           );
@@ -242,7 +244,7 @@ function ChallengeSummaryCard({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const { setRowNode } = useRankMovementAnimation(challenge.topEntries.map((entry) => entry.userId));
+  const { setRowNode } = useRankMovementAnimation(challenge.topEntries.map(entryKey));
 
   return (
     <article className={`leaderboard-challenge-card leaderboard-v2-challenge-card ${isSelected ? "is-selected" : ""}`}>
@@ -296,7 +298,7 @@ function ChallengeSummaryCard({
         ) : (
           <ol>
             {challenge.topEntries.map((entry) => (
-              <li key={entry.userId} ref={(node) => setRowNode(entry.userId, node)}>
+              <li key={entryKey(entry)} ref={(node) => setRowNode(entryKey(entry), node)}>
                 <span className={`leaderboard-rank ${getRankClass(entry.rank)}`}>{entry.rank}</span>
                 <div>
                   <strong>{entry.userName}</strong>
@@ -311,6 +313,10 @@ function ChallengeSummaryCard({
       </aside>
     </article>
   );
+}
+
+function entryKey(entry: { userId: string | null; userName: string }) {
+  return entry.userId ?? `anonymous:${entry.userName}`;
 }
 
 function getRankClass(rank: number) {

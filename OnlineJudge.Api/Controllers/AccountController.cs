@@ -31,6 +31,13 @@ public class AccountController(IAccountService accountService) : ControllerBase
         return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
     }
 
+    [HttpPut("leaderboard-anonymity")]
+    public async Task<IActionResult> UpdateLeaderboardAnonymity(UpdateLeaderboardAnonymityRequest request, CancellationToken cancellationToken)
+    {
+        var result = await accountService.UpdateLeaderboardAnonymityAsync(request, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
     [HttpGet("appearance")]
     public async Task<IActionResult> GetAppearance(CancellationToken cancellationToken)
     {

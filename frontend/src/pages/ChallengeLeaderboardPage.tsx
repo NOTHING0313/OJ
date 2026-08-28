@@ -23,7 +23,7 @@ export function ChallengeLeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const rowKeys = leaderboard?.entries.map((entry) => entry.userId) ?? [];
+  const rowKeys = leaderboard?.entries.map(entryKey) ?? [];
   const { capturePositions, setRowNode } = useRankMovementAnimation(rowKeys);
 
   useEffect(() => {
@@ -174,8 +174,8 @@ export function ChallengeLeaderboardPage() {
               {leaderboard.entries.map((entry) => (
                 <tr
                   className={entry.isCurrentUser ? "leaderboard-current-user" : ""}
-                  key={entry.userId}
-                  ref={(node) => setRowNode(entry.userId, node)}
+                  key={entryKey(entry)}
+                  ref={(node) => setRowNode(entryKey(entry), node)}
                 >
                   <td>
                     <span className={`leaderboard-rank ${getRankClass(entry.rank)}`}>{entry.rank}</span>
@@ -220,6 +220,10 @@ export function ChallengeLeaderboardPage() {
       />
     </section>
   );
+}
+
+function entryKey(entry: { userId: string | null; userName: string }) {
+  return entry.userId ?? `anonymous:${entry.userName}`;
 }
 
 function getRankClass(rank: number) {

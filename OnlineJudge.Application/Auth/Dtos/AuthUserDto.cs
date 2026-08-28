@@ -16,5 +16,7 @@ public class AuthUserDto
 
     public bool IsBlacklisted { get; set; }
 
+    public bool IsLeaderboardAnonymous { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 }

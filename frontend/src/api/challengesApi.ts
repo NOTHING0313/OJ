@@ -104,13 +104,15 @@ export interface UpdateChallengeTaskRequest {
 
 export interface ChallengeLeaderboardEntry {
   rank: number;
-  userId: string;
+  userId: string | null;
   userName: string;
   avatarUrl: string | null;
   completedTaskCount: number;
   totalScore: number;
   lastCompletedAt: string | null;
   isCurrentUser: boolean;
+  alias: string | null;
+  isAnonymous: boolean;
 }
 
 export interface ChallengeLeaderboard {
@@ -134,7 +136,7 @@ export interface ChallengeLeaderboardProgressTask {
 }
 
 export interface ChallengeLeaderboardProgressUser {
-  userId: string;
+  userId: string | null;
   userName: string;
   avatarUrl: string | null;
   rank: number | null;
@@ -144,6 +146,8 @@ export interface ChallengeLeaderboardProgressUser {
   isCurrentUser: boolean;
   completedTaskIds: string[];
   taskScores: Record<string, number>;
+  alias: string | null;
+  isAnonymous: boolean;
 }
 
 export interface ChallengeAdminSummary {

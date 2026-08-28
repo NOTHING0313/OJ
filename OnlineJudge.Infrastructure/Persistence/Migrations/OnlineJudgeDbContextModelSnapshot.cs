@@ -300,6 +300,292 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.ToTable("ChallengeTaskFileSubmissions", (string)null);
                 });
 
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeason", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("FreezeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsCurrent")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset>("PublicUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("StartAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("IsCurrent")
+                        .IsUnique()
+                        .HasFilter("\"IsCurrent\" = TRUE");
+
+                    b.ToTable("LeaderboardSeasons", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LeaderboardSeasons_TimeOrder", "\"StartAt\" < \"FreezeAt\" AND \"FreezeAt\" < \"PublicUntil\"");
+                        });
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonAlias", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Alias")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("character varying(11)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("SeasonId", "Alias")
+                        .IsUnique();
+
+                    b.HasIndex("SeasonId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("LeaderboardSeasonAliases", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonArchiveEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Alias")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("character varying(11)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("FinalBaseScore")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FinalRank")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FinalScore")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("LastScoreImprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SolvedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("WasAnonymous")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("SeasonId", "FinalRank")
+                        .IsUnique();
+
+                    b.HasIndex("SeasonId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("LeaderboardSeasonArchiveEntries", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonArchiveProblemScore", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ArchiveEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BaseScore")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EarnedBaseScore")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FinalProblemScore")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MemoryBonus")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ProblemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProblemTitleSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("RuntimeBonus")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TimeBonus")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeasonId");
+
+                    b.HasIndex("ArchiveEntryId", "ProblemId")
+                        .IsUnique();
+
+                    b.ToTable("LeaderboardSeasonArchiveProblemScores", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonProblem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BaseScore")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProblemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProblemId");
+
+                    b.HasIndex("SeasonId", "ProblemId")
+                        .IsUnique();
+
+                    b.ToTable("LeaderboardSeasonProblems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LeaderboardSeasonProblems_BaseScore", "\"BaseScore\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardUserProblemScore", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BestBaseScore")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("BestMemoryKb")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("BestPerformanceSubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("BestRuntimeMs")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("FirstFullScoreAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsFullScore")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("LastScoreImprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProblemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SeasonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SeasonProblemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BestPerformanceSubmissionId");
+
+                    b.HasIndex("ProblemId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("SeasonProblemId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("SeasonId", "ProblemId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("LeaderboardUserProblemScores", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LeaderboardUserProblemScores_BaseScore", "\"BestBaseScore\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("OnlineJudge.Domain.Entities.Problem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -864,6 +1150,11 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("IsLeaderboardAnonymous")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(512)
@@ -1102,6 +1393,135 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeason", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonAlias", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.LeaderboardSeason", "Season")
+                        .WithMany("Aliases")
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Season");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonArchiveEntry", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.LeaderboardSeason", "Season")
+                        .WithMany("ArchiveEntries")
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Season");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonArchiveProblemScore", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.LeaderboardSeasonArchiveEntry", "ArchiveEntry")
+                        .WithMany("ProblemScores")
+                        .HasForeignKey("ArchiveEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.LeaderboardSeason", "Season")
+                        .WithMany()
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ArchiveEntry");
+
+                    b.Navigation("Season");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonProblem", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.Problem", "Problem")
+                        .WithMany()
+                        .HasForeignKey("ProblemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.LeaderboardSeason", "Season")
+                        .WithMany("Problems")
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Problem");
+
+                    b.Navigation("Season");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardUserProblemScore", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.Submission", "BestPerformanceSubmission")
+                        .WithMany()
+                        .HasForeignKey("BestPerformanceSubmissionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("OnlineJudge.Domain.Entities.Problem", "Problem")
+                        .WithMany()
+                        .HasForeignKey("ProblemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.LeaderboardSeason", "Season")
+                        .WithMany("UserProblemScores")
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.LeaderboardSeasonProblem", "SeasonProblem")
+                        .WithMany("UserScores")
+                        .HasForeignKey("SeasonProblemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BestPerformanceSubmission");
+
+                    b.Navigation("Problem");
+
+                    b.Navigation("Season");
+
+                    b.Navigation("SeasonProblem");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemCollaborator", b =>
                 {
                     b.HasOne("OnlineJudge.Domain.Entities.User", "GrantedByUser")
@@ -1303,6 +1723,27 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Navigation("Completions");
 
                     b.Navigation("FileSubmissions");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeason", b =>
+                {
+                    b.Navigation("Aliases");
+
+                    b.Navigation("ArchiveEntries");
+
+                    b.Navigation("Problems");
+
+                    b.Navigation("UserProblemScores");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonArchiveEntry", b =>
+                {
+                    b.Navigation("ProblemScores");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeasonProblem", b =>
+                {
+                    b.Navigation("UserScores");
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.Problem", b =>

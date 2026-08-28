@@ -3,25 +3,38 @@ using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Leaderboards.Dtos;
 using OnlineJudge.Application.Leaderboards.Services;
+using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
 
 namespace OnlineJudge.Infrastructure.Leaderboards;
 
-public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser) : ILeaderboardService
+public class LeaderboardService(
+    OnlineJudgeDbContext dbContext,
+    ICurrentUser currentUser,
+    LeaderboardIdentityService identityService) : ILeaderboardService
 {
+    public LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser)
+        : this(dbContext, currentUser, new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System))
+    {
+    }
+
     public async Task<Result<GlobalUserLeaderboardDto>> GetGlobalUserLeaderboardAsync(CancellationToken cancellationToken = default)
     {
-        var currentUserId = await GetCurrentUserIdAsync(cancellationToken);
+        var viewer = await identityService.GetViewerAsync(cancellationToken);
         var completionRows = await (
                 from completion in dbContext.ChallengeTaskCompletions.AsNoTracking()
                 join challenge in dbContext.Challenges.AsNoTracking() on completion.ChallengeId equals challenge.Id
                 join user in dbContext.Users.AsNoTracking() on completion.UserId equals user.Id
-                where challenge.IsPublished && !user.IsBlacklisted
+                where challenge.IsPublished
+                    && user.Role == UserRole.Answerer
+                    && !user.IsBlacklisted
+                    && !user.IsDeleted
                 select new
                 {
                     completion.UserId,
                     user.UserName,
                     user.AvatarUrl,
+                    user.IsLeaderboardAnonymous,
                     completion.ChallengeId,
                     completion.Score,
                     completion.IsCompleted,
@@ -31,12 +44,13 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
             .ToListAsync(cancellationToken);
 
         var entries = completionRows
-            .GroupBy(row => new { row.UserId, row.UserName, row.AvatarUrl })
+            .GroupBy(row => new { row.UserId, row.UserName, row.AvatarUrl, row.IsLeaderboardAnonymous })
             .Select(group => new
             {
                 group.Key.UserId,
                 group.Key.UserName,
                 group.Key.AvatarUrl,
+                group.Key.IsLeaderboardAnonymous,
                 CompletedChallengeCount = group.Where(row => row.IsCompleted).Select(row => row.ChallengeId).Distinct().Count(),
                 CompletedTaskCount = group.Count(row => row.IsCompleted),
                 TotalScore = group.Sum(row => row.Score),
@@ -47,30 +61,40 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
             .ThenByDescending(entry => entry.CompletedChallengeCount)
             .ThenBy(entry => entry.LastCompletedAt)
             .ThenBy(entry => entry.UserName)
-            .Select((entry, index) => new GlobalUserLeaderboardEntryDto
+            .ToList();
+
+        var aliases = await identityService.EnsureCurrentSeasonAliasesAsync(entries.Select(entry => entry.UserId), cancellationToken);
+        var projectedEntries = entries.Select((entry, index) =>
             {
+                var identity = LeaderboardIdentityService.Project(
+                    new LeaderboardIdentityUser(entry.UserId, entry.UserName, entry.AvatarUrl, entry.IsLeaderboardAnonymous), viewer, aliases);
+                return new GlobalUserLeaderboardEntryDto
+                {
                 Rank = index + 1,
-                UserId = entry.UserId,
-                UserName = entry.UserName,
-                AvatarUrl = entry.AvatarUrl,
+                UserId = identity.UserId,
+                UserName = identity.DisplayName,
+                Alias = identity.Alias,
+                IsAnonymous = identity.IsAnonymous,
+                AvatarUrl = identity.AvatarUrl,
                 CompletedChallengeCount = entry.CompletedChallengeCount,
                 CompletedTaskCount = entry.CompletedTaskCount,
                 TotalScore = entry.TotalScore,
                 LastCompletedAt = entry.LastCompletedAt,
-                IsCurrentUser = currentUserId == entry.UserId
+                IsCurrentUser = viewer.UserId == entry.UserId
+                };
             })
             .ToList();
 
         return Result<GlobalUserLeaderboardDto>.Success(new GlobalUserLeaderboardDto
         {
-            Entries = entries
+            Entries = projectedEntries
         });
     }
 
     public async Task<Result<RankHistoryDto>> GetGlobalUserRankHistoryAsync(int days = 10, CancellationToken cancellationToken = default)
     {
         days = Math.Clamp(days, 2, 10);
-        var currentUserId = await GetCurrentUserIdAsync(cancellationToken);
+        var viewer = await identityService.GetViewerAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var historyStart = todayStart.AddDays(-(days - 1));
@@ -82,11 +106,15 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                 join user in dbContext.Users.AsNoTracking() on completion.UserId equals user.Id
                 where challenge.IsPublished
                     && !user.IsBlacklisted
+                    && !user.IsDeleted
+                    && user.Role == UserRole.Answerer
                     && completion.UpdatedAt < historyEnd
                 select new GlobalHistoryRow
                 {
                     UserId = completion.UserId,
                     UserName = user.UserName,
+                    AvatarUrl = user.AvatarUrl,
+                    IsLeaderboardAnonymous = user.IsLeaderboardAnonymous,
                     ChallengeId = completion.ChallengeId,
                     Score = completion.Score,
                     IsCompleted = completion.IsCompleted,
@@ -94,6 +122,8 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                     UpdatedAt = completion.UpdatedAt
                 })
             .ToListAsync(cancellationToken);
+
+        var aliases = await identityService.EnsureCurrentSeasonAliasesAsync(rows.Select(row => row.UserId), cancellationToken);
 
         var history = new RankHistoryDto
         {
@@ -104,11 +134,13 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                     var cutoff = offset == days - 1 ? now.AddTicks(1) : dayStart.AddDays(1);
                     var entries = rows
                         .Where(row => row.UpdatedAt < cutoff)
-                        .GroupBy(row => new { row.UserId, row.UserName })
+                        .GroupBy(row => new { row.UserId, row.UserName, row.AvatarUrl, row.IsLeaderboardAnonymous })
                         .Select(group => new
                         {
                             group.Key.UserId,
                             group.Key.UserName,
+                            group.Key.AvatarUrl,
+                            group.Key.IsLeaderboardAnonymous,
                             CompletedChallengeCount = group
                                 .Where(row => row.IsCompleted && row.CompletedAt < cutoff)
                                 .Select(row => row.ChallengeId)
@@ -127,14 +159,21 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                         .ThenByDescending(entry => entry.CompletedChallengeCount)
                         .ThenBy(entry => entry.LastCompletedAt ?? DateTimeOffset.MaxValue)
                         .ThenBy(entry => entry.UserName)
-                        .Select((entry, index) => new RankHistoryEntryDto
+                        .Select((entry, index) =>
                         {
-                            UserId = entry.UserId,
-                            UserName = entry.UserName,
+                            var identity = LeaderboardIdentityService.Project(
+                                new LeaderboardIdentityUser(entry.UserId, entry.UserName, entry.AvatarUrl, entry.IsLeaderboardAnonymous), viewer, aliases);
+                            return new RankHistoryEntryDto
+                            {
+                            UserId = identity.UserId,
+                            UserName = identity.DisplayName,
+                            Alias = identity.Alias,
+                            IsAnonymous = identity.IsAnonymous,
                             Rank = index + 1,
                             TotalScore = entry.TotalScore,
                             CompletedTaskCount = entry.CompletedTaskCount,
-                            IsCurrentUser = currentUserId == entry.UserId
+                            IsCurrentUser = viewer.UserId == entry.UserId
+                            };
                         })
                         .ToList();
 
@@ -152,6 +191,7 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
 
     public async Task<Result<ChallengeLeaderboardIndexDto>> GetChallengeLeaderboardIndexAsync(CancellationToken cancellationToken = default)
     {
+        var viewer = await identityService.GetViewerAsync(cancellationToken);
         var challenges = await dbContext.Challenges
             .AsNoTracking()
             .Where(challenge => challenge.IsPublished)
@@ -183,26 +223,35 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
         var participantRows = await (
                 from participant in dbContext.ChallengeParticipants.AsNoTracking()
                 join user in dbContext.Users.AsNoTracking() on participant.UserId equals user.Id
-                where challengeIds.Contains(participant.ChallengeId) && !user.IsBlacklisted
+                where challengeIds.Contains(participant.ChallengeId)
+                    && user.Role == UserRole.Answerer
+                    && !user.IsBlacklisted
+                    && !user.IsDeleted
                 select new { participant.ChallengeId, participant.UserId })
             .ToListAsync(cancellationToken);
 
         var completionRows = await (
                 from completion in dbContext.ChallengeTaskCompletions.AsNoTracking()
                 join user in dbContext.Users.AsNoTracking() on completion.UserId equals user.Id
-                where challengeIds.Contains(completion.ChallengeId) && !user.IsBlacklisted
+                where challengeIds.Contains(completion.ChallengeId)
+                    && user.Role == UserRole.Answerer
+                    && !user.IsBlacklisted
+                    && !user.IsDeleted
                 select new
                 {
                     completion.ChallengeId,
                     completion.UserId,
                     user.UserName,
                     user.AvatarUrl,
+                    user.IsLeaderboardAnonymous,
                     completion.Score,
                     completion.IsCompleted,
                     completion.CompletedAt,
                     completion.UpdatedAt
                 })
             .ToListAsync(cancellationToken);
+
+        var aliases = await identityService.EnsureCurrentSeasonAliasesAsync(completionRows.Select(row => row.UserId), cancellationToken);
 
         var participantCountMap = participantRows
             .Concat(completionRows.Select(row => new { row.ChallengeId, row.UserId }))
@@ -219,12 +268,13 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
             .ToDictionary(
                 group => group.Key,
                 group => group
-                    .GroupBy(row => new { row.UserId, row.UserName, row.AvatarUrl })
+                    .GroupBy(row => new { row.UserId, row.UserName, row.AvatarUrl, row.IsLeaderboardAnonymous })
                     .Select(userGroup => new
                     {
                         userGroup.Key.UserId,
                         userGroup.Key.UserName,
                         userGroup.Key.AvatarUrl,
+                        userGroup.Key.IsLeaderboardAnonymous,
                         CompletedTaskCount = userGroup.Count(row => row.IsCompleted),
                         TotalScore = userGroup.Sum(row => row.Score),
                         LastCompletedAt = userGroup.Max(row => row.UpdatedAt)
@@ -234,15 +284,22 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
                     .ThenBy(entry => entry.LastCompletedAt)
                     .ThenBy(entry => entry.UserName)
                     .Take(3)
-                    .Select((entry, index) => new ChallengeLeaderboardTopEntryDto
+                    .Select((entry, index) =>
                     {
+                        var identity = LeaderboardIdentityService.Project(
+                            new LeaderboardIdentityUser(entry.UserId, entry.UserName, entry.AvatarUrl, entry.IsLeaderboardAnonymous), viewer, aliases);
+                        return new ChallengeLeaderboardTopEntryDto
+                        {
                         Rank = index + 1,
-                        UserId = entry.UserId,
-                        UserName = entry.UserName,
-                        AvatarUrl = entry.AvatarUrl,
+                        UserId = identity.UserId,
+                        UserName = identity.DisplayName,
+                        Alias = identity.Alias,
+                        IsAnonymous = identity.IsAnonymous,
+                        AvatarUrl = identity.AvatarUrl,
                         CompletedTaskCount = entry.CompletedTaskCount,
                         TotalScore = entry.TotalScore,
                         LastCompletedAt = entry.LastCompletedAt
+                        };
                     })
                     .ToList());
 
@@ -273,6 +330,10 @@ public class LeaderboardService(OnlineJudgeDbContext dbContext, ICurrentUser cur
         public Guid UserId { get; set; }
 
         public string UserName { get; set; } = string.Empty;
+
+        public string? AvatarUrl { get; set; }
+
+        public bool IsLeaderboardAnonymous { get; set; }
 
         public Guid ChallengeId { get; set; }
 

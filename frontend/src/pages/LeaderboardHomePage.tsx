@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   getChallengeLeaderboardIndex,
-  getGlobalUserLeaderboard,
+  getCurrentSeasonLeaderboard,
   type ChallengeLeaderboardIndex,
-  type GlobalUserLeaderboard
+  type SeasonLeaderboard
 } from "../api/leaderboardsApi";
 
 export function LeaderboardHomePage() {
-  const [globalLeaderboard, setGlobalLeaderboard] = useState<GlobalUserLeaderboard | null>(null);
+  const [globalLeaderboard, setGlobalLeaderboard] = useState<SeasonLeaderboard | null>(null);
   const [challengeIndex, setChallengeIndex] = useState<ChallengeLeaderboardIndex | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -16,7 +16,7 @@ export function LeaderboardHomePage() {
   useEffect(() => {
     let ignore = false;
 
-    Promise.all([getGlobalUserLeaderboard(), getChallengeLeaderboardIndex()])
+    Promise.all([getCurrentSeasonLeaderboard(), getChallengeLeaderboardIndex()])
       .then(([globalData, challengeData]) => {
         if (!ignore) {
           setGlobalLeaderboard(globalData);
@@ -41,6 +41,7 @@ export function LeaderboardHomePage() {
   }, []);
 
   const entries = globalLeaderboard?.entries ?? [];
+  const season = globalLeaderboard?.season;
   const challenges = challengeIndex?.challenges ?? [];
   const topUser = entries[0];
   const participantCount = challenges.reduce((sum, challenge) => sum + challenge.participantCount, 0);
@@ -62,7 +63,7 @@ export function LeaderboardHomePage() {
         <article className="leaderboard-overview-card">
           <span>上榜用户</span>
           <strong>{isLoading ? "—" : entries.length}</strong>
-          <small>完成挑战并进入全局榜单的用户</small>
+          <small>进入当前赛季有效榜单的答题人</small>
         </article>
         <article className="leaderboard-overview-card">
           <span>已发布挑战</span>
@@ -77,7 +78,7 @@ export function LeaderboardHomePage() {
         <article className="leaderboard-overview-card leaderboard-overview-card-accent">
           <span>当前最高总分</span>
           <strong>{isLoading ? "—" : topUser?.totalScore ?? 0}</strong>
-          <small>{topUser ? `${topUser.userName} 暂居全局第一` : "暂无全局排名记录"}</small>
+          <small>{topUser ? `${topUser.displayName} 暂居赛季第一` : "暂无赛季排名记录"}</small>
         </article>
       </div>
 
@@ -85,9 +86,9 @@ export function LeaderboardHomePage() {
         <article className="leaderboard-v2-feature-card">
           <div className="leaderboard-v2-feature-header">
             <div>
-              <p className="eyebrow">GLOBAL</p>
-              <h2>全局用户榜单</h2>
-              <p>按总分、完成题数和完成挑战数查看平台整体排名。</p>
+              <p className="eyebrow">SEASON</p>
+              <h2>{season?.name ?? "赛季用户榜单"}</h2>
+              <p>{season ? "按赛季基础分和完成题数查看当前排名。" : "当前暂无进行中的排行榜赛季。"}</p>
             </div>
             <Link className="button leaderboard-v2-primary-link" to="/leaderboards/users">
               查看完整榜单
@@ -98,22 +99,16 @@ export function LeaderboardHomePage() {
             {isLoading ? (
               <div className="leaderboard-preview-empty">正在加载领先用户...</div>
             ) : entries.length === 0 ? (
-              <div className="leaderboard-preview-empty">暂无用户进入全局榜单</div>
+              <div className="leaderboard-preview-empty">当前赛季暂无有效成绩</div>
             ) : (
               entries.slice(0, 3).map((entry) => (
-                <div className="leaderboard-preview-row" key={entry.userId}>
+                <div className="leaderboard-preview-row" key={`${entry.rank}-${entry.alias}`}>
                   <span className={`leaderboard-rank ${getRankClass(entry.rank)}`}>{entry.rank}</span>
                   <span className="leaderboard-preview-user">
-                    {entry.avatarUrl ? (
-                      <img src={entry.avatarUrl} alt={entry.userName} />
-                    ) : (
-                      <span className="leaderboard-avatar-placeholder">{entry.userName.slice(0, 1).toUpperCase()}</span>
-                    )}
+                    <span className="leaderboard-avatar-placeholder">{entry.displayName.slice(0, 1).toUpperCase()}</span>
                     <span>
-                      <strong>{entry.userName}</strong>
-                      <small>
-                        {entry.completedChallengeCount} 挑战 · {entry.completedTaskCount} 题
-                      </small>
+                      <strong>{entry.displayName}</strong>
+                      <small>{entry.solvedCount} 题</small>
                     </span>
                   </span>
                   <span className="leaderboard-preview-score">

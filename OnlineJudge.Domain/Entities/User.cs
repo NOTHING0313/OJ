@@ -25,6 +25,8 @@ public class User
 
     public bool IsBlacklisted { get; set; }
 
+    public bool IsLeaderboardAnonymous { get; set; }
+
     public bool IsDeleted { get; set; }
 
     public DateTimeOffset? DeletedAt { get; set; }

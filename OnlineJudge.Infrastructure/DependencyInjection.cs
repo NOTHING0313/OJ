@@ -81,6 +81,9 @@ public static class DependencyInjection
         services.AddScoped<IProblemJudgeAssetService, ProblemJudgeAssetService>();
         services.AddScoped<IChallengeService, ChallengeService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
+        services.AddScoped<LeaderboardIdentityService>();
+        services.AddScoped<ILeaderboardSeasonService, LeaderboardSeasonService>();
+        services.AddScoped<ISeasonScoreService, SeasonScoreService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ISiteSettingsService, SiteSettingsService>();
         services.AddScoped<ISubmissionService, SubmissionService>();

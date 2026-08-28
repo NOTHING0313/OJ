@@ -14,6 +14,8 @@ public interface IAccountService
 
     Task<Result<AccountUserDto>> UpdateProfileAsync(UpdateProfileRequest request, CancellationToken cancellationToken = default);
 
+    Task<Result<AccountUserDto>> UpdateLeaderboardAnonymityAsync(UpdateLeaderboardAnonymityRequest request, CancellationToken cancellationToken = default);
+
     Task<Result<UserAppearanceDto>> GetAppearanceAsync(CancellationToken cancellationToken = default);
 
     Task<Result<UserAppearanceDto>> UpdateAppearanceAsync(UpdateUserAppearanceRequest request, string? requestHost = null, CancellationToken cancellationToken = default);

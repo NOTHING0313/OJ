@@ -6303,6 +6303,94 @@ h2 {
   max-height: none;
 }
 
+/* Leaderboard season foundation */
+.leaderboard-privacy-card,
+.leaderboard-season-current-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.leaderboard-privacy-card p,
+.leaderboard-season-current-card p {
+  color: var(--oj-text-secondary);
+}
+
+.leaderboard-privacy-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.leaderboard-season-admin-page {
+  display: grid;
+  gap: 20px;
+}
+
+.leaderboard-season-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.leaderboard-season-form h2 {
+  grid-column: 1 / -1;
+}
+
+.leaderboard-season-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--oj-text-secondary);
+}
+
+.leaderboard-season-problem-editor,
+.leaderboard-season-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.leaderboard-season-problem-list {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.leaderboard-season-problem-list > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 10px;
+  background: rgba(7, 12, 24, 0.46);
+}
+
+.leaderboard-season-problem-list > div strong {
+  margin-left: auto;
+}
+
+.leaderboard-you-badge {
+  margin-left: 8px;
+  color: var(--oj-accent);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 900px) {
+  .leaderboard-season-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .leaderboard-privacy-card,
+  .leaderboard-season-current-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .problem-editor-v2-page :is(textarea, .content-block),
 .testcase-editor-v2-page :is(textarea, .table-wrap, .content-block) {
   scrollbar-width: thin;

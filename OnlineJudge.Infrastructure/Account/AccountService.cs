@@ -97,6 +97,27 @@ public partial class AccountService(
         return Result<AccountUserDto>.Success(ToDto(user));
     }
 
+    public async Task<Result<AccountUserDto>> UpdateLeaderboardAnonymityAsync(UpdateLeaderboardAnonymityRequest request, CancellationToken cancellationToken = default)
+    {
+        var userResult = await GetActiveCurrentUserAsync(cancellationToken);
+        if (userResult.IsFailure || userResult.Value is null)
+        {
+            return Result<AccountUserDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
+        }
+
+        if (userResult.Value.Role != OnlineJudge.Domain.Enums.UserRole.Answerer)
+        {
+            return Result<AccountUserDto>.Failure("Forbidden.");
+        }
+
+        var user = await dbContext.Users.FirstAsync(user => user.Id == userResult.Value.Id, cancellationToken);
+        user.IsLeaderboardAnonymous = request.IsLeaderboardAnonymous;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Result<AccountUserDto>.Success(ToDto(user));
+    }
+
     public async Task<Result<UserAppearanceDto>> GetAppearanceAsync(CancellationToken cancellationToken = default)
     {
         var userResult = await GetActiveCurrentUserAsync(cancellationToken);
@@ -591,6 +612,7 @@ public partial class AccountService(
             AvatarUrl = user.AvatarUrl,
             Role = user.Role,
             IsBlacklisted = user.IsBlacklisted,
+            IsLeaderboardAnonymous = user.IsLeaderboardAnonymous,
             PhoneNumberMasked = MaskPhoneNumber(user.PhoneNumber),
             PhoneNumberConfirmed = user.PhoneNumberConfirmed
         };

@@ -43,6 +43,18 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<TeamProject> TeamProjects => Set<TeamProject>();
 
+    public DbSet<LeaderboardSeason> LeaderboardSeasons => Set<LeaderboardSeason>();
+
+    public DbSet<LeaderboardSeasonProblem> LeaderboardSeasonProblems => Set<LeaderboardSeasonProblem>();
+
+    public DbSet<LeaderboardUserProblemScore> LeaderboardUserProblemScores => Set<LeaderboardUserProblemScore>();
+
+    public DbSet<LeaderboardSeasonAlias> LeaderboardSeasonAliases => Set<LeaderboardSeasonAlias>();
+
+    public DbSet<LeaderboardSeasonArchiveEntry> LeaderboardSeasonArchiveEntries => Set<LeaderboardSeasonArchiveEntry>();
+
+    public DbSet<LeaderboardSeasonArchiveProblemScore> LeaderboardSeasonArchiveProblemScores => Set<LeaderboardSeasonArchiveProblemScore>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

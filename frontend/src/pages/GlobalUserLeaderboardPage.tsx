@@ -18,7 +18,7 @@ export function GlobalUserLeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const rowKeys = leaderboard?.entries.map((entry) => entry.userId) ?? [];
+  const rowKeys = leaderboard?.entries.map(entryKey) ?? [];
   const { capturePositions, setRowNode } = useRankMovementAnimation(rowKeys);
 
   useEffect(() => {
@@ -148,8 +148,8 @@ export function GlobalUserLeaderboardPage() {
             {leaderboard.entries.map((entry) => (
               <tr
                 className={entry.isCurrentUser ? "leaderboard-current-user" : ""}
-                key={entry.userId}
-                ref={(node) => setRowNode(entry.userId, node)}
+                key={entryKey(entry)}
+                ref={(node) => setRowNode(entryKey(entry), node)}
               >
                 <td>
                   <span className={`leaderboard-rank ${getRankClass(entry.rank)}`}>{entry.rank}</span>
@@ -209,4 +209,8 @@ function formatDate(value: string | null) {
 
 function formatUpdatedTime(value: Date) {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(value);
+}
+
+function entryKey(entry: { userId: string | null; userName: string }) {
+  return entry.userId ?? `anonymous:${entry.userName}`;
 }

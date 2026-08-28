@@ -31,6 +31,7 @@ export function AppLayout() {
           {isAuthenticated && <NavLink to="/submissions/my">我的提交</NavLink>}
           {canManageContent(role) && <NavLink to="/admin/problems">题目管理</NavLink>}
           {canManageContent(role) && <NavLink to="/admin/challenges">挑战管理</NavLink>}
+          {canManageContent(role) && <NavLink to="/admin/leaderboard-seasons">赛季榜</NavLink>}
           {canManageContent(role) && <NavLink to="/admin/teams">战队管理</NavLink>}
           {isRoot(role) && <NavLink to="/admin/submissions">提交管理</NavLink>}
           {isRoot(role) && <NavLink to="/admin/users">用户管理</NavLink>}

@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type { RankHistory } from "../api/leaderboardsApi";
 
 interface CurrentRankEntry {
-  userId: string;
+  userId: string | null;
   userName: string;
   rank: number;
   isCurrentUser: boolean;
@@ -57,10 +57,10 @@ export function RankHistoryChart({
   }
 
   const selectedEntries = selectSeries(currentEntries);
-  const selectedIds = new Set(selectedEntries.map((entry) => entry.userId));
+  const selectedIds = new Set(selectedEntries.map(identityKey));
   const maxRank = Math.max(
     1,
-    ...history.days.flatMap((day) => day.entries.filter((entry) => selectedIds.has(entry.userId)).map((entry) => entry.rank))
+    ...history.days.flatMap((day) => day.entries.filter((entry) => selectedIds.has(identityKey(entry))).map((entry) => entry.rank))
   );
   const displayMaxRank = Math.max(3, maxRank);
   const plotWidth = WIDTH - PADDING.left - PADDING.right;
@@ -70,11 +70,11 @@ export function RankHistoryChart({
   const yForRank = (rank: number) => PADDING.top + ((rank - 1) / Math.max(1, displayMaxRank - 1)) * plotHeight;
   const yTicks = buildRankTicks(displayMaxRank);
   const series: RankSeries[] = selectedEntries.map((entry) => ({
-    userId: entry.userId,
+    userId: identityKey(entry),
     userName: entry.userName,
     isCurrentUser: entry.isCurrentUser,
     points: history.days.flatMap((day, index) => {
-      const point = day.entries.find((item) => item.userId === entry.userId);
+      const point = day.entries.find((item) => identityKey(item) === identityKey(entry));
       return point
         ? [{ x: xForIndex(index), y: yForRank(point.rank), rank: point.rank, date: day.date }]
         : [];
@@ -158,11 +158,15 @@ export function RankHistoryChart({
 function selectSeries(entries: CurrentRankEntry[]) {
   const selected = entries.slice(0, MAX_SERIES);
   const current = entries.find((entry) => entry.isCurrentUser);
-  if (current && !selected.some((entry) => entry.userId === current.userId)) {
+  if (current && !selected.some((entry) => identityKey(entry) === identityKey(current))) {
     return [...selected, current];
   }
 
   return selected;
+}
+
+function identityKey(entry: { userId: string | null; userName: string }) {
+  return entry.userId ?? `anonymous:${entry.userName}`;
 }
 
 function buildRankTicks(maxRank: number) {

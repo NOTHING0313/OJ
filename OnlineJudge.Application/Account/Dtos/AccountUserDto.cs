@@ -16,6 +16,8 @@ public class AccountUserDto
 
     public bool IsBlacklisted { get; set; }
 
+    public bool IsLeaderboardAnonymous { get; set; }
+
     public string? PhoneNumberMasked { get; set; }
 
     public bool PhoneNumberConfirmed { get; set; }

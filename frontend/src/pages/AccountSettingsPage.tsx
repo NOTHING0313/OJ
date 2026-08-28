@@ -7,6 +7,7 @@ import {
   sendAccountDeleteCode,
   sendPhoneCode,
   updateAvatar,
+  updateLeaderboardAnonymity,
   updateMyAppearance,
   verifyPhone,
   type AccountUserDto,
@@ -35,6 +36,7 @@ export function AccountSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingWallpaper, setIsSavingWallpaper] = useState(false);
+  const [isSavingLeaderboardPrivacy, setIsSavingLeaderboardPrivacy] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isSendingDeleteCode, setIsSendingDeleteCode] = useState(false);
@@ -116,6 +118,23 @@ export function AccountSettingsPage() {
       setError(err instanceof Error ? err.message : "个人壁纸保存失败");
     } finally {
       setIsSavingWallpaper(false);
+    }
+  }
+
+  async function handleLeaderboardAnonymityChange(enabled: boolean) {
+    setIsSavingLeaderboardPrivacy(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const updated = await updateLeaderboardAnonymity(enabled);
+      setAccount(updated);
+      updateCurrentUser(updated);
+      setNotice(enabled ? "排行榜匿名已开启" : "排行榜匿名已关闭");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "排行榜匿名设置保存失败");
+    } finally {
+      setIsSavingLeaderboardPrivacy(false);
     }
   }
 
@@ -320,6 +339,25 @@ export function AccountSettingsPage() {
           <input ref={fileInputRef} className="visually-hidden-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleAvatarChange} />
         </div>
       </section>
+
+      {account.role === 1 && (
+        <section className="admin-panel account-card leaderboard-privacy-card">
+          <div>
+            <p className="eyebrow">LEADERBOARD PRIVACY</p>
+            <h2>排行榜匿名</h2>
+            <p>开启后，其他答题人只能在排行榜等公开竞争页面看到随机代号；出题人和根账号仍可查看真实身份。</p>
+          </div>
+          <label className="leaderboard-privacy-toggle">
+            <input
+              type="checkbox"
+              checked={account.isLeaderboardAnonymous}
+              disabled={isSavingLeaderboardPrivacy}
+              onChange={(event) => void handleLeaderboardAnonymityChange(event.target.checked)}
+            />
+            <span>{account.isLeaderboardAnonymous ? "已开启" : "未开启"}</span>
+          </label>
+        </section>
+      )}
 
       <section className="account-section-v3 account-personalization-section-v3">
         <div className="account-section-heading-v3">

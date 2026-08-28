@@ -3,6 +3,7 @@ using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Challenges;
+using OnlineJudge.Infrastructure.Leaderboards;
 using OnlineJudge.Infrastructure.Persistence;
 
 namespace OnlineJudge.Tests.Challenges;
@@ -61,6 +62,53 @@ public class ChallengeLeaderboardConsistencyTests
         var progressUser = Assert.Single(progress.Value!.Users);
         Assert.Null(progressUser.Rank);
         Assert.Equal(0, progressUser.TotalScore);
+    }
+
+    [Fact]
+    public async Task AnonymousAnswerer_IsHiddenAcrossLegacyLeaderboardEndpoints()
+    {
+        await using var db = CreateDb();
+        var now = DateTimeOffset.UtcNow;
+        var anonymousUser = NewUser("private-user", now);
+        anonymousUser.IsLeaderboardAnonymous = true;
+        var viewer = NewUser("viewer", now);
+        var challenge = NewChallenge(viewer.Id, now);
+        var task = NewTask(challenge.Id, now);
+        var season = new LeaderboardSeason
+        {
+            Id = Guid.NewGuid(), Name = "Current", StartAt = now.AddHours(-1), FreezeAt = now.AddHours(1), PublicUntil = now.AddHours(2),
+            Status = LeaderboardSeasonStatus.Active, IsCurrent = true, CreatedByUserId = viewer.Id, CreatedAt = now, UpdatedAt = now
+        };
+        db.AddRange(anonymousUser, viewer, challenge, task, season,
+            new ChallengeParticipant { Id = Guid.NewGuid(), ChallengeId = challenge.Id, UserId = anonymousUser.Id, JoinedAt = now },
+            new ChallengeTaskCompletion
+            {
+                Id = Guid.NewGuid(), ChallengeId = challenge.Id, ChallengeTaskId = task.Id, UserId = anonymousUser.Id,
+                Score = 300, IsCompleted = true, CompletedAt = now, UpdatedAt = now
+            });
+        await db.SaveChangesAsync();
+
+        var current = new TestCurrentUser(viewer);
+        var challengeService = new ChallengeService(db, current);
+        var globalService = new LeaderboardService(db, current);
+        var challengeBoard = await challengeService.GetLeaderboardAsync(challenge.Id);
+        var progress = await challengeService.GetLeaderboardProgressAsync(challenge.Id);
+        var history = await challengeService.GetLeaderboardHistoryAsync(challenge.Id);
+        var global = await globalService.GetGlobalUserLeaderboardAsync();
+        var globalHistory = await globalService.GetGlobalUserRankHistoryAsync();
+
+        AssertHidden(Assert.Single(challengeBoard.Value!.Entries).UserId, Assert.Single(challengeBoard.Value.Entries).UserName);
+        AssertHidden(Assert.Single(progress.Value!.Users).UserId, Assert.Single(progress.Value.Users).UserName);
+        Assert.All(history.Value!.Days.SelectMany(day => day.Entries), entry => AssertHidden(entry.UserId, entry.UserName));
+        AssertHidden(Assert.Single(global.Value!.Entries).UserId, Assert.Single(global.Value.Entries).UserName);
+        Assert.All(globalHistory.Value!.Days.SelectMany(day => day.Entries), entry => AssertHidden(entry.UserId, entry.UserName));
+    }
+
+    private static void AssertHidden(Guid? userId, string displayName)
+    {
+        Assert.Null(userId);
+        Assert.StartsWith("NODE-", displayName);
+        Assert.DoesNotContain("private-user", displayName, StringComparison.Ordinal);
     }
 
     private static OnlineJudgeDbContext CreateDb()
