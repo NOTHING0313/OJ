@@ -15,4 +15,11 @@ public class LeaderboardSeasonsController(ILeaderboardSeasonService seasonServic
         var result = await seasonService.GetCurrentLeaderboardAsync(cancellationToken);
         return result.IsFailure ? BadRequest(result.ErrorMessage) : Ok(result.Value);
     }
+
+    [HttpGet("current/problems/{problemId:guid}")]
+    public async Task<IActionResult> GetCurrentProblem(Guid problemId, CancellationToken cancellationToken)
+    {
+        var result = await seasonService.GetCurrentProblemLeaderboardAsync(problemId, cancellationToken);
+        return result.IsFailure ? BadRequest(result.ErrorMessage) : Ok(result.Value);
+    }
 }

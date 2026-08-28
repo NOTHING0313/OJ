@@ -10,6 +10,8 @@ public interface ILeaderboardSeasonService
 
     Task<Result<SeasonLeaderboardDto>> GetCurrentAuditLeaderboardAsync(CancellationToken cancellationToken = default);
 
+    Task<Result<SeasonProblemLeaderboardDto>> GetCurrentProblemLeaderboardAsync(Guid problemId, CancellationToken cancellationToken = default);
+
     Task<Result<IReadOnlyList<LeaderboardSeasonDto>>> GetSeasonsAsync(CancellationToken cancellationToken = default);
 
     Task<Result<LeaderboardSeasonDto>> CreateSeasonAsync(CreateLeaderboardSeasonRequest request, CancellationToken cancellationToken = default);
@@ -17,6 +19,13 @@ public interface ILeaderboardSeasonService
     Task<Result<LeaderboardSeasonDto>> UpdateSeasonAsync(Guid seasonId, UpdateLeaderboardSeasonRequest request, CancellationToken cancellationToken = default);
 
     Task<Result<LeaderboardSeasonDto>> AddProblemAsync(Guid seasonId, AddLeaderboardSeasonProblemRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<LeaderboardSeasonDto>> UpdateProblemBenchmarkAsync(
+        Guid seasonId,
+        Guid problemId,
+        OnlineJudge.Domain.Enums.JudgeLanguage language,
+        UpdateLeaderboardSeasonProblemBenchmarkRequest request,
+        CancellationToken cancellationToken = default);
 
     Task<Result> RemoveProblemAsync(Guid seasonId, Guid problemId, CancellationToken cancellationToken = default);
 

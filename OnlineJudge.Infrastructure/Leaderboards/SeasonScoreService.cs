@@ -7,8 +7,16 @@ using OnlineJudge.Infrastructure.Persistence;
 
 namespace OnlineJudge.Infrastructure.Leaderboards;
 
-public sealed class SeasonScoreService(OnlineJudgeDbContext dbContext, TimeProvider timeProvider) : ISeasonScoreService
+public sealed class SeasonScoreService(
+    OnlineJudgeDbContext dbContext,
+    TimeProvider timeProvider,
+    ILeaderboardScoringEngine scoringEngine) : ISeasonScoreService
 {
+    public SeasonScoreService(OnlineJudgeDbContext dbContext, TimeProvider timeProvider)
+        : this(dbContext, timeProvider, new LeaderboardScoringEngine())
+    {
+    }
+
     public async Task ApplySubmissionResultAsync(SeasonSubmissionResult submission, CancellationToken cancellationToken = default)
     {
         if (submission.Status != JudgeStatus.Accepted) return;
@@ -22,6 +30,7 @@ public sealed class SeasonScoreService(OnlineJudgeDbContext dbContext, TimeProvi
 
         var seasonProblem = await dbContext.LeaderboardSeasonProblems
             .Include(item => item.Season)
+            .Include(item => item.Benchmarks)
             .FirstOrDefaultAsync(item => item.ProblemId == submission.ProblemId && item.Season!.IsCurrent, cancellationToken);
 
         var now = timeProvider.GetUtcNow();
@@ -54,52 +63,91 @@ public sealed class SeasonScoreService(OnlineJudgeDbContext dbContext, TimeProvi
                 UserId = submission.UserId,
                 BestBaseScore = seasonProblem.BaseScore,
                 IsFullScore = true,
-                FirstFullScoreAt = now,
+                FirstFullScoreAt = submission.FinishedAt,
+                FirstFullSubmissionId = submission.SubmissionId,
                 BestPerformanceSubmissionId = submission.SubmissionId,
+                BestPerformanceLanguage = submission.Language,
                 BestRuntimeMs = submission.RuntimeMs,
                 BestMemoryKb = submission.MemoryKb,
-                LastScoreImprovedAt = now,
-                CreatedAt = now,
-                UpdatedAt = now
+                BestPerformanceFinishedAt = submission.FinishedAt,
+                LastScoreImprovedAt = submission.FinishedAt,
+                CreatedAt = submission.FinishedAt,
+                UpdatedAt = submission.FinishedAt
             });
             return;
         }
 
         var changed = false;
+        var scoreIncreased = false;
         if (score.BestBaseScore < seasonProblem.BaseScore)
         {
             score.BestBaseScore = seasonProblem.BaseScore;
             score.IsFullScore = true;
-            score.LastScoreImprovedAt = now;
             changed = true;
+            scoreIncreased = true;
         }
 
         if (!score.FirstFullScoreAt.HasValue)
         {
-            score.FirstFullScoreAt = now;
+            score.FirstFullScoreAt = submission.FinishedAt;
+            score.FirstFullSubmissionId = submission.SubmissionId;
             score.IsFullScore = true;
             changed = true;
+            scoreIncreased = true;
         }
 
-        if (IsBetterPerformance(submission.RuntimeMs, submission.MemoryKb, score.BestRuntimeMs, score.BestMemoryKb))
+        var rules = LeaderboardScoringRulesSerializer.Deserialize(seasonProblem.Season.ScoringRulesJson);
+        var benchmarks = seasonProblem.Benchmarks
+            .Select(item => new LeaderboardProblemBenchmarkFact(item.Language, item.RuntimeBaselineMs, item.MemoryBaselineKb))
+            .ToList();
+        var candidate = scoringEngine.CalculatePerformance(
+            seasonProblem.BaseScore,
+            rules,
+            new LeaderboardPerformanceCandidate(
+                submission.SubmissionId,
+                submission.Language,
+                submission.RuntimeMs,
+                submission.MemoryKb,
+                submission.FinishedAt),
+            benchmarks);
+        var current = CreateCurrentPerformance(score, seasonProblem.BaseScore, rules, benchmarks);
+        if (scoringEngine.IsBetterPerformance(candidate, current))
         {
             score.BestPerformanceSubmissionId = submission.SubmissionId;
+            score.BestPerformanceLanguage = submission.Language;
             score.BestRuntimeMs = submission.RuntimeMs;
             score.BestMemoryKb = submission.MemoryKb;
+            score.BestPerformanceFinishedAt = submission.FinishedAt;
             changed = true;
+            scoreIncreased |= candidate.PerformanceBonus > (current?.PerformanceBonus ?? 0);
         }
 
-        if (changed) score.UpdatedAt = now;
+        if (scoreIncreased) score.LastScoreImprovedAt = submission.FinishedAt;
+        if (changed) score.UpdatedAt = submission.FinishedAt;
     }
 
-    private static bool IsBetterPerformance(int? candidateRuntime, int? candidateMemory, int? currentRuntime, int? currentMemory)
+    private LeaderboardPerformanceScore? CreateCurrentPerformance(
+        LeaderboardUserProblemScore score,
+        int baseScore,
+        LeaderboardScoringRules rules,
+        IReadOnlyCollection<LeaderboardProblemBenchmarkFact> benchmarks)
     {
-        var candidateRuntimeValue = candidateRuntime ?? int.MaxValue;
-        var currentRuntimeValue = currentRuntime ?? int.MaxValue;
-        if (candidateRuntimeValue != currentRuntimeValue) return candidateRuntimeValue < currentRuntimeValue;
+        if (!score.BestPerformanceSubmissionId.HasValue
+            || !score.BestPerformanceLanguage.HasValue
+            || !score.BestPerformanceFinishedAt.HasValue)
+        {
+            return null;
+        }
 
-        var candidateMemoryValue = candidateMemory ?? int.MaxValue;
-        var currentMemoryValue = currentMemory ?? int.MaxValue;
-        return candidateMemoryValue < currentMemoryValue;
+        return scoringEngine.CalculatePerformance(
+            baseScore,
+            rules,
+            new LeaderboardPerformanceCandidate(
+                score.BestPerformanceSubmissionId.Value,
+                score.BestPerformanceLanguage.Value,
+                score.BestRuntimeMs,
+                score.BestMemoryKb,
+                score.BestPerformanceFinishedAt.Value),
+            benchmarks);
     }
 }

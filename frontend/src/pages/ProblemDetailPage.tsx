@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getProblem, type ProblemDetailDto } from "../api/problemsApi";
+import { getCurrentSeasonProblemLeaderboard, type SeasonProblemLeaderboard } from "../api/leaderboardsApi";
 import { createSubmission, type JudgeLanguage } from "../api/submissionsApi";
 import { canManageContent, useAuth } from "../auth/AuthContext";
 import { CodeEditor } from "../components/CodeEditor";
@@ -15,6 +16,7 @@ export function ProblemDetailPage() {
   const challengeId = searchParams.get("challengeId");
   const taskId = searchParams.get("taskId");
   const [problem, setProblem] = useState<ProblemDetailDto | null>(null);
+  const [seasonLeaderboard, setSeasonLeaderboard] = useState<SeasonProblemLeaderboard | null>(null);
   const [language, setLanguage] = useState<JudgeLanguage>(1);
   const [sourceCode, setSourceCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,6 +66,13 @@ export function ProblemDetailPage() {
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "加载题目失败"));
   }, [id, languageCacheKey]);
+
+  useEffect(() => {
+    if (!id) return;
+    getCurrentSeasonProblemLeaderboard(id)
+      .then(setSeasonLeaderboard)
+      .catch(() => setSeasonLeaderboard(null));
+  }, [id]);
 
   useEffect(() => {
     if (!languageCacheKey || availableLanguages.length === 0) {
@@ -189,6 +198,19 @@ export function ProblemDetailPage() {
             )}
           </div>
         </div>
+
+        {seasonLeaderboard?.season && seasonLeaderboard.problem && (
+          <section className="problem-season-score-card">
+            <div><span>赛季计分</span><strong>{seasonLeaderboard.season.name}</strong></div>
+            <dl>
+              <div><dt>基础分</dt><dd>{seasonLeaderboard.problem.baseScore}</dd></div>
+              <div><dt>Top10 时间奖励</dt><dd>最高 +{Math.max(...seasonLeaderboard.season.scoringRules.timeBonusPercentages)}%</dd></div>
+              <div><dt>运行奖励</dt><dd>最高 +{maxBonus(seasonLeaderboard.season.scoringRules.runtimeBonusTiers)}%</dd></div>
+              <div><dt>内存奖励</dt><dd>最高 +{maxBonus(seasonLeaderboard.season.scoringRules.memoryBonusTiers)}%</dd></div>
+            </dl>
+            <Link className="button" to={`/leaderboards/users/problems/${problem.id}`}>查看单题榜</Link>
+          </section>
+        )}
 
         <section className="content-block">
           <h2>描述</h2>
@@ -758,4 +780,8 @@ function isSamplePrimitive(value: unknown) {
 
 function formatSampleKey(key: string) {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? key : JSON.stringify(key);
+}
+
+function maxBonus(tiers: Array<{ bonusPercentage: number }>) {
+  return Math.max(0, ...tiers.map((tier) => tier.bonusPercentage));
 }

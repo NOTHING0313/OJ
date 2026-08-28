@@ -62,12 +62,19 @@ export function SeasonLeaderboardPage() {
         </div>
       </div>
 
+      <nav className="season-problem-links" aria-label="赛季题目排行榜">
+        <span>题目排行</span>
+        {season.problems.map((problem) => (
+          <Link key={problem.problemId} to={`/leaderboards/users/problems/${problem.problemId}`}>{problem.problemTitle}</Link>
+        ))}
+      </nav>
+
       {entries.length === 0 ? (
         <div className="empty-state">当前赛季暂无有效成绩</div>
       ) : (
         <div className="leaderboard-v2-table-wrap leaderboard-live-table-wrap">
           <table className="leaderboard-table leaderboard-v2-table">
-            <thead><tr><th>排名</th><th>用户</th><th>完成题目</th><th>基础分</th><th>总分</th></tr></thead>
+            <thead><tr><th>排名</th><th>用户</th><th>完成题目</th><th>基础分</th><th>时间奖励</th><th>性能奖励</th><th>总分</th></tr></thead>
             <tbody>
               {entries.map((entry) => (
                 <tr className={entry.isCurrentUser ? "leaderboard-current-user" : ""} key={`${entry.rank}-${entry.alias}`}>
@@ -75,6 +82,8 @@ export function SeasonLeaderboardPage() {
                   <td><strong>{entry.displayName}</strong>{entry.isCurrentUser && <small className="leaderboard-you-badge">YOU</small>}</td>
                   <td>{entry.solvedCount}</td>
                   <td>{entry.baseScore}</td>
+                  <td>+{entry.timeBonus}</td>
+                  <td>+{entry.runtimeBonus + entry.memoryBonus}</td>
                   <td><strong className="leaderboard-score">{entry.totalScore}</strong></td>
                 </tr>
               ))}

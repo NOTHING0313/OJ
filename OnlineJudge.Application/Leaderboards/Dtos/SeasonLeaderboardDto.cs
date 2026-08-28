@@ -35,5 +35,7 @@ public class SeasonLeaderboardEntryDto
 
     public int MemoryBonus { get; set; }
 
+    public int PerformanceBonus => RuntimeBonus + MemoryBonus;
+
     public DateTimeOffset LastScoreImprovedAt { get; set; }
 }

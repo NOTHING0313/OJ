@@ -8,7 +8,10 @@ import {
   getAdminLeaderboardSeasons,
   getCurrentSeasonAuditLeaderboard,
   removeLeaderboardSeasonProblem,
+  updateLeaderboardSeasonProblemBenchmark,
   updateLeaderboardSeason,
+  type LeaderboardJudgeLanguage,
+  type LeaderboardSeasonProblem,
   type LeaderboardSeason,
   type SeasonLeaderboard
 } from "../api/leaderboardsApi";
@@ -115,9 +118,25 @@ export function AdminLeaderboardSeasonPage() {
           )}
           <div className="leaderboard-season-problem-list">
             {currentSeason.problems.map((problem) => (
-              <div key={problem.id}><span>{problem.problemTitle}</span><strong>{problem.baseScore} 分</strong>
-                {isRoot && currentSeason.effectiveStatus === 1 && <button className="button" disabled={isBusy} onClick={() => void run(
-                  () => removeLeaderboardSeasonProblem(currentSeason.id, problem.problemId), "题目已移出赛季")}>移除</button>}
+              <div className="leaderboard-season-problem-card" key={problem.id}>
+                <div className="leaderboard-season-problem-heading"><span>{problem.problemTitle}</span><strong>{problem.baseScore} 分</strong>
+                  {isRoot && currentSeason.effectiveStatus === 1 && <button className="button" disabled={isBusy} onClick={() => void run(
+                    () => removeLeaderboardSeasonProblem(currentSeason.id, problem.problemId), "题目已移出赛季")}>移除</button>}
+                </div>
+                <div className="leaderboard-benchmark-grid">
+                  {allowedLanguages(problem.allowedLanguagesMask).map((language) => (
+                    <BenchmarkEditor
+                      key={`${problem.id}-${language}-${problem.benchmarks.find((item) => item.language === language)?.runtimeBaselineMs ?? 0}-${problem.benchmarks.find((item) => item.language === language)?.memoryBaselineKb ?? 0}`}
+                      problem={problem}
+                      language={language}
+                      editable={currentSeason.effectiveStatus === 1}
+                      disabled={isBusy}
+                      onSave={(runtime, memory) => run(
+                        () => updateLeaderboardSeasonProblemBenchmark(currentSeason.id, problem.problemId, language, runtime, memory),
+                        `${problem.problemTitle} ${languageLabel(language)} 基准已保存`)}
+                    />
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -162,3 +181,31 @@ function localValue(value: Date) {
 
 function formatDate(value: string) { return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
 function statusLabel(status: number) { return ["", "Scheduled", "Active", "Frozen", "Public", "Archived"][status] ?? "Unknown"; }
+
+function BenchmarkEditor({ problem, language, editable, disabled, onSave }: {
+  problem: LeaderboardSeasonProblem;
+  language: LeaderboardJudgeLanguage;
+  editable: boolean;
+  disabled: boolean;
+  onSave: (runtime: number, memory: number) => Promise<void>;
+}) {
+  const benchmark = problem.benchmarks.find((item) => item.language === language);
+  const [runtime, setRuntime] = useState(benchmark?.runtimeBaselineMs ?? 0);
+  const [memory, setMemory] = useState(benchmark?.memoryBaselineKb ?? 0);
+  return (
+    <div className="leaderboard-benchmark-card">
+      <strong>{languageLabel(language)}</strong>
+      <label>Runtime baseline (ms)<input type="number" min="1" value={runtime || ""} readOnly={!editable} onChange={(event) => setRuntime(Number(event.target.value))} /></label>
+      <label>Memory baseline (KB)<input type="number" min="1" value={memory || ""} readOnly={!editable} onChange={(event) => setMemory(Number(event.target.value))} /></label>
+      {editable && <button className="button" type="button" disabled={disabled || runtime <= 0 || memory <= 0} onClick={() => void onSave(runtime, memory)}>保存基准</button>}
+    </div>
+  );
+}
+
+function allowedLanguages(mask: number): LeaderboardJudgeLanguage[] {
+  return ([1, 2, 3] as LeaderboardJudgeLanguage[]).filter((language) => mask === 0 || (mask & (language === 1 ? 1 : language === 2 ? 2 : 4)) !== 0);
+}
+
+function languageLabel(language: LeaderboardJudgeLanguage) {
+  return language === 1 ? "C++17" : language === 2 ? "C11" : "C#";
+}

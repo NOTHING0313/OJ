@@ -17,4 +17,6 @@ public class LeaderboardSeasonProblem
     public Problem? Problem { get; set; }
 
     public List<LeaderboardUserProblemScore> UserScores { get; set; } = [];
+
+    public List<LeaderboardSeasonProblemBenchmark> Benchmarks { get; set; } = [];
 }

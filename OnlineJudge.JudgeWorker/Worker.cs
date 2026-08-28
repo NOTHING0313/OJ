@@ -162,9 +162,11 @@ public class Worker(
                 submission.Id,
                 submission.ProblemId,
                 submission.UserId,
+                submission.Language,
                 judgeResult.Status,
                 judgeResult.TimeUsedMs,
-                judgeResult.MemoryUsedKb), cancellationToken);
+                judgeResult.MemoryUsedKb,
+                submission.FinishedAt!.Value), cancellationToken);
 
             logger.LogInformation(
                 "Updating submission with judge result. SubmissionId={SubmissionId}, Stage={Stage}, Status={Status}",

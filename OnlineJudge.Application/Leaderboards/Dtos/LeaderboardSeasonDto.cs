@@ -1,4 +1,5 @@
 using OnlineJudge.Domain.Enums;
+using OnlineJudge.Application.Leaderboards.Models;
 
 namespace OnlineJudge.Application.Leaderboards.Dtos;
 
@@ -20,6 +21,8 @@ public class LeaderboardSeasonDto
 
     public bool IsCurrent { get; set; }
 
+    public LeaderboardScoringRules ScoringRules { get; set; } = new();
+
     public IReadOnlyList<LeaderboardSeasonProblemDto> Problems { get; set; } = [];
 }
 
@@ -32,4 +35,17 @@ public class LeaderboardSeasonProblemDto
     public string ProblemTitle { get; set; } = string.Empty;
 
     public int BaseScore { get; set; }
+
+    public int AllowedLanguagesMask { get; set; }
+
+    public IReadOnlyList<LeaderboardSeasonProblemBenchmarkDto> Benchmarks { get; set; } = [];
+}
+
+public class LeaderboardSeasonProblemBenchmarkDto
+{
+    public JudgeLanguage Language { get; set; }
+
+    public int RuntimeBaselineMs { get; set; }
+
+    public int MemoryBaselineKb { get; set; }
 }

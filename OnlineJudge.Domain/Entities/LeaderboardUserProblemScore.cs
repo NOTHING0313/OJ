@@ -18,11 +18,17 @@ public class LeaderboardUserProblemScore
 
     public DateTimeOffset? FirstFullScoreAt { get; set; }
 
+    public Guid? FirstFullSubmissionId { get; set; }
+
     public Guid? BestPerformanceSubmissionId { get; set; }
+
+    public OnlineJudge.Domain.Enums.JudgeLanguage? BestPerformanceLanguage { get; set; }
 
     public int? BestRuntimeMs { get; set; }
 
     public int? BestMemoryKb { get; set; }
+
+    public DateTimeOffset? BestPerformanceFinishedAt { get; set; }
 
     public DateTimeOffset LastScoreImprovedAt { get; set; }
 
@@ -39,4 +45,6 @@ public class LeaderboardUserProblemScore
     public User? User { get; set; }
 
     public Submission? BestPerformanceSubmission { get; set; }
+
+    public Submission? FirstFullSubmission { get; set; }
 }

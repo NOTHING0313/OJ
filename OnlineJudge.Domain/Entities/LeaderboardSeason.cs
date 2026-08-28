@@ -18,6 +18,8 @@ public class LeaderboardSeason
 
     public bool IsCurrent { get; set; }
 
+    public string ScoringRulesJson { get; set; } = string.Empty;
+
     public Guid CreatedByUserId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

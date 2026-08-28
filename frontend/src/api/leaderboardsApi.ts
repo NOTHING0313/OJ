@@ -68,12 +68,32 @@ export interface RankHistoryEntry {
 }
 
 export type LeaderboardSeasonStatus = 1 | 2 | 3 | 4 | 5;
+export type LeaderboardJudgeLanguage = 1 | 2 | 3;
+
+export interface LeaderboardPerformanceBonusTier {
+  maxRatioPercentage: number;
+  bonusPercentage: number;
+}
+
+export interface LeaderboardScoringRules {
+  timeBonusPercentages: number[];
+  runtimeBonusTiers: LeaderboardPerformanceBonusTier[];
+  memoryBonusTiers: LeaderboardPerformanceBonusTier[];
+}
+
+export interface LeaderboardSeasonProblemBenchmark {
+  language: LeaderboardJudgeLanguage;
+  runtimeBaselineMs: number;
+  memoryBaselineKb: number;
+}
 
 export interface LeaderboardSeasonProblem {
   id: string;
   problemId: string;
   problemTitle: string;
   baseScore: number;
+  allowedLanguagesMask: number;
+  benchmarks: LeaderboardSeasonProblemBenchmark[];
 }
 
 export interface LeaderboardSeason {
@@ -85,6 +105,7 @@ export interface LeaderboardSeason {
   status: LeaderboardSeasonStatus;
   effectiveStatus: LeaderboardSeasonStatus;
   isCurrent: boolean;
+  scoringRules: LeaderboardScoringRules;
   problems: LeaderboardSeasonProblem[];
 }
 
@@ -110,6 +131,36 @@ export interface SeasonLeaderboard {
   entries: SeasonLeaderboardEntry[];
 }
 
+export interface SeasonProblemLeaderboardEntry {
+  rank: number;
+  userId: string | null;
+  userName: string | null;
+  displayName: string;
+  alias: string;
+  isAnonymous: boolean;
+  isCurrentUser: boolean;
+  baseScore: number;
+  earnedBaseScore: number;
+  timeRank: number | null;
+  timeBonus: number;
+  performanceLanguage: LeaderboardJudgeLanguage | null;
+  runtimeMs: number | null;
+  runtimeBaselineMs: number | null;
+  runtimeBonus: number;
+  memoryKb: number | null;
+  memoryBaselineKb: number | null;
+  memoryBonus: number;
+  performanceBonus: number;
+  totalProblemScore: number;
+  firstFullScoreAt: string;
+}
+
+export interface SeasonProblemLeaderboard {
+  season: LeaderboardSeason | null;
+  problem: LeaderboardSeasonProblem | null;
+  entries: SeasonProblemLeaderboardEntry[];
+}
+
 export interface LeaderboardSeasonRequest {
   name: string;
   startAt: string;
@@ -131,6 +182,10 @@ export function getChallengeLeaderboardIndex() {
 
 export function getCurrentSeasonLeaderboard() {
   return request<SeasonLeaderboard>("/api/leaderboards/season/current");
+}
+
+export function getCurrentSeasonProblemLeaderboard(problemId: string) {
+  return request<SeasonProblemLeaderboard>(`/api/leaderboards/season/current/problems/${problemId}`);
 }
 
 export function getAdminLeaderboardSeasons() {
@@ -164,6 +219,19 @@ export function addLeaderboardSeasonProblem(seasonId: string, problemId: string)
 
 export function removeLeaderboardSeasonProblem(seasonId: string, problemId: string) {
   return request<void>(`/api/admin/leaderboard-seasons/${seasonId}/problems/${problemId}`, { method: "DELETE" });
+}
+
+export function updateLeaderboardSeasonProblemBenchmark(
+  seasonId: string,
+  problemId: string,
+  language: LeaderboardJudgeLanguage,
+  runtimeBaselineMs: number,
+  memoryBaselineKb: number
+) {
+  return request<LeaderboardSeason>(`/api/admin/leaderboard-seasons/${seasonId}/problems/${problemId}/benchmarks/${language}`, {
+    method: "PUT",
+    body: JSON.stringify({ runtimeBaselineMs, memoryBaselineKb })
+  });
 }
 
 export function freezeLeaderboardSeason(seasonId: string) {

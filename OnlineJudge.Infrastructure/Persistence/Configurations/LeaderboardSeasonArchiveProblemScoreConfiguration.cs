@@ -15,6 +15,8 @@ public class LeaderboardSeasonArchiveProblemScoreConfiguration : IEntityTypeConf
         builder.Property(score => score.BaseScore).IsRequired();
         builder.Property(score => score.EarnedBaseScore).IsRequired();
         builder.Property(score => score.TimeBonus).IsRequired();
+        builder.Property(score => score.FirstFullScoreAt).IsRequired();
+        builder.Property(score => score.PerformanceLanguage).HasConversion<int?>();
         builder.Property(score => score.RuntimeBonus).IsRequired();
         builder.Property(score => score.MemoryBonus).IsRequired();
         builder.Property(score => score.FinalProblemScore).IsRequired();

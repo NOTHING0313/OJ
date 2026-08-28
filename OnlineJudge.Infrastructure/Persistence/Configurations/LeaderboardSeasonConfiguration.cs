@@ -20,6 +20,10 @@ public class LeaderboardSeasonConfiguration : IEntityTypeConfiguration<Leaderboa
         builder.Property(season => season.Name).HasMaxLength(120).IsRequired();
         builder.Property(season => season.Status).HasConversion<int>().HasDefaultValue(LeaderboardSeasonStatus.Scheduled).IsRequired();
         builder.Property(season => season.IsCurrent).HasDefaultValue(true).IsRequired();
+        builder.Property(season => season.ScoringRulesJson)
+            .HasColumnType("jsonb")
+            .HasDefaultValue(OnlineJudge.Infrastructure.Leaderboards.LeaderboardScoringRulesSerializer.DefaultRulesJson)
+            .IsRequired();
         builder.Property(season => season.StartAt).IsRequired();
         builder.Property(season => season.FreezeAt).IsRequired();
         builder.Property(season => season.PublicUntil).IsRequired();

@@ -40,5 +40,9 @@ public class LeaderboardUserProblemScoreConfiguration : IEntityTypeConfiguration
             .WithMany()
             .HasForeignKey(score => score.BestPerformanceSubmissionId)
             .OnDelete(DeleteBehavior.SetNull);
+        builder.HasOne(score => score.FirstFullSubmission)
+            .WithMany()
+            .HasForeignKey(score => score.FirstFullSubmissionId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

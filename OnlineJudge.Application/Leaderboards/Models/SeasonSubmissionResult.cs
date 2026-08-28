@@ -6,6 +6,8 @@ public sealed record SeasonSubmissionResult(
     Guid SubmissionId,
     Guid ProblemId,
     Guid UserId,
+    JudgeLanguage Language,
     JudgeStatus Status,
     int? RuntimeMs,
-    int? MemoryKb);
+    int? MemoryKb,
+    DateTimeOffset FinishedAt);

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OnlineJudge.Application.Leaderboards.Requests;
 using OnlineJudge.Application.Leaderboards.Services;
+using OnlineJudge.Domain.Enums;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -32,6 +33,15 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
     [HttpPost("{seasonId:guid}/problems")]
     public async Task<IActionResult> AddProblem(Guid seasonId, AddLeaderboardSeasonProblemRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.AddProblemAsync(seasonId, request, cancellationToken));
+
+    [HttpPut("{seasonId:guid}/problems/{problemId:guid}/benchmarks/{language}")]
+    public async Task<IActionResult> UpdateProblemBenchmark(
+        Guid seasonId,
+        Guid problemId,
+        JudgeLanguage language,
+        UpdateLeaderboardSeasonProblemBenchmarkRequest request,
+        CancellationToken cancellationToken) =>
+        ToActionResult(await seasonService.UpdateProblemBenchmarkAsync(seasonId, problemId, language, request, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
     [HttpDelete("{seasonId:guid}/problems/{problemId:guid}")]

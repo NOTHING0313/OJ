@@ -25,6 +25,12 @@ public class LeaderboardSeasonArchiveEntryDto
 
     public int FinalBaseScore { get; set; }
 
+    public int FinalTimeBonus { get; set; }
+
+    public int FinalRuntimeBonus { get; set; }
+
+    public int FinalMemoryBonus { get; set; }
+
     public int SolvedCount { get; set; }
 
     public DateTimeOffset LastScoreImprovedAt { get; set; }
@@ -42,9 +48,23 @@ public class LeaderboardSeasonArchiveProblemScoreDto
 
     public int EarnedBaseScore { get; set; }
 
+    public int? TimeRank { get; set; }
+
+    public DateTimeOffset FirstFullScoreAt { get; set; }
+
     public int TimeBonus { get; set; }
 
+    public OnlineJudge.Domain.Enums.JudgeLanguage? PerformanceLanguage { get; set; }
+
+    public int? RuntimeMs { get; set; }
+
+    public int? RuntimeBaselineMs { get; set; }
+
     public int RuntimeBonus { get; set; }
+
+    public int? MemoryKb { get; set; }
+
+    public int? MemoryBaselineKb { get; set; }
 
     public int MemoryBonus { get; set; }
 

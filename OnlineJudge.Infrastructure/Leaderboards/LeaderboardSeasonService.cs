@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Leaderboards.Dtos;
+using OnlineJudge.Application.Leaderboards.Models;
 using OnlineJudge.Application.Leaderboards.Requests;
 using OnlineJudge.Application.Leaderboards.Services;
 using OnlineJudge.Domain.Entities;
@@ -14,8 +15,19 @@ public sealed class LeaderboardSeasonService(
     OnlineJudgeDbContext dbContext,
     ICurrentUser currentUser,
     TimeProvider timeProvider,
-    LeaderboardIdentityService identityService) : ILeaderboardSeasonService
+    LeaderboardIdentityService identityService,
+    ILeaderboardScoringEngine scoringEngine,
+    LeaderboardScoringOptions scoringOptions) : ILeaderboardSeasonService
 {
+    public LeaderboardSeasonService(
+        OnlineJudgeDbContext dbContext,
+        ICurrentUser currentUser,
+        TimeProvider timeProvider,
+        LeaderboardIdentityService identityService)
+        : this(dbContext, currentUser, timeProvider, identityService, new LeaderboardScoringEngine(), new LeaderboardScoringOptions())
+    {
+    }
+
     public async Task<Result<SeasonLeaderboardDto>> GetCurrentLeaderboardAsync(CancellationToken cancellationToken = default)
     {
         var season = await LoadCurrentSeasonAsync(cancellationToken);
@@ -44,6 +56,29 @@ public sealed class LeaderboardSeasonService(
         return Result<SeasonLeaderboardDto>.Success(await BuildLeaderboardAsync(season, viewer, useArchive, cancellationToken));
     }
 
+    public async Task<Result<SeasonProblemLeaderboardDto>> GetCurrentProblemLeaderboardAsync(
+        Guid problemId,
+        CancellationToken cancellationToken = default)
+    {
+        var season = await LoadCurrentSeasonAsync(cancellationToken);
+        if (season is null) return Result<SeasonProblemLeaderboardDto>.Success(new SeasonProblemLeaderboardDto());
+
+        var effectiveStatus = LeaderboardSeasonLifecycle.GetEffectiveStatus(season, timeProvider.GetUtcNow());
+        var seasonProblem = season.Problems.FirstOrDefault(problem => problem.ProblemId == problemId);
+        if (seasonProblem is null || effectiveStatus is not LeaderboardSeasonStatus.Active and not LeaderboardSeasonStatus.Public)
+        {
+            return Result<SeasonProblemLeaderboardDto>.Success(new SeasonProblemLeaderboardDto());
+        }
+
+        var viewer = await identityService.GetViewerAsync(cancellationToken);
+        return Result<SeasonProblemLeaderboardDto>.Success(await BuildProblemLeaderboardAsync(
+            season,
+            seasonProblem,
+            viewer,
+            useArchive: effectiveStatus == LeaderboardSeasonStatus.Public,
+            cancellationToken));
+    }
+
     public async Task<Result<IReadOnlyList<LeaderboardSeasonDto>>> GetSeasonsAsync(CancellationToken cancellationToken = default)
     {
         var userResult = await RequireProblemSetterAsync(cancellationToken);
@@ -52,6 +87,8 @@ public sealed class LeaderboardSeasonService(
         var seasons = await dbContext.LeaderboardSeasons.AsNoTracking()
             .Include(season => season.Problems)
             .ThenInclude(problem => problem.Problem)
+            .Include(season => season.Problems)
+            .ThenInclude(problem => problem.Benchmarks)
             .OrderByDescending(season => season.CreatedAt)
             .ToListAsync(cancellationToken);
 
@@ -81,6 +118,7 @@ public sealed class LeaderboardSeasonService(
             PublicUntil = request.PublicUntil,
             Status = LeaderboardSeasonStatus.Scheduled,
             IsCurrent = true,
+            ScoringRulesJson = LeaderboardScoringRulesSerializer.Serialize(scoringOptions.CreateSnapshot()),
             CreatedByUserId = userResult.Value!.Id,
             CreatedAt = now,
             UpdatedAt = now
@@ -143,6 +181,54 @@ public sealed class LeaderboardSeasonService(
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
     }
 
+    public async Task<Result<LeaderboardSeasonDto>> UpdateProblemBenchmarkAsync(
+        Guid seasonId,
+        Guid problemId,
+        JudgeLanguage language,
+        UpdateLeaderboardSeasonProblemBenchmarkRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var userResult = await RequireProblemSetterAsync(cancellationToken);
+        if (userResult.IsFailure) return Result<LeaderboardSeasonDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
+
+        var season = await LoadSeasonAsync(seasonId, cancellationToken);
+        if (season is null) return Result<LeaderboardSeasonDto>.Failure("Leaderboard season not found.");
+        if (!CanEditScheduledSeason(season)) return Result<LeaderboardSeasonDto>.Failure("Season benchmarks are frozen after the season starts.");
+        if (request.RuntimeBaselineMs <= 0 || request.MemoryBaselineKb <= 0)
+        {
+            return Result<LeaderboardSeasonDto>.Failure("Runtime and memory baselines must be greater than zero.");
+        }
+
+        var seasonProblem = season.Problems.FirstOrDefault(problem => problem.ProblemId == problemId);
+        if (seasonProblem?.Problem is null) return Result<LeaderboardSeasonDto>.Failure("Season problem not found.");
+        if (!IsLanguageAllowed(seasonProblem.Problem.AllowedLanguagesMask, language))
+        {
+            return Result<LeaderboardSeasonDto>.Failure("Benchmark language is not allowed for this problem.");
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var benchmark = seasonProblem.Benchmarks.FirstOrDefault(item => item.Language == language);
+        if (benchmark is null)
+        {
+            benchmark = new LeaderboardSeasonProblemBenchmark
+            {
+                Id = Guid.NewGuid(),
+                SeasonProblemId = seasonProblem.Id,
+                Language = language,
+                CreatedAt = now
+            };
+            seasonProblem.Benchmarks.Add(benchmark);
+            dbContext.LeaderboardSeasonProblemBenchmarks.Add(benchmark);
+        }
+
+        benchmark.RuntimeBaselineMs = request.RuntimeBaselineMs;
+        benchmark.MemoryBaselineKb = request.MemoryBaselineKb;
+        benchmark.UpdatedAt = now;
+        season.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Result<LeaderboardSeasonDto>.Success(ToDto(season));
+    }
+
     public async Task<Result> RemoveProblemAsync(Guid seasonId, Guid problemId, CancellationToken cancellationToken = default)
     {
         var userResult = await RequireRootAsync(cancellationToken);
@@ -194,7 +280,7 @@ public sealed class LeaderboardSeasonService(
 
         var rows = await LoadEligibleScoreRowsAsync(season.Id, cancellationToken);
         var aliases = await identityService.EnsureAliasesAsync(season.Id, rows.Select(row => row.UserId), cancellationToken);
-        var ranked = Rank(rows);
+        var ranked = Rank(rows, aliases);
 
         if (season.ArchiveEntries.Count > 0)
         {
@@ -213,8 +299,11 @@ public sealed class LeaderboardSeasonService(
                 DisplayNameSnapshot = rankedUser.UserName,
                 WasAnonymous = rankedUser.IsAnonymous,
                 FinalRank = rankedUser.Rank,
-                FinalScore = rankedUser.BaseScore,
+                FinalScore = rankedUser.TotalScore,
                 FinalBaseScore = rankedUser.BaseScore,
+                FinalTimeBonus = rankedUser.TimeBonus,
+                FinalRuntimeBonus = rankedUser.RuntimeBonus,
+                FinalMemoryBonus = rankedUser.MemoryBonus,
                 SolvedCount = rankedUser.SolvedCount,
                 LastScoreImprovedAt = rankedUser.LastScoreImprovedAt,
                 CreatedAt = now
@@ -229,10 +318,17 @@ public sealed class LeaderboardSeasonService(
                 ProblemTitleSnapshot = problem.ProblemTitle,
                 BaseScore = problem.BaseScore,
                 EarnedBaseScore = problem.EarnedBaseScore,
-                TimeBonus = 0,
-                RuntimeBonus = 0,
-                MemoryBonus = 0,
-                FinalProblemScore = problem.EarnedBaseScore
+                TimeRank = problem.TimeRank,
+                FirstFullScoreAt = problem.FirstFullScoreAt,
+                TimeBonus = problem.TimeBonus,
+                PerformanceLanguage = problem.PerformanceLanguage,
+                RuntimeMs = problem.RuntimeMs,
+                RuntimeBaselineMs = problem.RuntimeBaselineMs,
+                RuntimeBonus = problem.RuntimeBonus,
+                MemoryKb = problem.MemoryKb,
+                MemoryBaselineKb = problem.MemoryBaselineKb,
+                MemoryBonus = problem.MemoryBonus,
+                FinalProblemScore = problem.TotalProblemScore
             }).ToList();
             dbContext.LeaderboardSeasonArchiveEntries.Add(entry);
         }
@@ -296,6 +392,9 @@ public sealed class LeaderboardSeasonService(
                         IsCurrentUser = viewer.UserId == entry.UserId,
                         TotalScore = entry.FinalScore,
                         BaseScore = entry.FinalBaseScore,
+                        TimeBonus = entry.FinalTimeBonus,
+                        RuntimeBonus = entry.FinalRuntimeBonus,
+                        MemoryBonus = entry.FinalMemoryBonus,
                         SolvedCount = entry.SolvedCount,
                         LastScoreImprovedAt = entry.LastScoreImprovedAt
                     };
@@ -305,7 +404,7 @@ public sealed class LeaderboardSeasonService(
 
         var rows = await LoadEligibleScoreRowsAsync(season.Id, cancellationToken);
         var aliases = await identityService.EnsureAliasesAsync(season.Id, rows.Select(row => row.UserId), cancellationToken);
-        var entries = Rank(rows).Select(item =>
+        var entries = Rank(rows, aliases).Select(item =>
         {
             var identity = LeaderboardIdentityService.Project(
                 new LeaderboardIdentityUser(item.UserId, item.UserName, item.AvatarUrl, item.IsAnonymous), viewer, aliases);
@@ -319,16 +418,112 @@ public sealed class LeaderboardSeasonService(
                 IsAnonymous = item.IsAnonymous,
                 IsCurrentUser = viewer.UserId == item.UserId,
                 BaseScore = item.BaseScore,
-                TotalScore = item.BaseScore,
+                TotalScore = item.TotalScore,
                 SolvedCount = item.SolvedCount,
-                TimeBonus = 0,
-                RuntimeBonus = 0,
-                MemoryBonus = 0,
+                TimeBonus = item.TimeBonus,
+                RuntimeBonus = item.RuntimeBonus,
+                MemoryBonus = item.MemoryBonus,
                 LastScoreImprovedAt = item.LastScoreImprovedAt
             };
         }).ToList();
 
         return new SeasonLeaderboardDto { Season = ToDto(season), Entries = entries };
+    }
+
+    private async Task<SeasonProblemLeaderboardDto> BuildProblemLeaderboardAsync(
+        LeaderboardSeason season,
+        LeaderboardSeasonProblem seasonProblem,
+        LeaderboardViewer viewer,
+        bool useArchive,
+        CancellationToken cancellationToken)
+    {
+        var problemDto = ToDto(season).Problems.Single(problem => problem.ProblemId == seasonProblem.ProblemId);
+        if (useArchive && season.ArchiveEntries.Count > 0)
+        {
+            var archived = season.ArchiveEntries
+                .Select(entry => new { Entry = entry, Score = entry.ProblemScores.SingleOrDefault(score => score.ProblemId == seasonProblem.ProblemId) })
+                .Where(item => item.Score is not null)
+                .OrderByDescending(item => item.Score!.FinalProblemScore)
+                .ThenByDescending(item => item.Score!.EarnedBaseScore)
+                .ThenBy(item => item.Score!.TimeRank ?? int.MaxValue)
+                .ThenByDescending(item => item.Score!.RuntimeBonus + item.Score.MemoryBonus)
+                .ThenBy(item => item.Score!.FirstFullScoreAt)
+                .ThenBy(item => item.Entry.WasAnonymous ? item.Entry.Alias : item.Entry.DisplayNameSnapshot, StringComparer.Ordinal)
+                .Select((item, index) =>
+                {
+                    var hidden = item.Entry.WasAnonymous && !viewer.CanAudit;
+                    var score = item.Score!;
+                    return new SeasonProblemLeaderboardEntryDto
+                    {
+                        Rank = index + 1,
+                        UserId = hidden ? null : item.Entry.UserId,
+                        UserName = viewer.CanAudit ? item.Entry.DisplayNameSnapshot : null,
+                        DisplayName = hidden ? item.Entry.Alias : item.Entry.DisplayNameSnapshot,
+                        Alias = item.Entry.Alias,
+                        IsAnonymous = item.Entry.WasAnonymous,
+                        IsCurrentUser = viewer.UserId == item.Entry.UserId,
+                        BaseScore = score.BaseScore,
+                        EarnedBaseScore = score.EarnedBaseScore,
+                        TimeRank = score.TimeRank,
+                        TimeBonus = score.TimeBonus,
+                        PerformanceLanguage = score.PerformanceLanguage,
+                        RuntimeMs = score.RuntimeMs,
+                        RuntimeBaselineMs = score.RuntimeBaselineMs,
+                        RuntimeBonus = score.RuntimeBonus,
+                        MemoryKb = score.MemoryKb,
+                        MemoryBaselineKb = score.MemoryBaselineKb,
+                        MemoryBonus = score.MemoryBonus,
+                        TotalProblemScore = score.FinalProblemScore,
+                        FirstFullScoreAt = score.FirstFullScoreAt
+                    };
+                }).ToList();
+
+            return new SeasonProblemLeaderboardDto { Season = ToDto(season), Problem = problemDto, Entries = archived };
+        }
+
+        var rows = await LoadEligibleScoreRowsAsync(season.Id, cancellationToken);
+        var aliases = await identityService.EnsureAliasesAsync(season.Id, rows.Select(row => row.UserId), cancellationToken);
+        var live = rows.Select(row => new { User = row, Score = row.Problems.SingleOrDefault(score => score.ProblemId == seasonProblem.ProblemId) })
+            .Where(item => item.Score is not null)
+            .OrderByDescending(item => item.Score!.TotalProblemScore)
+            .ThenByDescending(item => item.Score!.EarnedBaseScore)
+            .ThenBy(item => item.Score!.TimeRank ?? int.MaxValue)
+            .ThenByDescending(item => item.Score!.RuntimeBonus + item.Score.MemoryBonus)
+            .ThenBy(item => item.Score!.FirstFullScoreAt)
+            .ThenBy(item => item.User.IsAnonymous ? aliases[item.User.UserId] : item.User.UserName, StringComparer.Ordinal)
+            .Select((item, index) =>
+            {
+                var identity = LeaderboardIdentityService.Project(
+                    new LeaderboardIdentityUser(item.User.UserId, item.User.UserName, item.User.AvatarUrl, item.User.IsAnonymous),
+                    viewer,
+                    aliases);
+                var score = item.Score!;
+                return new SeasonProblemLeaderboardEntryDto
+                {
+                    Rank = index + 1,
+                    UserId = identity.UserId,
+                    UserName = viewer.CanAudit ? item.User.UserName : null,
+                    DisplayName = identity.DisplayName,
+                    Alias = identity.Alias,
+                    IsAnonymous = item.User.IsAnonymous,
+                    IsCurrentUser = viewer.UserId == item.User.UserId,
+                    BaseScore = score.BaseScore,
+                    EarnedBaseScore = score.EarnedBaseScore,
+                    TimeRank = score.TimeRank,
+                    TimeBonus = score.TimeBonus,
+                    PerformanceLanguage = score.PerformanceLanguage,
+                    RuntimeMs = score.RuntimeMs,
+                    RuntimeBaselineMs = score.RuntimeBaselineMs,
+                    RuntimeBonus = score.RuntimeBonus,
+                    MemoryKb = score.MemoryKb,
+                    MemoryBaselineKb = score.MemoryBaselineKb,
+                    MemoryBonus = score.MemoryBonus,
+                    TotalProblemScore = score.TotalProblemScore,
+                    FirstFullScoreAt = score.FirstFullScoreAt
+                };
+            }).ToList();
+
+        return new SeasonProblemLeaderboardDto { Season = ToDto(season), Problem = problemDto, Entries = live };
     }
 
     private async Task<List<ScoreUserRow>> LoadEligibleScoreRowsAsync(Guid seasonId, CancellationToken cancellationToken)
@@ -340,21 +535,63 @@ public sealed class LeaderboardSeasonService(
             join problem in dbContext.Problems.AsNoTracking() on score.ProblemId equals problem.Id
             where score.SeasonId == seasonId
                 && score.IsFullScore
+                && score.FirstFullScoreAt.HasValue
                 && user.Role == UserRole.Answerer
                 && !user.IsBlacklisted
                 && !user.IsDeleted
             select new
             {
                 score.UserId,
+                ScoreId = score.Id,
                 user.UserName,
                 user.AvatarUrl,
                 user.IsLeaderboardAnonymous,
                 score.ProblemId,
+                score.SeasonProblemId,
                 ProblemTitle = problem.Title,
                 seasonProblem.BaseScore,
                 EarnedBaseScore = score.BestBaseScore,
+                score.FirstFullScoreAt,
+                score.FirstFullSubmissionId,
+                score.BestPerformanceSubmissionId,
+                score.BestPerformanceLanguage,
+                score.BestRuntimeMs,
+                score.BestMemoryKb,
+                score.BestPerformanceFinishedAt,
                 score.LastScoreImprovedAt
             }).ToListAsync(cancellationToken);
+
+        var season = await dbContext.LeaderboardSeasons.AsNoTracking()
+            .SingleAsync(item => item.Id == seasonId, cancellationToken);
+        var rules = LeaderboardScoringRulesSerializer.Deserialize(season.ScoringRulesJson);
+        var benchmarks = await dbContext.LeaderboardSeasonProblemBenchmarks.AsNoTracking()
+            .Where(item => item.SeasonProblem!.SeasonId == seasonId)
+            .Select(item => new { item.SeasonProblemId, item.Language, item.RuntimeBaselineMs, item.MemoryBaselineKb })
+            .ToListAsync(cancellationToken);
+
+        var calculated = scores.GroupBy(score => new { score.ProblemId, score.BaseScore })
+            .SelectMany(group => scoringEngine.CalculateProblemScores(
+                group.Key.BaseScore,
+                rules,
+                group.Select(score => new LeaderboardProblemScoreFact(
+                    score.ScoreId,
+                    score.UserId,
+                    score.EarnedBaseScore,
+                    score.FirstFullScoreAt!.Value,
+                    score.FirstFullSubmissionId,
+                    score.BestPerformanceSubmissionId.HasValue && score.BestPerformanceLanguage.HasValue && score.BestPerformanceFinishedAt.HasValue
+                        ? new LeaderboardPerformanceCandidate(
+                            score.BestPerformanceSubmissionId.Value,
+                            score.BestPerformanceLanguage.Value,
+                            score.BestRuntimeMs,
+                            score.BestMemoryKb,
+                            score.BestPerformanceFinishedAt.Value)
+                        : null,
+                    score.LastScoreImprovedAt)).ToList(),
+                benchmarks.Where(item => item.SeasonProblemId == group.First().SeasonProblemId)
+                    .Select(item => new LeaderboardProblemBenchmarkFact(item.Language, item.RuntimeBaselineMs, item.MemoryBaselineKb))
+                    .ToList()))
+            .ToDictionary(item => item.ScoreId);
 
         return scores.GroupBy(score => new { score.UserId, score.UserName, score.AvatarUrl, score.IsLeaderboardAnonymous })
             .Select(group => new ScoreUserRow(
@@ -363,18 +600,44 @@ public sealed class LeaderboardSeasonService(
                 group.Key.AvatarUrl,
                 group.Key.IsLeaderboardAnonymous,
                 group.Sum(score => score.EarnedBaseScore),
+                group.Sum(score => calculated[score.ScoreId].TimeBonus),
+                group.Sum(score => calculated[score.ScoreId].RuntimeBonus),
+                group.Sum(score => calculated[score.ScoreId].MemoryBonus),
                 group.Count(),
                 group.Max(score => score.LastScoreImprovedAt),
-                group.Select(score => new ScoreProblemRow(score.ProblemId, score.ProblemTitle, score.BaseScore, score.EarnedBaseScore)).ToList()))
+                group.Select(score =>
+                {
+                    var value = calculated[score.ScoreId];
+                    return new ScoreProblemRow(
+                        score.ProblemId,
+                        score.ProblemTitle,
+                        score.BaseScore,
+                        score.EarnedBaseScore,
+                        value.TimeRank,
+                        value.TimeBonus,
+                        value.Performance?.Candidate.Language,
+                        value.Performance?.Candidate.RuntimeMs,
+                        value.Performance?.RuntimeBaselineMs,
+                        value.RuntimeBonus,
+                        value.Performance?.Candidate.MemoryKb,
+                        value.Performance?.MemoryBaselineKb,
+                        value.MemoryBonus,
+                        value.TotalProblemScore,
+                        value.FirstFullScoreAt);
+                }).ToList()))
             .ToList();
     }
 
-    private static IReadOnlyList<RankedScoreUserRow> Rank(IEnumerable<ScoreUserRow> rows)
+    private static IReadOnlyList<RankedScoreUserRow> Rank(
+        IEnumerable<ScoreUserRow> rows,
+        IReadOnlyDictionary<Guid, string> aliases)
     {
-        return rows.OrderByDescending(row => row.BaseScore)
+        return rows.OrderByDescending(row => row.TotalScore)
             .ThenByDescending(row => row.SolvedCount)
+            .ThenByDescending(row => row.BaseScore)
+            .ThenByDescending(row => row.PerformanceBonus)
             .ThenBy(row => row.LastScoreImprovedAt)
-            .ThenBy(row => row.UserName)
+            .ThenBy(row => row.IsAnonymous ? aliases[row.UserId] : row.UserName, StringComparer.Ordinal)
             .Select((row, index) => new RankedScoreUserRow(row, index + 1))
             .ToList();
     }
@@ -400,6 +663,9 @@ public sealed class LeaderboardSeasonService(
                 FinalRank = entry.FinalRank,
                 FinalScore = entry.FinalScore,
                 FinalBaseScore = entry.FinalBaseScore,
+                FinalTimeBonus = entry.FinalTimeBonus,
+                FinalRuntimeBonus = entry.FinalRuntimeBonus,
+                FinalMemoryBonus = entry.FinalMemoryBonus,
                 SolvedCount = entry.SolvedCount,
                 LastScoreImprovedAt = entry.LastScoreImprovedAt,
                 ProblemScores = entry.ProblemScores.Select(score => new LeaderboardSeasonArchiveProblemScoreDto
@@ -408,8 +674,15 @@ public sealed class LeaderboardSeasonService(
                     ProblemTitleSnapshot = score.ProblemTitleSnapshot,
                     BaseScore = score.BaseScore,
                     EarnedBaseScore = score.EarnedBaseScore,
+                    TimeRank = score.TimeRank,
+                    FirstFullScoreAt = score.FirstFullScoreAt,
                     TimeBonus = score.TimeBonus,
+                    PerformanceLanguage = score.PerformanceLanguage,
+                    RuntimeMs = score.RuntimeMs,
+                    RuntimeBaselineMs = score.RuntimeBaselineMs,
                     RuntimeBonus = score.RuntimeBonus,
+                    MemoryKb = score.MemoryKb,
+                    MemoryBaselineKb = score.MemoryBaselineKb,
                     MemoryBonus = score.MemoryBonus,
                     FinalProblemScore = score.FinalProblemScore
                 }).ToList()
@@ -420,12 +693,14 @@ public sealed class LeaderboardSeasonService(
     private async Task<LeaderboardSeason?> LoadCurrentSeasonAsync(CancellationToken cancellationToken) =>
         await dbContext.LeaderboardSeasons
             .Include(season => season.Problems).ThenInclude(problem => problem.Problem)
+            .Include(season => season.Problems).ThenInclude(problem => problem.Benchmarks)
             .Include(season => season.ArchiveEntries).ThenInclude(entry => entry.ProblemScores)
             .SingleOrDefaultAsync(season => season.IsCurrent, cancellationToken);
 
     private async Task<LeaderboardSeason?> LoadSeasonAsync(Guid seasonId, CancellationToken cancellationToken) =>
         await dbContext.LeaderboardSeasons
             .Include(season => season.Problems).ThenInclude(problem => problem.Problem)
+            .Include(season => season.Problems).ThenInclude(problem => problem.Benchmarks)
             .Include(season => season.ArchiveEntries).ThenInclude(entry => entry.ProblemScores)
             .FirstOrDefaultAsync(season => season.Id == seasonId, cancellationToken);
 
@@ -471,16 +746,51 @@ public sealed class LeaderboardSeasonService(
         Status = season.Status,
         EffectiveStatus = LeaderboardSeasonLifecycle.GetEffectiveStatus(season, timeProvider.GetUtcNow()),
         IsCurrent = season.IsCurrent,
+        ScoringRules = LeaderboardScoringRulesSerializer.Deserialize(season.ScoringRulesJson),
         Problems = season.Problems.OrderBy(problem => problem.CreatedAt).Select(problem => new LeaderboardSeasonProblemDto
         {
             Id = problem.Id,
             ProblemId = problem.ProblemId,
             ProblemTitle = problem.Problem?.Title ?? "题目已删除",
-            BaseScore = problem.BaseScore
+            BaseScore = problem.BaseScore,
+            AllowedLanguagesMask = problem.Problem?.AllowedLanguagesMask ?? 0,
+            Benchmarks = problem.Benchmarks.OrderBy(item => item.Language).Select(item => new LeaderboardSeasonProblemBenchmarkDto
+            {
+                Language = item.Language,
+                RuntimeBaselineMs = item.RuntimeBaselineMs,
+                MemoryBaselineKb = item.MemoryBaselineKb
+            }).ToList()
         }).ToList()
     };
 
-    private sealed record ScoreProblemRow(Guid ProblemId, string ProblemTitle, int BaseScore, int EarnedBaseScore);
+    private static bool IsLanguageAllowed(int mask, JudgeLanguage language)
+    {
+        var flag = language switch
+        {
+            JudgeLanguage.Cpp17 => 1,
+            JudgeLanguage.C11 => 2,
+            JudgeLanguage.CSharp => 4,
+            _ => 0
+        };
+        return flag != 0 && (mask == 0 || (mask & flag) != 0);
+    }
+
+    private sealed record ScoreProblemRow(
+        Guid ProblemId,
+        string ProblemTitle,
+        int BaseScore,
+        int EarnedBaseScore,
+        int? TimeRank,
+        int TimeBonus,
+        JudgeLanguage? PerformanceLanguage,
+        int? RuntimeMs,
+        int? RuntimeBaselineMs,
+        int RuntimeBonus,
+        int? MemoryKb,
+        int? MemoryBaselineKb,
+        int MemoryBonus,
+        int TotalProblemScore,
+        DateTimeOffset FirstFullScoreAt);
 
     private record ScoreUserRow(
         Guid UserId,
@@ -488,9 +798,17 @@ public sealed class LeaderboardSeasonService(
         string? AvatarUrl,
         bool IsAnonymous,
         int BaseScore,
+        int TimeBonus,
+        int RuntimeBonus,
+        int MemoryBonus,
         int SolvedCount,
         DateTimeOffset LastScoreImprovedAt,
-        IReadOnlyList<ScoreProblemRow> Problems);
+        IReadOnlyList<ScoreProblemRow> Problems)
+    {
+        public int TotalScore => BaseScore + TimeBonus + RuntimeBonus + MemoryBonus;
+
+        public int PerformanceBonus => RuntimeBonus + MemoryBonus;
+    }
 
     private sealed record RankedScoreUserRow(ScoreUserRow Row, int Rank) : ScoreUserRow(
         Row.UserId,
@@ -498,6 +816,9 @@ public sealed class LeaderboardSeasonService(
         Row.AvatarUrl,
         Row.IsAnonymous,
         Row.BaseScore,
+        Row.TimeBonus,
+        Row.RuntimeBonus,
+        Row.MemoryBonus,
         Row.SolvedCount,
         Row.LastScoreImprovedAt,
         Row.Problems);

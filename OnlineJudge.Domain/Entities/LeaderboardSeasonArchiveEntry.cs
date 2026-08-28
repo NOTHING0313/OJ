@@ -20,6 +20,12 @@ public class LeaderboardSeasonArchiveEntry
 
     public int FinalBaseScore { get; set; }
 
+    public int FinalTimeBonus { get; set; }
+
+    public int FinalRuntimeBonus { get; set; }
+
+    public int FinalMemoryBonus { get; set; }
+
     public int SolvedCount { get; set; }
 
     public DateTimeOffset LastScoreImprovedAt { get; set; }

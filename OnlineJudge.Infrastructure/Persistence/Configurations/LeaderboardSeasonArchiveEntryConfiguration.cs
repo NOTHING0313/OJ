@@ -17,6 +17,9 @@ public class LeaderboardSeasonArchiveEntryConfiguration : IEntityTypeConfigurati
         builder.Property(entry => entry.FinalRank).IsRequired();
         builder.Property(entry => entry.FinalScore).IsRequired();
         builder.Property(entry => entry.FinalBaseScore).IsRequired();
+        builder.Property(entry => entry.FinalTimeBonus).IsRequired();
+        builder.Property(entry => entry.FinalRuntimeBonus).IsRequired();
+        builder.Property(entry => entry.FinalMemoryBonus).IsRequired();
         builder.Property(entry => entry.SolvedCount).IsRequired();
         builder.Property(entry => entry.LastScoreImprovedAt).IsRequired();
         builder.Property(entry => entry.CreatedAt).IsRequired();

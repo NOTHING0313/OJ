@@ -27,6 +27,7 @@ import { ChallengeTaskDetailPage } from "./pages/ChallengeTaskDetailPage";
 import { ForbiddenPage } from "./pages/ForbiddenPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { SeasonLeaderboardPage } from "./pages/SeasonLeaderboardPage";
+import { SeasonProblemLeaderboardPage } from "./pages/SeasonProblemLeaderboardPage";
 import { LeaderboardHomePage } from "./pages/LeaderboardHomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { MySubmissionsPage } from "./pages/MySubmissionsPage";
@@ -57,6 +58,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/challenges/:id" element={<ChallengeDetailPage />} />
             <Route path="/leaderboards" element={<LeaderboardHomePage />} />
             <Route path="/leaderboards/users" element={<SeasonLeaderboardPage />} />
+            <Route path="/leaderboards/users/problems/:problemId" element={<SeasonProblemLeaderboardPage />} />
             <Route path="/leaderboards/challenges" element={<ChallengeLeaderboardIndexPage />} />
             <Route path="/teams" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
             <Route
