@@ -23,6 +23,23 @@ internal static partial class FunctionJudgeSpecParser
         "TreeNode<int>"
     ];
 
+    private static readonly HashSet<string> CustomFieldPrimitiveTypes =
+    [
+        "int",
+        "long",
+        "double",
+        "bool",
+        "string"
+    ];
+
+    private static readonly HashSet<string> ReservedIdentifiers = new(StringComparer.Ordinal)
+    {
+        "int", "long", "double", "bool", "string", "void", "class", "struct", "record", "namespace",
+        "public", "private", "protected", "internal", "static", "const", "readonly", "ref", "out", "in",
+        "new", "return", "if", "else", "for", "while", "switch", "case", "default", "true", "false", "null",
+        "auto", "typename", "template", "using", "typedef", "sizeof", "Solution", "Program", "ListNode", "TreeNode"
+    };
+
     public static Result<FunctionJudgeSpec> Parse(string? functionSpecJson)
     {
         if (string.IsNullOrWhiteSpace(functionSpecJson))
@@ -44,17 +61,26 @@ internal static partial class FunctionJudgeSpecParser
                 return Result<FunctionJudgeSpec>.Failure("Function name is required.");
             }
 
-            if (!IsIdentifier(functionName))
+            if (!IsSafeIdentifier(functionName))
             {
                 return Result<FunctionJudgeSpec>.Failure("Function name is invalid.");
             }
+
+            var customTypesResult = ParseCustomTypes(root);
+            if (customTypesResult.IsFailure || customTypesResult.Value is null)
+            {
+                return Result<FunctionJudgeSpec>.Failure(customTypesResult.ErrorMessage ?? "Invalid custom types.");
+            }
+
+            var customTypes = customTypesResult.Value;
+            var customTypeMap = customTypes.ToDictionary(type => type.Name, StringComparer.Ordinal);
 
             if (!TryGetRequiredString(root, "returnType", out var returnType))
             {
                 return Result<FunctionJudgeSpec>.Failure("Return type is required.");
             }
 
-            var typeValidation = ValidateSupportedType(returnType);
+            var typeValidation = ValidateFunctionType(returnType, customTypeMap);
             if (typeValidation.IsFailure)
             {
                 return Result<FunctionJudgeSpec>.Failure(typeValidation.ErrorMessage!);
@@ -79,7 +105,7 @@ internal static partial class FunctionJudgeSpecParser
                     return Result<FunctionJudgeSpec>.Failure("Parameter name is required.");
                 }
 
-                if (!IsIdentifier(parameterName))
+                if (!IsSafeIdentifier(parameterName))
                 {
                     return Result<FunctionJudgeSpec>.Failure($"Parameter name is invalid: {parameterName}");
                 }
@@ -94,13 +120,19 @@ internal static partial class FunctionJudgeSpecParser
                     return Result<FunctionJudgeSpec>.Failure($"Parameter type is required: {parameterName}");
                 }
 
-                typeValidation = ValidateSupportedType(parameterType);
+                typeValidation = ValidateFunctionType(parameterType, customTypeMap);
                 if (typeValidation.IsFailure)
                 {
                     return Result<FunctionJudgeSpec>.Failure(typeValidation.ErrorMessage!);
                 }
 
                 parameters.Add(new FunctionParameterSpec(parameterName, parameterType));
+            }
+
+            var customTypeValidation = ValidateCustomTypes(customTypes, customTypeMap);
+            if (customTypeValidation.IsFailure)
+            {
+                return Result<FunctionJudgeSpec>.Failure(customTypeValidation.ErrorMessage!);
             }
 
             if (root.TryGetProperty("supportedLanguages", out var supportedLanguages) && supportedLanguages.ValueKind == JsonValueKind.Array)
@@ -118,7 +150,10 @@ internal static partial class FunctionJudgeSpecParser
                 }
             }
 
-            return Result<FunctionJudgeSpec>.Success(new FunctionJudgeSpec(functionName, returnType, parameters));
+            return Result<FunctionJudgeSpec>.Success(new FunctionJudgeSpec(functionName, returnType, parameters)
+            {
+                Types = customTypes
+            });
         }
         catch (JsonException)
         {
@@ -190,7 +225,7 @@ internal static partial class FunctionJudgeSpecParser
                     return Result.Failure($"Missing argument: {parameter.Name}");
                 }
 
-                var argumentValidation = ValidateJsonValue(argumentElement, parameter.Type, parameter.Name);
+                var argumentValidation = ValidateJsonValue(argumentElement, parameter.Type, parameter.Name, spec);
                 if (argumentValidation.IsFailure)
                 {
                     return argumentValidation;
@@ -198,7 +233,7 @@ internal static partial class FunctionJudgeSpecParser
             }
 
             using var expectedDocument = JsonDocument.Parse(expectedJson);
-            return ValidateJsonValue(expectedDocument.RootElement, spec.ReturnType, "expected");
+            return ValidateJsonValue(expectedDocument.RootElement, spec.ReturnType, "expected", spec);
         }
         catch (JsonException)
         {
@@ -213,7 +248,205 @@ internal static partial class FunctionJudgeSpecParser
             : Result.Failure($"Function mode does not support type: {type}");
     }
 
-    private static Result ValidateJsonValue(JsonElement element, string type, string name)
+    internal static bool IsCustomType(FunctionJudgeSpec spec, string type)
+    {
+        return spec.FindCustomType(type) is not null;
+    }
+
+    internal static bool IsCustomArrayType(FunctionJudgeSpec spec, string type)
+    {
+        return TryGetArrayElementType(type, out var elementType) && IsCustomType(spec, elementType);
+    }
+
+    internal static bool TryGetArrayElementType(string type, out string elementType)
+    {
+        if (type.EndsWith("[]", StringComparison.Ordinal))
+        {
+            elementType = type[..^2];
+            return true;
+        }
+
+        elementType = string.Empty;
+        return false;
+    }
+
+    private static Result<List<FunctionCustomTypeSpec>> ParseCustomTypes(JsonElement root)
+    {
+        if (!root.TryGetProperty("types", out var typesElement))
+        {
+            return Result<List<FunctionCustomTypeSpec>>.Success([]);
+        }
+
+        if (typesElement.ValueKind != JsonValueKind.Array)
+        {
+            return Result<List<FunctionCustomTypeSpec>>.Failure("Types must be an array.");
+        }
+
+        var types = new List<FunctionCustomTypeSpec>();
+        var typeNames = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var typeElement in typesElement.EnumerateArray())
+        {
+            if (typeElement.ValueKind != JsonValueKind.Object)
+            {
+                return Result<List<FunctionCustomTypeSpec>>.Failure("Each custom type must be a JSON object.");
+            }
+
+            if (!TryGetRequiredString(typeElement, "name", out var typeName))
+            {
+                return Result<List<FunctionCustomTypeSpec>>.Failure("Custom type name is required.");
+            }
+
+            if (!IsSafeIdentifier(typeName) || ReservedIdentifiers.Contains(typeName) || typeName.StartsWith("__oj_", StringComparison.Ordinal))
+            {
+                return Result<List<FunctionCustomTypeSpec>>.Failure($"Custom type name is invalid: {typeName}");
+            }
+
+            if (!typeNames.Add(typeName))
+            {
+                return Result<List<FunctionCustomTypeSpec>>.Failure($"Duplicate custom type name: {typeName}");
+            }
+
+            if (!typeElement.TryGetProperty("fields", out var fieldsElement) || fieldsElement.ValueKind != JsonValueKind.Array)
+            {
+                return Result<List<FunctionCustomTypeSpec>>.Failure($"Fields must be an array: {typeName}");
+            }
+
+            var fields = new List<FunctionCustomTypeFieldSpec>();
+            var fieldNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var fieldElement in fieldsElement.EnumerateArray())
+            {
+                if (fieldElement.ValueKind != JsonValueKind.Object)
+                {
+                    return Result<List<FunctionCustomTypeSpec>>.Failure($"Each field must be a JSON object: {typeName}");
+                }
+
+                if (!TryGetRequiredString(fieldElement, "name", out var fieldName))
+                {
+                    return Result<List<FunctionCustomTypeSpec>>.Failure($"Field name is required: {typeName}");
+                }
+
+                if (!IsSafeIdentifier(fieldName) || ReservedIdentifiers.Contains(fieldName) || fieldName.StartsWith("__oj_", StringComparison.Ordinal))
+                {
+                    return Result<List<FunctionCustomTypeSpec>>.Failure($"Field name is invalid: {typeName}.{fieldName}");
+                }
+
+                if (!fieldNames.Add(fieldName))
+                {
+                    return Result<List<FunctionCustomTypeSpec>>.Failure($"Duplicate field name: {typeName}.{fieldName}");
+                }
+
+                if (!TryGetRequiredString(fieldElement, "type", out var fieldType))
+                {
+                    return Result<List<FunctionCustomTypeSpec>>.Failure($"Field type is required: {typeName}.{fieldName}");
+                }
+
+                fields.Add(new FunctionCustomTypeFieldSpec(fieldName, fieldType));
+            }
+
+            if (fields.Count == 0)
+            {
+                return Result<List<FunctionCustomTypeSpec>>.Failure($"Custom type must contain at least one field: {typeName}");
+            }
+
+            types.Add(new FunctionCustomTypeSpec(typeName, fields));
+        }
+
+        return Result<List<FunctionCustomTypeSpec>>.Success(types);
+    }
+
+    private static Result ValidateCustomTypes(
+        IReadOnlyList<FunctionCustomTypeSpec> customTypes,
+        IReadOnlyDictionary<string, FunctionCustomTypeSpec> customTypeMap)
+    {
+        foreach (var customType in customTypes)
+        {
+            foreach (var field in customType.Fields)
+            {
+                if (CustomFieldPrimitiveTypes.Contains(field.Type) || customTypeMap.ContainsKey(field.Type))
+                {
+                    continue;
+                }
+
+                if (field.Type.EndsWith("[]", StringComparison.Ordinal))
+                {
+                    return Result.Failure($"Custom type field arrays are not supported yet: {customType.Name}.{field.Name}");
+                }
+
+                return Result.Failure($"Function mode does not support custom field type: {customType.Name}.{field.Name} -> {field.Type}");
+            }
+        }
+
+        return ValidateNoCustomTypeCycles(customTypes, customTypeMap);
+    }
+
+    private static Result ValidateNoCustomTypeCycles(
+        IReadOnlyList<FunctionCustomTypeSpec> customTypes,
+        IReadOnlyDictionary<string, FunctionCustomTypeSpec> customTypeMap)
+    {
+        var states = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (var customType in customTypes)
+        {
+            var validation = Visit(customType.Name, states, customTypeMap);
+            if (validation.IsFailure)
+            {
+                return validation;
+            }
+        }
+
+        return Result.Success();
+
+        static Result Visit(
+            string typeName,
+            IDictionary<string, int> states,
+            IReadOnlyDictionary<string, FunctionCustomTypeSpec> customTypeMap)
+        {
+            if (states.TryGetValue(typeName, out var state))
+            {
+                return state == 1
+                    ? Result.Failure($"Custom type dependency cycle detected at: {typeName}")
+                    : Result.Success();
+            }
+
+            states[typeName] = 1;
+            foreach (var field in customTypeMap[typeName].Fields)
+            {
+                if (!customTypeMap.ContainsKey(field.Type))
+                {
+                    continue;
+                }
+
+                var validation = Visit(field.Type, states, customTypeMap);
+                if (validation.IsFailure)
+                {
+                    return validation;
+                }
+            }
+
+            states[typeName] = 2;
+            return Result.Success();
+        }
+    }
+
+    private static Result ValidateFunctionType(
+        string type,
+        IReadOnlyDictionary<string, FunctionCustomTypeSpec> customTypeMap)
+    {
+        if (SupportedTypes.Contains(type) || customTypeMap.ContainsKey(type))
+        {
+            return Result.Success();
+        }
+
+        if (TryGetArrayElementType(type, out var elementType) && customTypeMap.ContainsKey(elementType))
+        {
+            return Result.Success();
+        }
+
+        return Result.Failure($"Function mode does not support type: {type}");
+    }
+
+    private static Result ValidateJsonValue(JsonElement element, string type, string name, FunctionJudgeSpec spec)
     {
         return type switch
         {
@@ -232,16 +465,54 @@ internal static partial class FunctionJudgeSpecParser
             "string" => element.ValueKind == JsonValueKind.String
                 ? Result.Success()
                 : Result.Failure($"{name} must be string."),
-            "int[]" => ValidateArray(element, "int", name),
-            "long[]" => ValidateArray(element, "long", name),
-            "double[]" => ValidateArray(element, "double", name),
-            "bool[]" => ValidateArray(element, "bool", name),
-            "string[]" => ValidateArray(element, "string", name),
-            "int[][]" => ValidateArray(element, "int[]", name),
+            "int[]" => ValidateArray(element, "int", name, spec),
+            "long[]" => ValidateArray(element, "long", name, spec),
+            "double[]" => ValidateArray(element, "double", name, spec),
+            "bool[]" => ValidateArray(element, "bool", name, spec),
+            "string[]" => ValidateArray(element, "string", name, spec),
+            "int[][]" => ValidateArray(element, "int[]", name, spec),
             "ListNode<int>" => ValidateListNode(element),
             "TreeNode<int>" => ValidateTreeNode(element),
-            _ => ValidateSupportedType(type)
+            _ => ValidateCustomJsonValue(element, type, name, spec)
         };
+    }
+
+    private static Result ValidateCustomJsonValue(JsonElement element, string type, string name, FunctionJudgeSpec spec)
+    {
+        if (IsCustomArrayType(spec, type))
+        {
+            TryGetArrayElementType(type, out var elementType);
+            return ValidateArray(element, elementType, name, spec);
+        }
+
+        var customType = spec.FindCustomType(type);
+        if (customType is null)
+        {
+            return Result.Failure($"Function mode does not support type: {type}");
+        }
+
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return Result.Failure($"{name} must be an object of type {type}.");
+        }
+
+        var expectedFieldNames = customType.Fields.Select(field => field.Name).ToHashSet(StringComparer.Ordinal);
+        var actualFieldNames = element.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+        if (!actualFieldNames.SetEquals(expectedFieldNames))
+        {
+            return Result.Failure($"{name} must exactly match fields of {type}.");
+        }
+
+        foreach (var field in customType.Fields)
+        {
+            var fieldValidation = ValidateJsonValue(element.GetProperty(field.Name), field.Type, $"{name}.{field.Name}", spec);
+            if (fieldValidation.IsFailure)
+            {
+                return fieldValidation;
+            }
+        }
+
+        return Result.Success();
     }
 
     private static Result ValidateListNode(JsonElement element)
@@ -285,20 +556,23 @@ internal static partial class FunctionJudgeSpecParser
         return Result.Success();
     }
 
-    private static Result ValidateArray(JsonElement element, string elementType, string name)
+    private static Result ValidateArray(JsonElement element, string elementType, string name, FunctionJudgeSpec spec)
     {
         if (element.ValueKind != JsonValueKind.Array)
         {
             return Result.Failure($"{name} must be an array.");
         }
 
+        var index = 0;
         foreach (var item in element.EnumerateArray())
         {
-            var itemValidation = ValidateJsonValue(item, elementType, name);
+            var itemValidation = ValidateJsonValue(item, elementType, $"{name}[{index}]", spec);
             if (itemValidation.IsFailure)
             {
                 return itemValidation;
             }
+
+            index++;
         }
 
         return Result.Success();
@@ -316,7 +590,7 @@ internal static partial class FunctionJudgeSpecParser
         return !string.IsNullOrWhiteSpace(value);
     }
 
-    private static bool IsIdentifier(string value)
+    private static bool IsSafeIdentifier(string value)
     {
         return IdentifierRegex().IsMatch(value);
     }

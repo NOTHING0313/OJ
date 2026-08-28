@@ -58,7 +58,7 @@ public class CSharpFunctionJudgeCodeBuilder
             ProblemId = request.ProblemId,
             Language = request.Language,
             JudgeMode = request.JudgeMode,
-            SourceCode = BuildSource(request.SourceCode, caseBlocks, ContainsListNode(spec), ContainsTreeNode(spec)),
+            SourceCode = BuildSource(request.SourceCode, caseBlocks, spec),
             FunctionSpecJson = request.FunctionSpecJson,
             TimeLimitMs = request.TimeLimitMs,
             MemoryLimitMb = request.MemoryLimitMb,
@@ -66,7 +66,7 @@ public class CSharpFunctionJudgeCodeBuilder
         });
     }
 
-    private static string BuildSource(string userSource, IReadOnlyList<string> caseBlocks, bool includeListNodeHelpers, bool includeTreeNodeHelpers)
+    private static string BuildSource(string userSource, IReadOnlyList<string> caseBlocks, FunctionJudgeSpec spec)
     {
         var builder = new StringBuilder();
         builder.AppendLine("using System;");
@@ -136,7 +136,10 @@ public class CSharpFunctionJudgeCodeBuilder
         builder.AppendLine("    private static string __oj_to_json(string[] values) => values is null ? \"null\" : \"[\" + string.Join(\",\", values.Select(__oj_to_json)) + \"]\";");
         builder.AppendLine("    private static string __oj_to_json(int[][] values) => values is null ? \"null\" : \"[\" + string.Join(\",\", values.Select(__oj_to_json)) + \"]\";");
         builder.AppendLine("    private static string __oj_to_json(int?[] values) => values is null ? \"null\" : \"[\" + string.Join(\",\", values.Select(value => value.HasValue ? __oj_to_json(value.Value) : \"null\")) + \"]\";");
-        if (includeListNodeHelpers)
+
+        AppendCustomTypeHelpers(builder, spec);
+
+        if (ContainsListNode(spec))
         {
             builder.AppendLine("    private static ListNode? __oj_build_list(int[] values)");
             builder.AppendLine("    {");
@@ -160,7 +163,8 @@ public class CSharpFunctionJudgeCodeBuilder
             builder.AppendLine("        return values.ToArray();");
             builder.AppendLine("    }");
         }
-        if (includeTreeNodeHelpers)
+
+        if (ContainsTreeNode(spec))
         {
             builder.AppendLine("    private static TreeNode? __oj_build_tree(int?[] values)");
             builder.AppendLine("    {");
@@ -212,6 +216,7 @@ public class CSharpFunctionJudgeCodeBuilder
             builder.AppendLine("        return values.ToArray();");
             builder.AppendLine("    }");
         }
+
         builder.AppendLine("    private static string __oj_escape_json_string(string value)");
         builder.AppendLine("    {");
         builder.AppendLine("        return value");
@@ -224,6 +229,44 @@ public class CSharpFunctionJudgeCodeBuilder
         builder.AppendLine("}");
 
         return builder.ToString();
+    }
+
+    private static void AppendCustomTypeHelpers(StringBuilder builder, FunctionJudgeSpec spec)
+    {
+        foreach (var type in spec.Types)
+        {
+            builder.AppendLine($"    private static bool __oj_compare({type.Name} actual, {type.Name} expected)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        if (actual is null || expected is null) return actual is null && expected is null;");
+            foreach (var field in type.Fields)
+            {
+                builder.AppendLine($"        if (!__oj_compare(actual.{field.Name}, expected.{field.Name})) return false;");
+            }
+
+            builder.AppendLine("        return true;");
+            builder.AppendLine("    }");
+            builder.AppendLine($"    private static bool __oj_compare({type.Name}[] actual, {type.Name}[] expected)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        if (actual is null || expected is null || actual.Length != expected.Length) return false;");
+            builder.AppendLine("        for (var i = 0; i < actual.Length; i++)");
+            builder.AppendLine("        {");
+            builder.AppendLine("            if (!__oj_compare(actual[i], expected[i])) return false;");
+            builder.AppendLine("        }");
+            builder.AppendLine("        return true;");
+            builder.AppendLine("    }");
+            builder.AppendLine($"    private static string __oj_to_json({type.Name} value)");
+            builder.AppendLine("    {");
+            builder.AppendLine("        if (value is null) return \"null\";");
+            builder.AppendLine("        var parts = new List<string>();");
+            foreach (var field in type.Fields)
+            {
+                builder.AppendLine($"        parts.Add(\"\\\"{field.Name}\\\":\" + __oj_to_json(value.{field.Name}));");
+            }
+
+            builder.AppendLine("        return \"{\" + string.Join(\",\", parts) + \"}\";");
+            builder.AppendLine("    }");
+            builder.AppendLine($"    private static string __oj_to_json({type.Name}[] values) => values is null ? \"null\" : \"[\" + string.Join(\",\", values.Select(__oj_to_json)) + \"]\";");
+        }
     }
 
     private static string BuildCaseBlock(FunctionJudgeSpec spec, JudgeCaseRequest testCase, int caseIndex)
@@ -239,10 +282,10 @@ public class CSharpFunctionJudgeCodeBuilder
         for (var parameterIndex = 0; parameterIndex < spec.Parameters.Count; parameterIndex++)
         {
             var parameter = spec.Parameters[parameterIndex];
-            AppendVariableDeclaration(builder, $"__oj_arg_{parameterIndex}", parameter.Type, argumentsDocument.RootElement.GetProperty(parameter.Name));
+            AppendVariableDeclaration(builder, $"__oj_arg_{parameterIndex}", parameter.Type, argumentsDocument.RootElement.GetProperty(parameter.Name), spec);
         }
 
-        AppendExpectedDeclaration(builder, spec.ReturnType, expectedDocument.RootElement);
+        AppendExpectedDeclaration(builder, spec.ReturnType, expectedDocument.RootElement, spec);
         builder.AppendLine($"                var __oj_actual = __oj_solution.{ToCSharpMethodName(spec.FunctionName)}({BuildArgumentList(spec.Parameters.Count)});");
         if (spec.ReturnType == "ListNode<int>")
         {
@@ -272,11 +315,11 @@ public class CSharpFunctionJudgeCodeBuilder
         return string.Join(", ", Enumerable.Range(0, parameterCount).Select(index => $"__oj_arg_{index}"));
     }
 
-    private static void AppendVariableDeclaration(StringBuilder builder, string variableName, string type, JsonElement element)
+    private static void AppendVariableDeclaration(StringBuilder builder, string variableName, string type, JsonElement element, FunctionJudgeSpec spec)
     {
         if (type == "ListNode<int>")
         {
-            builder.AppendLine($"                int[] {variableName}_values = {ToListNodeValuesLiteral(element)};");
+            builder.AppendLine($"                int[] {variableName}_values = {ToListNodeValuesLiteral(element, spec)};");
             builder.AppendLine($"                ListNode? {variableName} = __oj_build_list({variableName}_values);");
             return;
         }
@@ -288,15 +331,15 @@ public class CSharpFunctionJudgeCodeBuilder
             return;
         }
 
-        var literal = ToCSharpLiteral(element, type);
-        builder.AppendLine($"                {ToCSharpType(type)} {variableName} = {literal};");
+        var literal = ToCSharpLiteral(element, type, spec);
+        builder.AppendLine($"                {ToCSharpType(type, spec)} {variableName} = {literal};");
     }
 
-    private static void AppendExpectedDeclaration(StringBuilder builder, string returnType, JsonElement element)
+    private static void AppendExpectedDeclaration(StringBuilder builder, string returnType, JsonElement element, FunctionJudgeSpec spec)
     {
         if (returnType == "ListNode<int>")
         {
-            builder.AppendLine($"                int[] __oj_expected = {ToListNodeValuesLiteral(element)};");
+            builder.AppendLine($"                int[] __oj_expected = {ToListNodeValuesLiteral(element, spec)};");
             return;
         }
 
@@ -306,8 +349,8 @@ public class CSharpFunctionJudgeCodeBuilder
             return;
         }
 
-        var expectedLiteral = ToCSharpLiteral(element, returnType);
-        builder.AppendLine($"                {ToCSharpType(returnType)} __oj_expected = {expectedLiteral};");
+        var expectedLiteral = ToCSharpLiteral(element, returnType, spec);
+        builder.AppendLine($"                {ToCSharpType(returnType, spec)} __oj_expected = {expectedLiteral};");
     }
 
     private static string ToCSharpMethodName(string functionName)
@@ -320,8 +363,19 @@ public class CSharpFunctionJudgeCodeBuilder
         return $"{char.ToUpperInvariant(functionName[0])}{functionName[1..]}";
     }
 
-    private static string ToCSharpType(string type)
+    private static string ToCSharpType(string type, FunctionJudgeSpec spec)
     {
+        if (spec.FindCustomType(type) is not null)
+        {
+            return type;
+        }
+
+        if (FunctionJudgeSpecParser.IsCustomArrayType(spec, type))
+        {
+            FunctionJudgeSpecParser.TryGetArrayElementType(type, out var elementType);
+            return $"{elementType}[]";
+        }
+
         return type switch
         {
             "int" => "int",
@@ -341,8 +395,22 @@ public class CSharpFunctionJudgeCodeBuilder
         };
     }
 
-    private static string ToCSharpLiteral(JsonElement element, string type)
+    private static string ToCSharpLiteral(JsonElement element, string type, FunctionJudgeSpec spec)
     {
+        var customType = spec.FindCustomType(type);
+        if (customType is not null)
+        {
+            var assignments = customType.Fields
+                .Select(field => $"{field.Name} = {ToCSharpLiteral(element.GetProperty(field.Name), field.Type, spec)}");
+            return $"new {customType.Name} {{ {string.Join(", ", assignments)} }}";
+        }
+
+        if (FunctionJudgeSpecParser.IsCustomArrayType(spec, type))
+        {
+            FunctionJudgeSpecParser.TryGetArrayElementType(type, out var elementType);
+            return ToArrayLiteral(element, elementType, spec);
+        }
+
         return type switch
         {
             "int" => element.GetInt32().ToString(CultureInfo.InvariantCulture),
@@ -350,19 +418,19 @@ public class CSharpFunctionJudgeCodeBuilder
             "double" => element.GetDouble().ToString("R", CultureInfo.InvariantCulture),
             "bool" => element.GetBoolean() ? "true" : "false",
             "string" => $"\"{EscapeCSharpString(element.GetString() ?? string.Empty)}\"",
-            "int[]" => ToArrayLiteral(element, "int"),
-            "long[]" => ToArrayLiteral(element, "long"),
-            "double[]" => ToArrayLiteral(element, "double"),
-            "bool[]" => ToArrayLiteral(element, "bool"),
-            "string[]" => ToArrayLiteral(element, "string"),
-            "int[][]" => ToArrayLiteral(element, "int[]"),
+            "int[]" => ToArrayLiteral(element, "int", spec),
+            "long[]" => ToArrayLiteral(element, "long", spec),
+            "double[]" => ToArrayLiteral(element, "double", spec),
+            "bool[]" => ToArrayLiteral(element, "bool", spec),
+            "string[]" => ToArrayLiteral(element, "string", spec),
+            "int[][]" => ToArrayLiteral(element, "int[]", spec),
             _ => throw new NotSupportedException($"Function mode does not support type: {type}")
         };
     }
 
-    private static string ToListNodeValuesLiteral(JsonElement element)
+    private static string ToListNodeValuesLiteral(JsonElement element, FunctionJudgeSpec spec)
     {
-        return ToArrayLiteral(element, "int");
+        return ToArrayLiteral(element, "int", spec);
     }
 
     private static string ToTreeNodeValuesLiteral(JsonElement element)
@@ -373,10 +441,10 @@ public class CSharpFunctionJudgeCodeBuilder
         return $"new int?[] {{ {string.Join(", ", values)} }}";
     }
 
-    private static string ToArrayLiteral(JsonElement element, string elementType)
+    private static string ToArrayLiteral(JsonElement element, string elementType, FunctionJudgeSpec spec)
     {
-        var values = element.EnumerateArray().Select(item => ToCSharpLiteral(item, elementType));
-        return $"new {ToCSharpType(elementType)}[] {{ {string.Join(", ", values)} }}";
+        var values = element.EnumerateArray().Select(item => ToCSharpLiteral(item, elementType, spec));
+        return $"new {ToCSharpType(elementType, spec)}[] {{ {string.Join(", ", values)} }}";
     }
 
     private static string EscapeCSharpString(string value)

@@ -11,10 +11,16 @@ import {
 } from "../api/problemsApi";
 import { visibilityLabel } from "../utils/labels";
 
+type FunctionCustomType = {
+  name: string;
+  fields: Array<{ name: string; type: string }>;
+};
+
 type FunctionSpec = {
   functionName: string;
   returnType: string;
   parameters: Array<{ name: string; type: string }>;
+  types?: FunctionCustomType[];
 };
 
 export function AdminTestCaseEditorPage() {
@@ -186,7 +192,19 @@ export function AdminTestCaseEditorPage() {
             <p>{functionSpec ? formatSignature(functionSpec) : "函数配置暂不可用，请检查 FunctionSpecJson。"}</p>
             <p>ArgumentsJson 必须包含函数签名中的全部参数，不允许额外字段；ExpectedJson 表示期望返回值。</p>
             {hasType(functionSpec, "ListNode<int>") && <p>链表使用数组表示，例如 [1,2,3]；空链表使用 []。</p>}
-            {hasType(functionSpec, "TreeNode<int>") && <p>二叉树使用层序数组表示，例如 [1,2,3,null,4]；空树使用 []，支持中间 null。</p>}
+            {hasType(functionSpec, "TreeNode<int>") && <p>二叉树使用层序数组表示，例如 [1,2,3,null,4]；空树使用 []。</p>}
+            {(functionSpec?.types?.length || 0) > 0 && (
+              <>
+                <p>自定义结构使用 JSON 对象，字段必须与类型定义完全一致：</p>
+                {functionSpec?.types?.map((type) => (
+                  <p key={type.name}>
+                    {type.name}: {"{ "}
+                    {type.fields.map((field) => `${field.name}: ${field.type}`).join(", ")}
+                    {" }"}
+                  </p>
+                ))}
+              </>
+            )}
           </section>
         )}
 
@@ -198,15 +216,8 @@ export function AdminTestCaseEditorPage() {
                 填入示例
               </button>
             </div>
-            <textarea
-              className="import-textarea"
-              value={importText}
-              onChange={(event) => setImportText(event.target.value)}
-              placeholder={importExample}
-            />
-            <div className="quiet-note">
-              visibility 默认 Hidden。导入采用事务化策略，任一测试点校验失败时不会写入任何测试点。
-            </div>
+            <textarea className="import-textarea" value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={importExample} />
+            <div className="quiet-note">visibility 默认 Hidden。导入采用事务化策略，任一测试点校验失败时不会写入任何测试点。</div>
             {importErrors.length > 0 && (
               <div className="alert error">
                 {importErrors.map((item) => (
@@ -264,9 +275,7 @@ export function AdminTestCaseEditorPage() {
                     </>
                   )}
                   <td>
-                    <span className={`visibility-badge visibility-${testCase.visibility}`}>
-                      {visibilityLabel(testCase.visibility)}
-                    </span>
+                    <span className={`visibility-badge visibility-${testCase.visibility}`}>{visibilityLabel(testCase.visibility)}</span>
                   </td>
                   <td>{testCase.score}</td>
                 </tr>
@@ -299,7 +308,7 @@ export function AdminTestCaseEditorPage() {
               </label>
               <label>
                 期望返回 JSON
-                <textarea value={expectedJson} onChange={(event) => setExpectedJson(event.target.value)} placeholder={buildExpectedTemplate(functionSpec?.returnType)} />
+                <textarea value={expectedJson} onChange={(event) => setExpectedJson(event.target.value)} placeholder={buildExpectedTemplate(functionSpec)} />
               </label>
             </>
           )}
@@ -361,25 +370,15 @@ function hasType(spec: FunctionSpec | null, type: string) {
 function buildImportExample(problem: ProblemDetailDto | null, spec: FunctionSpec | null) {
   if (!problem || problem.judgeMode === 1) {
     return JSON.stringify([
-      {
-        input: "1 2",
-        expectedOutput: "3",
-        score: 100,
-        visibility: "Sample"
-      },
-      {
-        input: "10 20",
-        expectedOutput: "30",
-        score: 100,
-        visibility: "Hidden"
-      }
+      { input: "1 2", expectedOutput: "3", score: 100, visibility: "Sample" },
+      { input: "10 20", expectedOutput: "30", score: 100, visibility: "Hidden" }
     ], null, 2);
   }
 
   return JSON.stringify([
     {
       argumentsJson: JSON.parse(buildArgumentsTemplate(spec)),
-      expectedJson: JSON.parse(buildExpectedTemplate(spec?.returnType)),
+      expectedJson: JSON.parse(buildExpectedTemplate(spec)),
       score: 100,
       visibility: "Sample"
     }
@@ -389,16 +388,33 @@ function buildImportExample(problem: ProblemDetailDto | null, spec: FunctionSpec
 function buildArgumentsTemplate(spec: FunctionSpec | null) {
   const template: Record<string, unknown> = {};
   spec?.parameters.forEach((parameter) => {
-    template[parameter.name] = sampleValueForType(parameter.type);
+    template[parameter.name] = sampleValueForType(parameter.type, spec);
   });
   return JSON.stringify(template, null, 2);
 }
 
-function buildExpectedTemplate(returnType?: string) {
-  return JSON.stringify(sampleValueForType(returnType || "int"), null, 2);
+function buildExpectedTemplate(spec: FunctionSpec | null) {
+  return JSON.stringify(sampleValueForType(spec?.returnType || "int", spec), null, 2);
 }
 
-function sampleValueForType(type: string): unknown {
+function sampleValueForType(type: string, spec: FunctionSpec | null, depth = 0): unknown {
+  if (depth > 8) {
+    return null;
+  }
+
+  const customTypes = spec?.types || [];
+  const customType = customTypes.find((item) => item.name === type);
+  if (customType) {
+    return Object.fromEntries(customType.fields.map((field) => [field.name, sampleValueForType(field.type, spec, depth + 1)]));
+  }
+
+  if (type.endsWith("[]")) {
+    const elementType = type.slice(0, -2);
+    if (customTypes.some((item) => item.name === elementType)) {
+      return [sampleValueForType(elementType, spec, depth + 1)];
+    }
+  }
+
   switch (type) {
     case "int":
     case "long":

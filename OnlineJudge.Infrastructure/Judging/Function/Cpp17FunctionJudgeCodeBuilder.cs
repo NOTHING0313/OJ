@@ -49,7 +49,7 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
             });
         }
 
-        var generatedSource = BuildSource(request.SourceCode, caseBlocks, ContainsListNode(spec), ContainsTreeNode(spec));
+        var generatedSource = BuildSource(request.SourceCode, caseBlocks, spec);
         return Result<JudgeRequest>.Success(new JudgeRequest
         {
             SubmissionId = request.SubmissionId,
@@ -64,7 +64,7 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
         });
     }
 
-    private static string BuildSource(string userSource, IReadOnlyList<string> caseBlocks, bool includeListNodeHelpers, bool includeTreeNodeHelpers)
+    private static string BuildSource(string userSource, IReadOnlyList<string> caseBlocks, FunctionJudgeSpec spec)
     {
         var builder = new StringBuilder();
         builder.AppendLine("#include <bits/stdc++.h>");
@@ -116,14 +116,19 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
         builder.AppendLine();
         builder.AppendLine(userSource);
         builder.AppendLine();
-        if (includeListNodeHelpers)
+
+        AppendCustomTypeHelpers(builder, spec);
+
+        if (ContainsListNode(spec))
         {
             AppendListNodeHelpers(builder);
         }
-        if (includeTreeNodeHelpers)
+
+        if (ContainsTreeNode(spec))
         {
             AppendTreeNodeHelpers(builder);
         }
+
         builder.AppendLine("int main() {");
         builder.AppendLine("    int __oj_case_index = -1;");
         builder.AppendLine("    if (!(cin >> __oj_case_index)) return 2;");
@@ -132,12 +137,54 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
         {
             builder.Append(caseBlock);
         }
+
         builder.AppendLine("        default:");
         builder.AppendLine("            return 2;");
         builder.AppendLine("    }");
         builder.AppendLine("}");
 
         return builder.ToString();
+    }
+
+    private static void AppendCustomTypeHelpers(StringBuilder builder, FunctionJudgeSpec spec)
+    {
+        if (spec.Types.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var type in spec.Types)
+        {
+            builder.AppendLine($"bool __oj_equal_value(const {type.Name}& left, const {type.Name}& right);");
+            builder.AppendLine($"string __oj_to_json(const {type.Name}& value);");
+        }
+
+        builder.AppendLine();
+
+        foreach (var type in spec.Types)
+        {
+            var comparisons = type.Fields
+                .Select(field => $"__oj_equal_value(left.{field.Name}, right.{field.Name})")
+                .ToList();
+
+            builder.AppendLine($"bool __oj_equal_value(const {type.Name}& left, const {type.Name}& right) {{");
+            builder.AppendLine($"    return {string.Join(" && ", comparisons)};");
+            builder.AppendLine("}");
+
+            builder.AppendLine($"string __oj_to_json(const {type.Name}& value) {{");
+            builder.AppendLine("    string result = \"{\";");
+            for (var index = 0; index < type.Fields.Count; index++)
+            {
+                var field = type.Fields[index];
+                var prefix = index == 0 ? string.Empty : ",";
+                builder.AppendLine($"    result += \"{prefix}\\\"{field.Name}\\\":\" + __oj_to_json(value.{field.Name});");
+            }
+
+            builder.AppendLine("    result += \"}\";");
+            builder.AppendLine("    return result;");
+            builder.AppendLine("}");
+            builder.AppendLine();
+        }
     }
 
     private static string BuildCaseBlock(FunctionJudgeSpec spec, JudgeCaseRequest testCase, int caseIndex)
@@ -152,10 +199,10 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
         for (var parameterIndex = 0; parameterIndex < spec.Parameters.Count; parameterIndex++)
         {
             var parameter = spec.Parameters[parameterIndex];
-            AppendVariableDeclaration(builder, $"__oj_arg_{parameterIndex}", parameter.Type, argumentsDocument.RootElement.GetProperty(parameter.Name));
+            AppendVariableDeclaration(builder, $"__oj_arg_{parameterIndex}", parameter.Type, argumentsDocument.RootElement.GetProperty(parameter.Name), spec);
         }
 
-        AppendExpectedDeclaration(builder, spec.ReturnType, expectedDocument.RootElement);
+        AppendExpectedDeclaration(builder, spec.ReturnType, expectedDocument.RootElement, spec);
         builder.AppendLine($"            auto __oj_actual = __oj_solution.{spec.FunctionName}({BuildArgumentList(spec.Parameters.Count)});");
         if (spec.ReturnType == "ListNode<int>")
         {
@@ -182,11 +229,11 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
         return string.Join(", ", Enumerable.Range(0, parameterCount).Select(index => $"__oj_arg_{index}"));
     }
 
-    private static void AppendVariableDeclaration(StringBuilder builder, string variableName, string type, JsonElement element)
+    private static void AppendVariableDeclaration(StringBuilder builder, string variableName, string type, JsonElement element, FunctionJudgeSpec spec)
     {
         if (type == "ListNode<int>")
         {
-            builder.AppendLine($"            vector<int> {variableName}_values = {ToListNodeValuesLiteral(element)};");
+            builder.AppendLine($"            vector<int> {variableName}_values = {ToListNodeValuesLiteral(element, spec)};");
             builder.AppendLine($"            ListNode* {variableName} = __oj_build_list({variableName}_values);");
             return;
         }
@@ -198,15 +245,15 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
             return;
         }
 
-        var literal = ToCppLiteral(element, type);
-        builder.AppendLine($"            {ToCppType(type)} {variableName} = {literal};");
+        var literal = ToCppLiteral(element, type, spec);
+        builder.AppendLine($"            {ToCppType(type, spec)} {variableName} = {literal};");
     }
 
-    private static void AppendExpectedDeclaration(StringBuilder builder, string returnType, JsonElement element)
+    private static void AppendExpectedDeclaration(StringBuilder builder, string returnType, JsonElement element, FunctionJudgeSpec spec)
     {
         if (returnType == "ListNode<int>")
         {
-            builder.AppendLine($"            vector<int> __oj_expected = {ToListNodeValuesLiteral(element)};");
+            builder.AppendLine($"            vector<int> __oj_expected = {ToListNodeValuesLiteral(element, spec)};");
             return;
         }
 
@@ -216,8 +263,8 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
             return;
         }
 
-        var expectedLiteral = ToCppLiteral(element, returnType);
-        builder.AppendLine($"            {ToCppType(returnType)} __oj_expected = {expectedLiteral};");
+        var expectedLiteral = ToCppLiteral(element, returnType, spec);
+        builder.AppendLine($"            {ToCppType(returnType, spec)} __oj_expected = {expectedLiteral};");
     }
 
     private static void AppendListNodeHelpers(StringBuilder builder)
@@ -290,8 +337,19 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
         builder.AppendLine();
     }
 
-    private static string ToCppType(string type)
+    private static string ToCppType(string type, FunctionJudgeSpec spec)
     {
+        if (spec.FindCustomType(type) is not null)
+        {
+            return type;
+        }
+
+        if (FunctionJudgeSpecParser.IsCustomArrayType(spec, type))
+        {
+            FunctionJudgeSpecParser.TryGetArrayElementType(type, out var elementType);
+            return $"vector<{elementType}>";
+        }
+
         return type switch
         {
             "int" => "int",
@@ -311,8 +369,21 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
         };
     }
 
-    private static string ToCppLiteral(JsonElement element, string type)
+    private static string ToCppLiteral(JsonElement element, string type, FunctionJudgeSpec spec)
     {
+        var customType = spec.FindCustomType(type);
+        if (customType is not null)
+        {
+            var values = customType.Fields.Select(field => ToCppLiteral(element.GetProperty(field.Name), field.Type, spec));
+            return $"{customType.Name}{{{string.Join(", ", values)}}}";
+        }
+
+        if (FunctionJudgeSpecParser.IsCustomArrayType(spec, type))
+        {
+            FunctionJudgeSpecParser.TryGetArrayElementType(type, out var elementType);
+            return ToVectorLiteral(element, elementType, spec);
+        }
+
         return type switch
         {
             "int" => element.GetInt32().ToString(CultureInfo.InvariantCulture),
@@ -320,19 +391,19 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
             "double" => element.GetDouble().ToString("R", CultureInfo.InvariantCulture),
             "bool" => element.GetBoolean() ? "true" : "false",
             "string" => $"string(\"{EscapeCppString(element.GetString() ?? string.Empty)}\")",
-            "int[]" => ToVectorLiteral(element, "int"),
-            "long[]" => ToVectorLiteral(element, "long"),
-            "double[]" => ToVectorLiteral(element, "double"),
-            "bool[]" => ToVectorLiteral(element, "bool"),
-            "string[]" => ToVectorLiteral(element, "string"),
-            "int[][]" => ToVectorLiteral(element, "int[]"),
+            "int[]" => ToVectorLiteral(element, "int", spec),
+            "long[]" => ToVectorLiteral(element, "long", spec),
+            "double[]" => ToVectorLiteral(element, "double", spec),
+            "bool[]" => ToVectorLiteral(element, "bool", spec),
+            "string[]" => ToVectorLiteral(element, "string", spec),
+            "int[][]" => ToVectorLiteral(element, "int[]", spec),
             _ => throw new NotSupportedException($"Function mode does not support type: {type}")
         };
     }
 
-    private static string ToListNodeValuesLiteral(JsonElement element)
+    private static string ToListNodeValuesLiteral(JsonElement element, FunctionJudgeSpec spec)
     {
-        return ToVectorLiteral(element, "int");
+        return ToVectorLiteral(element, "int", spec);
     }
 
     private static string ToTreeNodeValuesLiteral(JsonElement element)
@@ -343,10 +414,10 @@ public class Cpp17FunctionJudgeCodeBuilder : IFunctionJudgeCodeBuilder
         return $"vector<optional<int>>{{{string.Join(", ", values)}}}";
     }
 
-    private static string ToVectorLiteral(JsonElement element, string elementType)
+    private static string ToVectorLiteral(JsonElement element, string elementType, FunctionJudgeSpec spec)
     {
-        var values = element.EnumerateArray().Select(item => ToCppLiteral(item, elementType));
-        return $"{ToCppType($"{elementType}[]")}{{{string.Join(", ", values)}}}";
+        var values = element.EnumerateArray().Select(item => ToCppLiteral(item, elementType, spec));
+        return $"{ToCppType($"{elementType}[]", spec)}{{{string.Join(", ", values)}}}";
     }
 
     private static string EscapeCppString(string value)

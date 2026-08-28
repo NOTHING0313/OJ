@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { createProblem, getProblem, updateProblem, type JudgeMode, type ProblemDetailDto } from "../api/problemsApi";
 import { MarkdownEditor } from "../components/MarkdownEditor";
@@ -8,7 +8,13 @@ interface FunctionParameterEditor {
   type: string;
 }
 
-const functionTypes = ["int", "long", "double", "bool", "string", "int[]", "long[]", "double[]", "bool[]", "string[]", "int[][]", "ListNode<int>", "TreeNode<int>"];
+interface FunctionCustomTypeEditor {
+  name: string;
+  fields: FunctionParameterEditor[];
+}
+
+const baseFunctionTypes = ["int", "long", "double", "bool", "string", "int[]", "long[]", "double[]", "bool[]", "string[]", "int[][]", "ListNode<int>", "TreeNode<int>"];
+const customFieldPrimitiveTypes = ["int", "long", "double", "bool", "string"];
 
 export function AdminProblemEditorPage() {
   const { id } = useParams();
@@ -26,13 +32,17 @@ export function AdminProblemEditorPage() {
   const [functionName, setFunctionName] = useState("");
   const [returnType, setReturnType] = useState("int");
   const [parameters, setParameters] = useState<FunctionParameterEditor[]>([]);
-  const [cpp17StarterCode, setCpp17StarterCode] = useState(defaultCpp17StarterCode("solve", "int", []));
-  const [c11StarterCode, setC11StarterCode] = useState(defaultC11StarterCode("solve", "int", []));
-  const [csharpStarterCode, setCSharpStarterCode] = useState(defaultCSharpStarterCode("solve", "int", []));
+  const [customTypes, setCustomTypes] = useState<FunctionCustomTypeEditor[]>([]);
+  const [cpp17StarterCode, setCpp17StarterCode] = useState(defaultCpp17StarterCode("solve", "int", [], []));
+  const [c11StarterCode, setC11StarterCode] = useState(defaultC11StarterCode("solve", "int", [], []));
+  const [csharpStarterCode, setCSharpStarterCode] = useState(defaultCSharpStarterCode("solve", "int", [], []));
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(isEditMode);
   const [isSaving, setIsSaving] = useState(false);
+
+  const functionTypes = useMemo(() => buildFunctionTypes(customTypes), [customTypes]);
+  const customFieldTypes = useMemo(() => buildCustomFieldTypes(customTypes), [customTypes]);
 
   useEffect(() => {
     if (!id) {
@@ -81,7 +91,7 @@ export function AdminProblemEditorPage() {
     setNotice(null);
 
     const functionConfig = buildFunctionConfig();
-    if (!functionConfig.isValid) {
+    if (functionConfig.isValid === false) {
       setError(functionConfig.error);
       setIsSaving(false);
       return;
@@ -172,6 +182,7 @@ export function AdminProblemEditorPage() {
             <option value={2}>函数式答题</option>
           </select>
         </label>
+
         {judgeMode === 1 ? (
           <>
             <MarkdownEditor label="输入说明" value={inputDescription} onChange={setInputDescription} required />
@@ -180,22 +191,97 @@ export function AdminProblemEditorPage() {
         ) : (
           <section className="content-block">
             <h2>函数配置</h2>
-            <p className="muted-text">函数式题目当前支持 C++17、C# 和 C11。答题人只需要实现目标函数，不需要编写 Main/main 或处理输入输出。</p>
+            <p className="muted-text">函数式题目支持 C++17、C# 和 C11。自定义结构类型使用 JSON 对象表示，可作为参数、返回值或一维数组元素。</p>
+            <p className="quiet-note">自定义结构字段当前支持 int / long / double / bool / string 或其他自定义结构；字段内部暂不支持数组。C11 自定义结构字段不支持 string。</p>
             {hasListNodeType(returnType, parameters) && (
-              <p className="quiet-note">链表类型在测试用例中使用数组表示，例如 [1,2,3] 表示 1 -&gt; 2 -&gt; 3；空数组 [] 表示空链表。C11 暂不支持 ListNode&lt;int&gt;。</p>
+              <p className="quiet-note">链表类型在测试用例中使用数组表示，例如 [1,2,3]；空数组 [] 表示空链表。C11 暂不支持 ListNode&lt;int&gt;。</p>
             )}
             {hasTreeNodeType(returnType, parameters) && (
-              <p className="quiet-note">二叉树类型在测试用例中使用层序数组表示，例如 [1,2,3,null,4]；空数组 [] 表示空树；输出比较时会忽略尾部多余 null。C11 暂不支持 TreeNode&lt;int&gt;。</p>
+              <p className="quiet-note">二叉树类型在测试用例中使用层序数组表示，例如 [1,2,3,null,4]；空数组 [] 表示空树。C11 暂不支持 TreeNode&lt;int&gt;。</p>
             )}
+
+            <section className="content-block">
+              <div className="section-heading-row">
+                <div>
+                  <h3>自定义结构类型</h3>
+                  <p className="muted-text">例如先定义 Point，再定义 Triangle；Triangle 字段可以引用 Point。</p>
+                </div>
+                <button className="button" type="button" onClick={addCustomType}>
+                  添加结构类型
+                </button>
+              </div>
+
+              {customTypes.map((customType, typeIndex) => (
+                <div className="content-block" key={typeIndex}>
+                  <div className="form-row">
+                    <label>
+                      类型名
+                      <input
+                        value={customType.name}
+                        onChange={(event) => updateCustomType(typeIndex, { ...customType, name: event.target.value })}
+                        placeholder="Triangle"
+                      />
+                    </label>
+                    <div className="button-row">
+                      <button className="button" type="button" onClick={() => addCustomField(typeIndex)}>
+                        添加字段
+                      </button>
+                      <button className="button danger" type="button" onClick={() => removeCustomType(typeIndex)}>
+                        删除类型
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>字段名</th>
+                          <th>字段类型</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customType.fields.map((field, fieldIndex) => (
+                          <tr key={fieldIndex}>
+                            <td>
+                              <input value={field.name} onChange={(event) => updateCustomField(typeIndex, fieldIndex, { ...field, name: event.target.value })} />
+                            </td>
+                            <td>
+                              <select value={field.type} onChange={(event) => updateCustomField(typeIndex, fieldIndex, { ...field, type: event.target.value })}>
+                                {ensureSelectedType(customFieldTypes, field.type).map((type) => (
+                                  <option key={type} value={type}>
+                                    {type}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <button className="button" type="button" onClick={() => removeCustomField(typeIndex, fieldIndex)}>
+                                删除
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {customType.fields.length === 0 && <div className="empty-state">至少添加一个字段</div>}
+                  </div>
+                </div>
+              ))}
+
+              {customTypes.length === 0 && <div className="empty-state">未定义自定义结构类型；原有基础类型行为保持不变。</div>}
+            </section>
+
             <div className="form-row">
               <label>
                 函数名
-                <input value={functionName} onChange={(event) => setFunctionName(event.target.value)} placeholder="twoSum" required />
+                <input value={functionName} onChange={(event) => setFunctionName(event.target.value)} placeholder="solve" required />
               </label>
               <label>
                 返回类型
                 <select value={returnType} onChange={(event) => setReturnType(event.target.value)}>
-                  {functionTypes.map((type) => (
+                  {ensureSelectedType(functionTypes, returnType).map((type) => (
                     <option key={type} value={type}>
                       {type}
                     </option>
@@ -203,6 +289,7 @@ export function AdminProblemEditorPage() {
                 </select>
               </label>
             </div>
+
             <div className="table-wrap">
               <table>
                 <thead>
@@ -220,7 +307,7 @@ export function AdminProblemEditorPage() {
                       </td>
                       <td>
                         <select value={parameter.type} onChange={(event) => updateParameter(index, { ...parameter, type: event.target.value })}>
-                          {functionTypes.map((type) => (
+                          {ensureSelectedType(functionTypes, parameter.type).map((type) => (
                             <option key={type} value={type}>
                               {type}
                             </option>
@@ -238,32 +325,37 @@ export function AdminProblemEditorPage() {
               </table>
               {parameters.length === 0 && <div className="empty-state">暂无参数</div>}
             </div>
+
             <button className="button" type="button" onClick={addParameter}>
               添加参数
             </button>
+
             <label>
               C++17 初始代码模板
               <textarea className="code-area" value={cpp17StarterCode} onChange={(event) => setCpp17StarterCode(event.target.value)} spellCheck={false} />
             </label>
-            <button className="button" type="button" onClick={() => setCpp17StarterCode(defaultCpp17StarterCode(functionName || "solve", returnType, parameters))}>
+            <button className="button" type="button" onClick={() => setCpp17StarterCode(defaultCpp17StarterCode(functionName || "solve", returnType, parameters, customTypes))}>
               根据函数配置生成模板
             </button>
+
             <label>
               C11 初始代码模板
               <textarea className="code-area" value={c11StarterCode} onChange={(event) => setC11StarterCode(event.target.value)} spellCheck={false} />
             </label>
-            <button className="button" type="button" onClick={() => setC11StarterCode(defaultC11StarterCode(functionName || "solve", returnType, parameters))}>
+            <button className="button" type="button" onClick={() => setC11StarterCode(defaultC11StarterCode(functionName || "solve", returnType, parameters, customTypes))}>
               根据函数配置生成 C11 模板
             </button>
+
             <label>
               C# 初始代码模板
               <textarea className="code-area" value={csharpStarterCode} onChange={(event) => setCSharpStarterCode(event.target.value)} spellCheck={false} />
             </label>
-            <button className="button" type="button" onClick={() => setCSharpStarterCode(defaultCSharpStarterCode(functionName || "solve", returnType, parameters))}>
+            <button className="button" type="button" onClick={() => setCSharpStarterCode(defaultCSharpStarterCode(functionName || "solve", returnType, parameters, customTypes))}>
               根据函数配置生成 C# 模板
             </button>
           </section>
         )}
+
         <div className="form-row">
           <label>
             时间限制 ms
@@ -274,6 +366,7 @@ export function AdminProblemEditorPage() {
             <input type="number" min={16} value={memoryLimitMb} onChange={(event) => setMemoryLimitMb(Number(event.target.value))} />
           </label>
         </div>
+
         <label className="checkbox-line">
           <input type="checkbox" checked={isPublished} onChange={(event) => setIsPublished(event.target.checked)} />
           发布题目
@@ -297,6 +390,34 @@ export function AdminProblemEditorPage() {
     setParameters((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
+  function addCustomType() {
+    setCustomTypes((current) => [...current, { name: "", fields: [{ name: "", type: "double" }] }]);
+  }
+
+  function updateCustomType(index: number, customType: FunctionCustomTypeEditor) {
+    setCustomTypes((current) => current.map((item, itemIndex) => (itemIndex === index ? customType : item)));
+  }
+
+  function removeCustomType(index: number) {
+    setCustomTypes((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function addCustomField(typeIndex: number) {
+    setCustomTypes((current) => current.map((type, index) => index === typeIndex ? { ...type, fields: [...type.fields, { name: "", type: "double" }] } : type));
+  }
+
+  function updateCustomField(typeIndex: number, fieldIndex: number, field: FunctionParameterEditor) {
+    setCustomTypes((current) => current.map((type, index) => index === typeIndex
+      ? { ...type, fields: type.fields.map((item, itemIndex) => itemIndex === fieldIndex ? field : item) }
+      : type));
+  }
+
+  function removeCustomField(typeIndex: number, fieldIndex: number) {
+    setCustomTypes((current) => current.map((type, index) => index === typeIndex
+      ? { ...type, fields: type.fields.filter((_, itemIndex) => itemIndex !== fieldIndex) }
+      : type));
+  }
+
   function buildFunctionConfig():
     | { isValid: true; functionSpecJson?: string | null; starterCodeJson?: string | null }
     | { isValid: false; error: string } {
@@ -309,11 +430,7 @@ export function AdminProblemEditorPage() {
       return { isValid: false, error: "请填写函数名" };
     }
 
-    const normalizedParameters = parameters.map((parameter) => ({
-      name: parameter.name.trim(),
-      type: parameter.type
-    }));
-
+    const normalizedParameters = parameters.map((parameter) => ({ name: parameter.name.trim(), type: parameter.type }));
     if (normalizedParameters.some((parameter) => !parameter.name)) {
       return { isValid: false, error: "请填写完整的参数名" };
     }
@@ -323,25 +440,38 @@ export function AdminProblemEditorPage() {
       return { isValid: false, error: "参数名不能重复" };
     }
 
-    if (!cpp17StarterCode.trim()) {
-      return { isValid: false, error: "请填写 C++17 初始代码模板" };
+    const normalizedCustomTypes = normalizeCustomTypes(customTypes);
+    const customValidation = validateCustomTypes(normalizedCustomTypes);
+    if (customValidation) {
+      return { isValid: false, error: customValidation };
     }
 
-    if (!c11StarterCode.trim()) {
-      return { isValid: false, error: "请填写 C11 初始代码模板" };
+    const allowedTypes = new Set(buildFunctionTypes(normalizedCustomTypes));
+    if (!allowedTypes.has(returnType)) {
+      return { isValid: false, error: `不支持的返回类型：${returnType}` };
+    }
+
+    const invalidParameterType = normalizedParameters.find((parameter) => !allowedTypes.has(parameter.type));
+    if (invalidParameterType) {
+      return { isValid: false, error: `不支持的参数类型：${invalidParameterType.type}` };
+    }
+
+    if (!cpp17StarterCode.trim()) {
+      return { isValid: false, error: "请填写 C++17 初始代码模板" };
     }
 
     if (!csharpStarterCode.trim()) {
       return { isValid: false, error: "请填写 C# 初始代码模板" };
     }
 
-    const supportedLanguages = hasC11UnsupportedComplexType(returnType, normalizedParameters)
+    const supportedLanguages = hasC11UnsupportedType(returnType, normalizedParameters, normalizedCustomTypes)
       ? ["cpp17", "csharp"]
       : ["cpp17", "csharp", "c11"];
 
     return {
       isValid: true,
       functionSpecJson: JSON.stringify({
+        types: normalizedCustomTypes,
         functionName: trimmedFunctionName,
         returnType,
         parameters: normalizedParameters,
@@ -363,43 +493,129 @@ export function AdminProblemEditorPage() {
     let parsedFunctionName = "solve";
     let parsedReturnType = "int";
     let parsedParameters: FunctionParameterEditor[] = [];
+    let parsedCustomTypes: FunctionCustomTypeEditor[] = [];
 
     try {
       const spec = JSON.parse(detail.functionSpecJson || "{}") as {
         functionName?: string;
         returnType?: string;
         parameters?: FunctionParameterEditor[];
+        types?: FunctionCustomTypeEditor[];
       };
       parsedFunctionName = spec.functionName || "solve";
       parsedReturnType = spec.returnType || "int";
       parsedParameters = Array.isArray(spec.parameters) ? spec.parameters.map((parameter) => ({ name: parameter.name, type: parameter.type })) : [];
+      parsedCustomTypes = Array.isArray(spec.types)
+        ? spec.types.map((type) => ({ name: type.name, fields: Array.isArray(type.fields) ? type.fields.map((field) => ({ name: field.name, type: field.type })) : [] }))
+        : [];
       setFunctionName(parsedFunctionName);
       setReturnType(parsedReturnType);
       setParameters(parsedParameters);
+      setCustomTypes(parsedCustomTypes);
     } catch {
       setFunctionName(parsedFunctionName);
       setReturnType(parsedReturnType);
       setParameters(parsedParameters);
+      setCustomTypes(parsedCustomTypes);
     }
 
     try {
       const starter = JSON.parse(detail.starterCodeJson || "{}") as { cpp17?: string; c11?: string; csharp?: string };
-      setCpp17StarterCode(starter.cpp17 || defaultCpp17StarterCode(parsedFunctionName, parsedReturnType, parsedParameters));
-      setC11StarterCode(starter.c11 || defaultC11StarterCode(parsedFunctionName, parsedReturnType, parsedParameters));
-      setCSharpStarterCode(starter.csharp || defaultCSharpStarterCode(parsedFunctionName, parsedReturnType, parsedParameters));
+      setCpp17StarterCode(starter.cpp17 || defaultCpp17StarterCode(parsedFunctionName, parsedReturnType, parsedParameters, parsedCustomTypes));
+      setC11StarterCode(starter.c11 || defaultC11StarterCode(parsedFunctionName, parsedReturnType, parsedParameters, parsedCustomTypes));
+      setCSharpStarterCode(starter.csharp || defaultCSharpStarterCode(parsedFunctionName, parsedReturnType, parsedParameters, parsedCustomTypes));
     } catch {
-      setCpp17StarterCode(defaultCpp17StarterCode(parsedFunctionName, parsedReturnType, parsedParameters));
-      setC11StarterCode(defaultC11StarterCode(parsedFunctionName, parsedReturnType, parsedParameters));
-      setCSharpStarterCode(defaultCSharpStarterCode(parsedFunctionName, parsedReturnType, parsedParameters));
+      setCpp17StarterCode(defaultCpp17StarterCode(parsedFunctionName, parsedReturnType, parsedParameters, parsedCustomTypes));
+      setC11StarterCode(defaultC11StarterCode(parsedFunctionName, parsedReturnType, parsedParameters, parsedCustomTypes));
+      setCSharpStarterCode(defaultCSharpStarterCode(parsedFunctionName, parsedReturnType, parsedParameters, parsedCustomTypes));
     }
   }
 }
 
-function defaultCpp17StarterCode(functionName: string, returnType: string, parameters: FunctionParameterEditor[]) {
-  const cppReturnType = toCppType(returnType);
-  const cppParameters = parameters
-    .map((parameter) => `${toCppParameterType(parameter.type)} ${parameter.name || "arg"}`)
-    .join(", ");
+function buildFunctionTypes(customTypes: FunctionCustomTypeEditor[]) {
+  const customNames = customTypes.map((type) => type.name.trim()).filter(Boolean);
+  return [...baseFunctionTypes, ...customNames, ...customNames.map((name) => `${name}[]`)].filter((type, index, values) => values.indexOf(type) === index);
+}
+
+function buildCustomFieldTypes(customTypes: FunctionCustomTypeEditor[]) {
+  const customNames = customTypes.map((type) => type.name.trim()).filter(Boolean);
+  return [...customFieldPrimitiveTypes, ...customNames].filter((type, index, values) => values.indexOf(type) === index);
+}
+
+function ensureSelectedType(types: string[], selected: string) {
+  return selected && !types.includes(selected) ? [...types, selected] : types;
+}
+
+function normalizeCustomTypes(customTypes: FunctionCustomTypeEditor[]) {
+  return customTypes.map((type) => ({
+    name: type.name.trim(),
+    fields: type.fields.map((field) => ({ name: field.name.trim(), type: field.type }))
+  }));
+}
+
+function validateCustomTypes(customTypes: FunctionCustomTypeEditor[]) {
+  const identifier = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  const names = customTypes.map((type) => type.name);
+
+  if (names.some((name) => !name || !identifier.test(name))) {
+    return "自定义结构类型名必须是合法标识符";
+  }
+
+  if (new Set(names).size !== names.length) {
+    return "自定义结构类型名不能重复";
+  }
+
+  const allowedFieldTypes = new Set([...customFieldPrimitiveTypes, ...names]);
+  for (const type of customTypes) {
+    if (type.fields.length === 0) {
+      return `结构类型 ${type.name} 至少需要一个字段`;
+    }
+
+    const fieldNames = type.fields.map((field) => field.name);
+    if (fieldNames.some((name) => !name || !identifier.test(name))) {
+      return `结构类型 ${type.name} 存在非法字段名`;
+    }
+
+    if (new Set(fieldNames).size !== fieldNames.length) {
+      return `结构类型 ${type.name} 的字段名不能重复`;
+    }
+
+    const invalidField = type.fields.find((field) => !allowedFieldTypes.has(field.type));
+    if (invalidField) {
+      return `结构类型 ${type.name}.${invalidField.name} 的字段类型不受支持：${invalidField.type}`;
+    }
+  }
+
+  const map = new Map(customTypes.map((type) => [type.name, type]));
+  const states = new Map<string, number>();
+
+  function visit(name: string): boolean {
+    const state = states.get(name);
+    if (state === 1) {
+      return false;
+    }
+    if (state === 2) {
+      return true;
+    }
+
+    states.set(name, 1);
+    const type = map.get(name);
+    for (const field of type?.fields || []) {
+      if (map.has(field.type) && !visit(field.type)) {
+        return false;
+      }
+    }
+    states.set(name, 2);
+    return true;
+  }
+
+  return names.every(visit) ? null : "自定义结构类型不能形成循环依赖";
+}
+
+function defaultCpp17StarterCode(functionName: string, returnType: string, parameters: FunctionParameterEditor[], customTypes: FunctionCustomTypeEditor[]) {
+  const cppReturnType = toCppType(returnType, customTypes);
+  const cppParameters = parameters.map((parameter) => `${toCppParameterType(parameter.type, customTypes)} ${parameter.name || "arg"}`).join(", ");
+  const customPrefix = buildCppCustomTypeDefinitions(customTypes);
   const listNodePrefix = hasListNodeType(returnType, parameters)
     ? `struct ListNode {\n    int val;\n    ListNode* next;\n\n    ListNode() : val(0), next(nullptr) {}\n    ListNode(int x) : val(x), next(nullptr) {}\n    ListNode(int x, ListNode* next) : val(x), next(next) {}\n};\n\n`
     : "";
@@ -407,15 +623,14 @@ function defaultCpp17StarterCode(functionName: string, returnType: string, param
     ? `struct TreeNode {\n    int val;\n    TreeNode* left;\n    TreeNode* right;\n\n    TreeNode() : val(0), left(nullptr), right(nullptr) {}\n    TreeNode(int x) : val(x), left(nullptr), right(nullptr) {}\n    TreeNode(int x, TreeNode* left, TreeNode* right) : val(x), left(left), right(right) {}\n};\n\n`
     : "";
 
-  return `${listNodePrefix}${treeNodePrefix}class Solution {\npublic:\n    ${cppReturnType} ${functionName}(${cppParameters}) {\n        \n    }\n};`;
+  return `${customPrefix}${listNodePrefix}${treeNodePrefix}class Solution {\npublic:\n    ${cppReturnType} ${functionName}(${cppParameters}) {\n        \n    }\n};`;
 }
 
-function defaultCSharpStarterCode(functionName: string, returnType: string, parameters: FunctionParameterEditor[]) {
-  const csharpReturnType = toCSharpType(returnType);
+function defaultCSharpStarterCode(functionName: string, returnType: string, parameters: FunctionParameterEditor[], customTypes: FunctionCustomTypeEditor[]) {
+  const csharpReturnType = toCSharpType(returnType, customTypes);
   const csharpFunctionName = toCSharpMethodName(functionName);
-  const csharpParameters = parameters
-    .map((parameter) => `${toCSharpType(parameter.type)} ${parameter.name || "arg"}`)
-    .join(", ");
+  const csharpParameters = parameters.map((parameter) => `${toCSharpType(parameter.type, customTypes)} ${parameter.name || "arg"}`).join(", ");
+  const customPrefix = buildCSharpCustomTypeDefinitions(customTypes);
   const listNodePrefix = hasListNodeType(returnType, parameters)
     ? `public class ListNode\n{\n    public int val;\n    public ListNode? next;\n\n    public ListNode(int val = 0, ListNode? next = null)\n    {\n        this.val = val;\n        this.next = next;\n    }\n}\n\n`
     : "";
@@ -423,38 +638,82 @@ function defaultCSharpStarterCode(functionName: string, returnType: string, para
     ? `public class TreeNode\n{\n    public int val;\n    public TreeNode? left;\n    public TreeNode? right;\n\n    public TreeNode(int val = 0, TreeNode? left = null, TreeNode? right = null)\n    {\n        this.val = val;\n        this.left = left;\n        this.right = right;\n    }\n}\n\n`
     : "";
 
-  return `${listNodePrefix}${treeNodePrefix}public class Solution\n{\n    public ${csharpReturnType} ${csharpFunctionName}(${csharpParameters})\n    {\n        \n    }\n}`;
+  return `${customPrefix}${listNodePrefix}${treeNodePrefix}public class Solution\n{\n    public ${csharpReturnType} ${csharpFunctionName}(${csharpParameters})\n    {\n        \n    }\n}`;
 }
 
-function defaultC11StarterCode(functionName: string, returnType: string, parameters: FunctionParameterEditor[]) {
-  const unsupportedComplexType = getC11UnsupportedComplexType(returnType, parameters);
-  if (unsupportedComplexType) {
-    return `/* C11 function mode does not support type: ${unsupportedComplexType} */`;
+function defaultC11StarterCode(functionName: string, returnType: string, parameters: FunctionParameterEditor[], customTypes: FunctionCustomTypeEditor[]) {
+  if (hasC11UnsupportedType(returnType, parameters, customTypes)) {
+    return "/* 当前函数签名或自定义结构字段包含 C11 Function Judge 尚不支持的类型。 */";
   }
 
-  const unsupportedType = [returnType, ...parameters.map((parameter) => parameter.type)]
-    .find((type) => !isC11SupportedType(type));
-
-  if (unsupportedType) {
-    return `/* C11 function mode does not support type: ${unsupportedType} */`;
-  }
-
-  const cReturnType = toC11ReturnType(returnType);
-  const cParameters = parameters.flatMap((parameter) => toC11ParameterParts(parameter.type, parameter.name || "arg"));
-  if (isC11ArrayType(returnType)) {
+  const customPrefix = buildC11CustomTypeDefinitions(customTypes);
+  const cReturnType = toC11ReturnType(returnType, customTypes);
+  const cParameters = parameters.flatMap((parameter) => toC11ParameterParts(parameter.type, parameter.name || "arg", customTypes));
+  if (isC11ArrayType(returnType, customTypes)) {
     cParameters.push("int* returnSize");
   }
 
-  return `${cReturnType} ${functionName}(${cParameters.join(", ")}) {\n    \n}`;
+  return `${customPrefix}${cReturnType} ${functionName}(${cParameters.join(", ")}) {\n    \n}`;
 }
 
-function toCppType(type: string) {
+function buildCppCustomTypeDefinitions(customTypes: FunctionCustomTypeEditor[]) {
+  return sortCustomTypesForDeclaration(customTypes)
+    .map((type) => `struct ${type.name} {\n${type.fields.map((field) => `    ${toCppType(field.type, customTypes)} ${field.name};`).join("\n")}\n};\n\n`)
+    .join("");
+}
+
+function buildCSharpCustomTypeDefinitions(customTypes: FunctionCustomTypeEditor[]) {
+  return sortCustomTypesForDeclaration(customTypes)
+    .map((type) => `public class ${type.name}\n{\n${type.fields.map((field) => `    public ${toCSharpType(field.type, customTypes)} ${field.name};`).join("\n")}\n}\n\n`)
+    .join("");
+}
+
+function buildC11CustomTypeDefinitions(customTypes: FunctionCustomTypeEditor[]) {
+  return sortCustomTypesForDeclaration(customTypes)
+    .map((type) => `typedef struct ${type.name} {\n${type.fields.map((field) => `    ${toC11ScalarType(field.type, customTypes)} ${field.name};`).join("\n")}\n} ${type.name};\n\n`)
+    .join("");
+}
+
+function sortCustomTypesForDeclaration(customTypes: FunctionCustomTypeEditor[]) {
+  const map = new Map(customTypes.map((type) => [type.name, type]));
+  const visited = new Set<string>();
+  const result: FunctionCustomTypeEditor[] = [];
+
+  function visit(type: FunctionCustomTypeEditor) {
+    if (visited.has(type.name)) {
+      return;
+    }
+
+    visited.add(type.name);
+    type.fields.forEach((field) => {
+      const dependency = map.get(field.type);
+      if (dependency) {
+        visit(dependency);
+      }
+    });
+    result.push(type);
+  }
+
+  customTypes.forEach(visit);
+  return result;
+}
+
+function toCppType(type: string, customTypes: FunctionCustomTypeEditor[]) {
   if (type === "ListNode<int>") {
     return "ListNode*";
   }
 
   if (type === "TreeNode<int>") {
     return "TreeNode*";
+  }
+
+  const customNames = new Set(customTypes.map((item) => item.name));
+  if (customNames.has(type)) {
+    return type;
+  }
+
+  if (type.endsWith("[]") && customNames.has(type.slice(0, -2))) {
+    return `vector<${type.slice(0, -2)}>`;
   }
 
   return type
@@ -467,18 +726,23 @@ function toCppType(type: string) {
     .replace("string[]", "vector<string>");
 }
 
-function toCppParameterType(type: string) {
-  const cppType = toCppType(type);
+function toCppParameterType(type: string, customTypes: FunctionCustomTypeEditor[]) {
+  const cppType = toCppType(type, customTypes);
   return type.endsWith("[]") ? `${cppType}&` : cppType;
 }
 
-function toCSharpType(type: string) {
+function toCSharpType(type: string, customTypes: FunctionCustomTypeEditor[]) {
   if (type === "ListNode<int>") {
     return "ListNode?";
   }
 
   if (type === "TreeNode<int>") {
     return "TreeNode?";
+  }
+
+  const customNames = new Set(customTypes.map((item) => item.name));
+  if (customNames.has(type) || type.endsWith("[]") && customNames.has(type.slice(0, -2))) {
+    return type;
   }
 
   return type;
@@ -492,55 +756,54 @@ function hasTreeNodeType(returnType: string, parameters: FunctionParameterEditor
   return returnType === "TreeNode<int>" || parameters.some((parameter) => parameter.type === "TreeNode<int>");
 }
 
-function hasC11UnsupportedComplexType(returnType: string, parameters: FunctionParameterEditor[]) {
-  return Boolean(getC11UnsupportedComplexType(returnType, parameters));
+function hasC11UnsupportedType(returnType: string, parameters: FunctionParameterEditor[], customTypes: FunctionCustomTypeEditor[]) {
+  return !isC11SupportedType(returnType, customTypes)
+    || parameters.some((parameter) => !isC11SupportedType(parameter.type, customTypes))
+    || customTypes.some((type) => type.fields.some((field) => !isC11SupportedCustomFieldType(field.type, customTypes)));
 }
 
-function getC11UnsupportedComplexType(returnType: string, parameters: FunctionParameterEditor[]) {
-  return [returnType, ...parameters.map((parameter) => parameter.type)]
-    .find((type) => type === "ListNode<int>" || type === "TreeNode<int>");
+function isC11SupportedType(type: string, customTypes: FunctionCustomTypeEditor[]) {
+  if (["int", "long", "double", "bool", "int[]", "long[]", "double[]"].includes(type)) {
+    return true;
+  }
+
+  const customNames = new Set(customTypes.map((item) => item.name));
+  return customNames.has(type) || type.endsWith("[]") && customNames.has(type.slice(0, -2));
+}
+
+function isC11SupportedCustomFieldType(type: string, customTypes: FunctionCustomTypeEditor[]) {
+  return ["int", "long", "double", "bool"].includes(type) || customTypes.some((item) => item.name === type);
 }
 
 function toCSharpMethodName(functionName: string) {
   return functionName ? `${functionName[0].toUpperCase()}${functionName.slice(1)}` : functionName;
 }
 
-function isC11SupportedType(type: string) {
-  return ["int", "long", "double", "bool", "int[]", "long[]", "double[]"].includes(type);
+function isC11ArrayType(type: string, customTypes: FunctionCustomTypeEditor[]) {
+  return ["int[]", "long[]", "double[]"].includes(type)
+    || type.endsWith("[]") && customTypes.some((item) => item.name === type.slice(0, -2));
 }
 
-function isC11ArrayType(type: string) {
-  return type.endsWith("[]");
+function toC11ReturnType(type: string, customTypes: FunctionCustomTypeEditor[]) {
+  if (isC11ArrayType(type, customTypes)) {
+    return `${type.slice(0, -2)}*`;
+  }
+
+  return toC11ScalarType(type, customTypes);
 }
 
-function toC11ReturnType(type: string) {
-  if (type === "int[]") {
-    return "int*";
-  }
-
-  if (type === "long[]") {
-    return "long*";
-  }
-
-  if (type === "double[]") {
-    return "double*";
+function toC11ScalarType(type: string, customTypes: FunctionCustomTypeEditor[]) {
+  if (["int", "long", "double", "bool"].includes(type) || customTypes.some((item) => item.name === type)) {
+    return type;
   }
 
   return type;
 }
 
-function toC11ParameterParts(type: string, name: string) {
-  if (type === "int[]") {
-    return [`int* ${name}`, `int ${name}Size`];
+function toC11ParameterParts(type: string, name: string, customTypes: FunctionCustomTypeEditor[]) {
+  if (isC11ArrayType(type, customTypes)) {
+    return [`${type.slice(0, -2)}* ${name}`, `int ${name}Size`];
   }
 
-  if (type === "long[]") {
-    return [`long* ${name}`, `int ${name}Size`];
-  }
-
-  if (type === "double[]") {
-    return [`double* ${name}`, `int ${name}Size`];
-  }
-
-  return [`${type} ${name}`];
+  return [`${toC11ScalarType(type, customTypes)} ${name}`];
 }

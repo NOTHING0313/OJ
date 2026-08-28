@@ -79,7 +79,7 @@ public class C11FunctionJudgeCodeBuilder
             ProblemId = request.ProblemId,
             Language = request.Language,
             JudgeMode = request.JudgeMode,
-            SourceCode = BuildSource(request.SourceCode, caseBlocks),
+            SourceCode = BuildSource(request.SourceCode, caseBlocks, spec),
             FunctionSpecJson = request.FunctionSpecJson,
             TimeLimitMs = request.TimeLimitMs,
             MemoryLimitMb = request.MemoryLimitMb,
@@ -89,7 +89,7 @@ public class C11FunctionJudgeCodeBuilder
 
     private static Result ValidateC11SupportedTypes(FunctionJudgeSpec spec)
     {
-        var returnValidation = ValidateC11SupportedType(spec.ReturnType);
+        var returnValidation = ValidateC11SupportedType(spec.ReturnType, spec);
         if (returnValidation.IsFailure)
         {
             return returnValidation;
@@ -97,24 +97,39 @@ public class C11FunctionJudgeCodeBuilder
 
         foreach (var parameter in spec.Parameters)
         {
-            var parameterValidation = ValidateC11SupportedType(parameter.Type);
+            var parameterValidation = ValidateC11SupportedType(parameter.Type, spec);
             if (parameterValidation.IsFailure)
             {
                 return parameterValidation;
             }
         }
 
+        foreach (var customType in spec.Types)
+        {
+            foreach (var field in customType.Fields)
+            {
+                if (field.Type is "int" or "long" or "double" or "bool" || spec.FindCustomType(field.Type) is not null)
+                {
+                    continue;
+                }
+
+                return Result.Failure($"C11 function mode does not support custom field type: {customType.Name}.{field.Name} -> {field.Type}");
+            }
+        }
+
         return Result.Success();
     }
 
-    private static Result ValidateC11SupportedType(string type)
+    private static Result ValidateC11SupportedType(string type, FunctionJudgeSpec spec)
     {
         return SupportedTypes.Contains(type)
+            || spec.FindCustomType(type) is not null
+            || FunctionJudgeSpecParser.IsCustomArrayType(spec, type)
             ? Result.Success()
             : Result.Failure($"C11 function mode does not support type: {type}");
     }
 
-    private static string BuildSource(string userSource, IReadOnlyList<string> caseBlocks)
+    private static string BuildSource(string userSource, IReadOnlyList<string> caseBlocks, FunctionJudgeSpec spec)
     {
         var builder = new StringBuilder();
         builder.AppendLine("#include <stdio.h>");
@@ -125,6 +140,7 @@ public class C11FunctionJudgeCodeBuilder
         builder.AppendLine(userSource);
         builder.AppendLine();
         AppendHelpers(builder);
+        AppendCustomTypeHelpers(builder, spec);
         builder.AppendLine("int main(void) {");
         builder.AppendLine("    int __oj_case_index = 0;");
         builder.AppendLine("    if (scanf(\"%d\", &__oj_case_index) != 1) return 2;");
@@ -194,6 +210,69 @@ public class C11FunctionJudgeCodeBuilder
         builder.AppendLine();
     }
 
+    private static void AppendCustomTypeHelpers(StringBuilder builder, FunctionJudgeSpec spec)
+    {
+        if (spec.Types.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var type in spec.Types)
+        {
+            builder.AppendLine($"static int __oj_compare_{type.Name}({type.Name} actual, {type.Name} expected);");
+            builder.AppendLine($"static int __oj_compare_{type.Name}_array({type.Name}* actual, int actualSize, {type.Name}* expected, int expectedSize);");
+            builder.AppendLine($"static void __oj_print_{type.Name}_json({type.Name} value);");
+            builder.AppendLine($"static void __oj_print_{type.Name}_array_json({type.Name}* values, int size);");
+        }
+
+        builder.AppendLine();
+
+        foreach (var type in spec.Types)
+        {
+            builder.AppendLine($"static int __oj_compare_{type.Name}({type.Name} actual, {type.Name} expected) {{");
+            foreach (var field in type.Fields)
+            {
+                builder.AppendLine($"    if (!{CompareExpression(field.Type, $"actual.{field.Name}", $"expected.{field.Name}", spec)}) return 0;");
+            }
+
+            builder.AppendLine("    return 1;");
+            builder.AppendLine("}");
+
+            builder.AppendLine($"static int __oj_compare_{type.Name}_array({type.Name}* actual, int actualSize, {type.Name}* expected, int expectedSize) {{");
+            builder.AppendLine("    if (actualSize != expectedSize) return 0;");
+            builder.AppendLine("    if (actualSize == 0) return 1;");
+            builder.AppendLine("    if (actual == NULL || expected == NULL) return 0;");
+            builder.AppendLine($"    for (int i = 0; i < expectedSize; i++) if (!__oj_compare_{type.Name}(actual[i], expected[i])) return 0;");
+            builder.AppendLine("    return 1;");
+            builder.AppendLine("}");
+
+            builder.AppendLine($"static void __oj_print_{type.Name}_json({type.Name} value) {{");
+            builder.AppendLine("    printf(\"{\");");
+            for (var index = 0; index < type.Fields.Count; index++)
+            {
+                var field = type.Fields[index];
+                if (index > 0)
+                {
+                    builder.AppendLine("    printf(\",\");");
+                }
+
+                builder.AppendLine($"    printf(\"\\\"{field.Name}\\\":\");");
+                builder.AppendLine($"    {PrintJsonStatement(field.Type, $"value.{field.Name}", spec: spec)}");
+            }
+
+            builder.AppendLine("    printf(\"}\");");
+            builder.AppendLine("}");
+
+            builder.AppendLine($"static void __oj_print_{type.Name}_array_json({type.Name}* values, int size) {{");
+            builder.AppendLine("    if (values == NULL) { printf(\"null\"); return; }");
+            builder.AppendLine("    printf(\"[\");");
+            builder.AppendLine($"    for (int i = 0; i < size; i++) {{ if (i > 0) printf(\",\"); __oj_print_{type.Name}_json(values[i]); }}");
+            builder.AppendLine("    printf(\"]\");");
+            builder.AppendLine("}");
+            builder.AppendLine();
+        }
+    }
+
     private static string BuildCaseBlock(FunctionJudgeSpec spec, JudgeCaseRequest testCase, int caseIndex)
     {
         using var argumentsDocument = JsonDocument.Parse(testCase.ArgumentsJson!);
@@ -205,10 +284,10 @@ public class C11FunctionJudgeCodeBuilder
         for (var parameterIndex = 0; parameterIndex < spec.Parameters.Count; parameterIndex++)
         {
             var parameter = spec.Parameters[parameterIndex];
-            AppendVariableDeclaration(builder, $"__oj_arg_{parameterIndex}", parameter.Type, argumentsDocument.RootElement.GetProperty(parameter.Name));
+            AppendVariableDeclaration(builder, $"__oj_arg_{parameterIndex}", parameter.Type, argumentsDocument.RootElement.GetProperty(parameter.Name), spec);
         }
 
-        if (IsArrayType(spec.ReturnType))
+        if (IsArrayType(spec.ReturnType, spec))
         {
             AppendArrayReturnCase(builder, spec, testCase, expectedDocument.RootElement);
         }
@@ -224,48 +303,49 @@ public class C11FunctionJudgeCodeBuilder
 
     private static void AppendScalarReturnCase(StringBuilder builder, FunctionJudgeSpec spec, JudgeCaseRequest testCase, JsonElement expectedElement)
     {
-        var expectedLiteral = ToCLiteral(expectedElement, spec.ReturnType);
-        builder.AppendLine($"            {ToCType(spec.ReturnType)} __oj_expected = {expectedLiteral};");
-        builder.AppendLine($"            {ToCType(spec.ReturnType)} __oj_actual = {spec.FunctionName}({BuildArgumentList(spec)});");
-        builder.AppendLine($"            if ({CompareExpression(spec.ReturnType, "__oj_actual", "__oj_expected")}) {{");
+        var expectedLiteral = ToCLiteral(expectedElement, spec.ReturnType, spec);
+        builder.AppendLine($"            {ToCType(spec.ReturnType, spec)} __oj_expected = {expectedLiteral};");
+        builder.AppendLine($"            {ToCType(spec.ReturnType, spec)} __oj_actual = {spec.FunctionName}({BuildArgumentList(spec)});");
+        builder.AppendLine($"            if ({CompareExpression(spec.ReturnType, "__oj_actual", "__oj_expected", spec)}) {{");
         builder.AppendLine($"                printf(\"{GetAcceptedMarker(testCase.TestCaseId)}\");");
         builder.AppendLine("            } else {");
         builder.AppendLine($"                printf(\"__OJ_CASE_WA__:{testCase.TestCaseId:N}:\");");
-        builder.AppendLine($"                {PrintJsonStatement(spec.ReturnType, "__oj_actual")}");
+        builder.AppendLine($"                {PrintJsonStatement(spec.ReturnType, "__oj_actual", spec: spec)}");
         builder.AppendLine("            }");
     }
 
     private static void AppendArrayReturnCase(StringBuilder builder, FunctionJudgeSpec spec, JudgeCaseRequest testCase, JsonElement expectedElement)
     {
-        AppendVariableDeclaration(builder, "__oj_expected", spec.ReturnType, expectedElement);
+        AppendVariableDeclaration(builder, "__oj_expected", spec.ReturnType, expectedElement, spec);
         builder.AppendLine("            int __oj_return_size = 0;");
-        builder.AppendLine($"            {ToCArrayPointerType(spec.ReturnType)} __oj_actual = {spec.FunctionName}({BuildArgumentList(spec, includeReturnSize: true)});");
-        builder.AppendLine($"            if ({CompareArrayExpression(spec.ReturnType, "__oj_actual", "__oj_return_size", "__oj_expected", "__oj_expectedSize")}) {{");
+        builder.AppendLine($"            {ToCArrayPointerType(spec.ReturnType, spec)} __oj_actual = {spec.FunctionName}({BuildArgumentList(spec, includeReturnSize: true)});");
+        builder.AppendLine($"            if ({CompareArrayExpression(spec.ReturnType, "__oj_actual", "__oj_return_size", "__oj_expected", "__oj_expectedSize", spec)}) {{");
         builder.AppendLine($"                printf(\"{GetAcceptedMarker(testCase.TestCaseId)}\");");
         builder.AppendLine("            } else {");
         builder.AppendLine($"                printf(\"__OJ_CASE_WA__:{testCase.TestCaseId:N}:\");");
-        builder.AppendLine($"                {PrintJsonStatement(spec.ReturnType, "__oj_actual", "__oj_return_size")}");
+        builder.AppendLine($"                {PrintJsonStatement(spec.ReturnType, "__oj_actual", "__oj_return_size", spec)}");
         builder.AppendLine("            }");
         builder.AppendLine("            free(__oj_actual);");
     }
 
-    private static void AppendVariableDeclaration(StringBuilder builder, string variableName, string type, JsonElement element)
+    private static void AppendVariableDeclaration(StringBuilder builder, string variableName, string type, JsonElement element, FunctionJudgeSpec spec)
     {
-        if (!IsArrayType(type))
+        if (!IsArrayType(type, spec))
         {
-            builder.AppendLine($"            {ToCType(type)} {variableName} = {ToCLiteral(element, type)};");
+            builder.AppendLine($"            {ToCType(type, spec)} {variableName} = {ToCLiteral(element, type, spec)};");
             return;
         }
 
-        var values = element.EnumerateArray().Select(item => ToCLiteral(item, GetArrayElementType(type))).ToList();
+        FunctionJudgeSpecParser.TryGetArrayElementType(type, out var elementType);
+        var values = element.EnumerateArray().Select(item => ToCLiteral(item, elementType, spec)).ToList();
         if (values.Count == 0)
         {
-            builder.AppendLine($"            {ToCArrayPointerType(type)} {variableName} = NULL;");
+            builder.AppendLine($"            {ToCArrayPointerType(type, spec)} {variableName} = NULL;");
             builder.AppendLine($"            int {variableName}Size = 0;");
             return;
         }
 
-        builder.AppendLine($"            {ToCType(GetArrayElementType(type))} {variableName}[] = {{ {string.Join(", ", values)} }};");
+        builder.AppendLine($"            {ToCType(elementType, spec)} {variableName}[] = {{ {string.Join(", ", values)} }};");
         builder.AppendLine($"            int {variableName}Size = {values.Count.ToString(CultureInfo.InvariantCulture)};");
     }
 
@@ -277,7 +357,7 @@ public class C11FunctionJudgeCodeBuilder
             var parameter = spec.Parameters[parameterIndex];
             var variableName = $"__oj_arg_{parameterIndex}";
             arguments.Add(variableName);
-            if (IsArrayType(parameter.Type))
+            if (IsArrayType(parameter.Type, spec))
             {
                 arguments.Add($"{variableName}Size");
             }
@@ -291,8 +371,13 @@ public class C11FunctionJudgeCodeBuilder
         return string.Join(", ", arguments);
     }
 
-    private static string CompareExpression(string type, string actual, string expected)
+    private static string CompareExpression(string type, string actual, string expected, FunctionJudgeSpec spec)
     {
+        if (spec.FindCustomType(type) is not null)
+        {
+            return $"__oj_compare_{type}({actual}, {expected})";
+        }
+
         return type switch
         {
             "int" => $"__oj_compare_int({actual}, {expected})",
@@ -303,8 +388,20 @@ public class C11FunctionJudgeCodeBuilder
         };
     }
 
-    private static string CompareArrayExpression(string type, string actual, string actualSize, string expected, string expectedSize)
+    private static string CompareArrayExpression(
+        string type,
+        string actual,
+        string actualSize,
+        string expected,
+        string expectedSize,
+        FunctionJudgeSpec spec)
     {
+        if (FunctionJudgeSpecParser.IsCustomArrayType(spec, type))
+        {
+            FunctionJudgeSpecParser.TryGetArrayElementType(type, out var elementType);
+            return $"__oj_compare_{elementType}_array({actual}, {actualSize}, {expected}, {expectedSize})";
+        }
+
         return type switch
         {
             "int[]" => $"__oj_compare_int_array({actual}, {actualSize}, {expected}, {expectedSize})",
@@ -314,8 +411,23 @@ public class C11FunctionJudgeCodeBuilder
         };
     }
 
-    private static string PrintJsonStatement(string type, string variableName, string? sizeVariableName = null)
+    private static string PrintJsonStatement(
+        string type,
+        string variableName,
+        string? sizeVariableName = null,
+        FunctionJudgeSpec? spec = null)
     {
+        if (spec?.FindCustomType(type) is not null)
+        {
+            return $"__oj_print_{type}_json({variableName});";
+        }
+
+        if (spec is not null && FunctionJudgeSpecParser.IsCustomArrayType(spec, type))
+        {
+            FunctionJudgeSpecParser.TryGetArrayElementType(type, out var elementType);
+            return $"__oj_print_{elementType}_array_json({variableName}, {sizeVariableName});";
+        }
+
         return type switch
         {
             "int" => $"__oj_print_int_json({variableName});",
@@ -329,8 +441,13 @@ public class C11FunctionJudgeCodeBuilder
         };
     }
 
-    private static string ToCType(string type)
+    private static string ToCType(string type, FunctionJudgeSpec spec)
     {
+        if (spec.FindCustomType(type) is not null)
+        {
+            return type;
+        }
+
         return type switch
         {
             "int" => "int",
@@ -341,8 +458,14 @@ public class C11FunctionJudgeCodeBuilder
         };
     }
 
-    private static string ToCArrayPointerType(string type)
+    private static string ToCArrayPointerType(string type, FunctionJudgeSpec spec)
     {
+        if (FunctionJudgeSpecParser.IsCustomArrayType(spec, type))
+        {
+            FunctionJudgeSpecParser.TryGetArrayElementType(type, out var elementType);
+            return $"{elementType}*";
+        }
+
         return type switch
         {
             "int[]" => "int*",
@@ -352,8 +475,16 @@ public class C11FunctionJudgeCodeBuilder
         };
     }
 
-    private static string ToCLiteral(JsonElement element, string type)
+    private static string ToCLiteral(JsonElement element, string type, FunctionJudgeSpec spec)
     {
+        var customType = spec.FindCustomType(type);
+        if (customType is not null)
+        {
+            var assignments = customType.Fields
+                .Select(field => $".{field.Name} = {ToCLiteral(element.GetProperty(field.Name), field.Type, spec)}");
+            return $"({customType.Name}){{ {string.Join(", ", assignments)} }}";
+        }
+
         return type switch
         {
             "int" => element.GetInt32().ToString(CultureInfo.InvariantCulture),
@@ -364,14 +495,9 @@ public class C11FunctionJudgeCodeBuilder
         };
     }
 
-    private static bool IsArrayType(string type)
+    private static bool IsArrayType(string type, FunctionJudgeSpec spec)
     {
-        return type.EndsWith("[]", StringComparison.Ordinal);
-    }
-
-    private static string GetArrayElementType(string type)
-    {
-        return type[..^2];
+        return type is "int[]" or "long[]" or "double[]" || FunctionJudgeSpecParser.IsCustomArrayType(spec, type);
     }
 
     private static string GetAcceptedMarker(Guid testCaseId)
