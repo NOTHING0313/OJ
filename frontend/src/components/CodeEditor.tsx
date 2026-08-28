@@ -22,6 +22,7 @@ export function CodeEditor({ value, language, onChange, height = "540px", readOn
           fontFamily: 'Consolas, "Cascadia Code", monospace',
           fontSize: 15,
           minimap: { enabled: false },
+          mouseWheelZoom: true,
           readOnly,
           renderWhitespace: "selection",
           scrollBeyondLastLine: false,

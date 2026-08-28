@@ -15,6 +15,12 @@ interface FunctionCustomTypeEditor {
 
 const baseFunctionTypes = ["int", "long", "double", "bool", "string", "int[]", "long[]", "double[]", "bool[]", "string[]", "int[][]", "ListNode<int>", "TreeNode<int>"];
 const customFieldPrimitiveTypes = ["int", "long", "double", "bool", "string"];
+const allLanguageMask = 0b111;
+const languageOptions = [
+  { mask: 0b001, label: "C++" },
+  { mask: 0b010, label: "C" },
+  { mask: 0b100, label: "C#" }
+] as const;
 
 export function AdminProblemEditorPage() {
   const { id } = useParams();
@@ -29,6 +35,8 @@ export function AdminProblemEditorPage() {
   const [memoryLimitMb, setMemoryLimitMb] = useState(128);
   const [isPublished, setIsPublished] = useState(false);
   const [judgeMode, setJudgeMode] = useState<JudgeMode>(1);
+  const [isLanguageRestricted, setIsLanguageRestricted] = useState(false);
+  const [allowedLanguagesMask, setAllowedLanguagesMask] = useState(allLanguageMask);
   const [functionName, setFunctionName] = useState("");
   const [returnType, setReturnType] = useState("int");
   const [parameters, setParameters] = useState<FunctionParameterEditor[]>([]);
@@ -64,6 +72,8 @@ export function AdminProblemEditorPage() {
           setMemoryLimitMb(detail.memoryLimitMb);
           setIsPublished(detail.isPublished);
           setJudgeMode(detail.judgeMode);
+          setIsLanguageRestricted(detail.allowedLanguagesMask !== 0);
+          setAllowedLanguagesMask(detail.allowedLanguagesMask || allLanguageMask);
           applyFunctionConfig(detail);
           setError(null);
         }
@@ -90,6 +100,21 @@ export function AdminProblemEditorPage() {
     setError(null);
     setNotice(null);
 
+    const selectedAllowedLanguagesMask = isLanguageRestricted ? allowedLanguagesMask : 0;
+    if (isLanguageRestricted && selectedAllowedLanguagesMask === 0) {
+      setError("限定提交语言时至少选择一种语言");
+      setIsSaving(false);
+      return;
+    }
+
+    if (judgeMode === 2
+      && (selectedAllowedLanguagesMask & 0b010) !== 0
+      && hasC11UnsupportedType(returnType, parameters, customTypes)) {
+      setError("当前函数签名不支持 C11，请取消 C 语言限制或调整函数类型");
+      setIsSaving(false);
+      return;
+    }
+
     const functionConfig = buildFunctionConfig();
     if (functionConfig.isValid === false) {
       setError(functionConfig.error);
@@ -106,6 +131,7 @@ export function AdminProblemEditorPage() {
       memoryLimitMb,
       isPublished,
       judgeMode,
+      allowedLanguagesMask: selectedAllowedLanguagesMask,
       functionSpecJson: functionConfig.functionSpecJson,
       starterCodeJson: functionConfig.starterCodeJson
     };
@@ -182,6 +208,38 @@ export function AdminProblemEditorPage() {
             <option value={2}>函数式答题</option>
           </select>
         </label>
+
+        <section className="content-block">
+          <h2>提交语言</h2>
+          <label className="checkbox-line">
+            <input
+              type="checkbox"
+              checked={isLanguageRestricted}
+              onChange={(event) => {
+                setIsLanguageRestricted(event.target.checked);
+                if (event.target.checked && allowedLanguagesMask === 0) {
+                  setAllowedLanguagesMask(allLanguageMask);
+                }
+              }}
+            />
+            限定提交语言
+          </label>
+          {isLanguageRestricted && (
+            <div className="form-row">
+              {languageOptions.map(({ mask, label }) => (
+                <label className="checkbox-line" key={mask}>
+                  <input
+                    type="checkbox"
+                    checked={(allowedLanguagesMask & mask) !== 0}
+                    onChange={(event) => setAllowedLanguagesMask((current) => event.target.checked ? current | mask : current & ~mask)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="quiet-note">未限定时允许所有判题语言；函数式题目仍会自动排除当前函数签名不支持的语言。</p>
+        </section>
 
         {judgeMode === 1 ? (
           <>

@@ -14,6 +14,7 @@ namespace OnlineJudge.Infrastructure.Problems;
 
 public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser) : IProblemService
 {
+    private const int AllAllowedLanguagesMask = 0b111;
     private const string ProblemReferencedByChallengeTaskMessage = "该题目已被挑战任务引用，请先移除相关挑战任务后再删除。";
 
     public async Task<Result<IReadOnlyList<ProblemListItemDto>>> GetProblemsAsync(CancellationToken cancellationToken = default)
@@ -67,7 +68,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<ProblemDetailDto>.Failure("Forbidden.");
         }
 
-        var validation = ValidateProblemRequest(request.JudgeMode, request.FunctionSpecJson, request.StarterCodeJson);
+        var validation = ValidateProblemRequest(request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
         if (validation.IsFailure)
         {
             return Result<ProblemDetailDto>.Failure(validation.ErrorMessage!);
@@ -85,6 +86,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             MemoryLimitMb = request.MemoryLimitMb,
             IsPublished = request.IsPublished,
             JudgeMode = request.JudgeMode,
+            AllowedLanguagesMask = request.AllowedLanguagesMask,
             FunctionSpecJson = request.JudgeMode == JudgeMode.Function ? request.FunctionSpecJson : null,
             StarterCodeJson = request.JudgeMode == JudgeMode.Function ? request.StarterCodeJson : null,
             CreatedByUserId = userResult.Value.Id,
@@ -120,7 +122,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<ProblemDetailDto>.Failure("Forbidden.");
         }
 
-        var validation = ValidateProblemRequest(request.JudgeMode, request.FunctionSpecJson, request.StarterCodeJson);
+        var validation = ValidateProblemRequest(request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
         if (validation.IsFailure)
         {
             return Result<ProblemDetailDto>.Failure(validation.ErrorMessage!);
@@ -134,6 +136,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         problem.MemoryLimitMb = request.MemoryLimitMb;
         problem.IsPublished = request.IsPublished;
         problem.JudgeMode = request.JudgeMode;
+        problem.AllowedLanguagesMask = request.AllowedLanguagesMask;
         problem.FunctionSpecJson = request.JudgeMode == JudgeMode.Function ? request.FunctionSpecJson : null;
         problem.StarterCodeJson = request.JudgeMode == JudgeMode.Function ? request.StarterCodeJson : null;
         problem.UpdatedAt = DateTimeOffset.UtcNow;
@@ -637,11 +640,16 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         return user.Role == UserRole.Root || problem.CreatedByUserId == user.Id;
     }
 
-    private static Result ValidateProblemRequest(JudgeMode judgeMode, string? functionSpecJson, string? starterCodeJson)
+    private static Result ValidateProblemRequest(JudgeMode judgeMode, int allowedLanguagesMask, string? functionSpecJson, string? starterCodeJson)
     {
         if (!Enum.IsDefined(judgeMode))
         {
             return Result.Failure("Unsupported judge mode.");
+        }
+
+        if (allowedLanguagesMask < 0 || (allowedLanguagesMask & ~AllAllowedLanguagesMask) != 0)
+        {
+            return Result.Failure("Unsupported allowed languages mask.");
         }
 
         if (judgeMode == JudgeMode.StandardInputOutput)
@@ -655,7 +663,56 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result.Failure(specResult.ErrorMessage!);
         }
 
+        var languageValidation = ValidateFunctionAllowedLanguages(allowedLanguagesMask, functionSpecJson);
+        if (languageValidation.IsFailure)
+        {
+            return languageValidation;
+        }
+
         return FunctionJudgeSpecParser.ValidateStarterCode(starterCodeJson);
+    }
+
+    private static Result ValidateFunctionAllowedLanguages(int allowedLanguagesMask, string? functionSpecJson)
+    {
+        if (allowedLanguagesMask == 0 || string.IsNullOrWhiteSpace(functionSpecJson))
+        {
+            return Result.Success();
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(functionSpecJson);
+            if (!document.RootElement.TryGetProperty("supportedLanguages", out var supportedLanguages)
+                || supportedLanguages.ValueKind != JsonValueKind.Array)
+            {
+                return Result.Success();
+            }
+
+            var supportedMask = 0;
+            foreach (var item in supportedLanguages.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                supportedMask |= item.GetString()?.ToLowerInvariant() switch
+                {
+                    "cpp17" => 0b001,
+                    "c11" => 0b010,
+                    "csharp" => 0b100,
+                    _ => 0
+                };
+            }
+
+            return (allowedLanguagesMask & ~supportedMask) == 0
+                ? Result.Success()
+                : Result.Failure("Allowed languages include a language not supported by the function spec.");
+        }
+        catch (JsonException)
+        {
+            return Result.Success();
+        }
     }
 
     private static Result ValidateTestCaseRequest(Problem problem, CreateTestCaseRequest request)
@@ -699,6 +756,8 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             MemoryLimitMb = problem.MemoryLimitMb,
             IsPublished = problem.IsPublished,
             JudgeMode = problem.JudgeMode,
+            AllowedLanguagesMask = problem.AllowedLanguagesMask,
+            TotalScore = problem.TestCases.Sum(testCase => testCase.Score),
             FunctionSpecJson = problem.FunctionSpecJson,
             StarterCodeJson = problem.StarterCodeJson,
             CreatedAt = problem.CreatedAt,

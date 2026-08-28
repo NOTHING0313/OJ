@@ -43,6 +43,10 @@ public class ProblemConfiguration : IEntityTypeConfiguration<Problem>
             .IsRequired()
             .HasDefaultValue(JudgeMode.StandardInputOutput);
 
+        builder.Property(problem => problem.AllowedLanguagesMask)
+            .IsRequired()
+            .HasDefaultValue(0);
+
         builder.Property(problem => problem.FunctionSpecJson)
             .HasColumnType("text");
 

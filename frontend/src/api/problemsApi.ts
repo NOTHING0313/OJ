@@ -35,6 +35,8 @@ export interface ProblemDetailDto {
   memoryLimitMb: number;
   isPublished: boolean;
   judgeMode: JudgeMode;
+  allowedLanguagesMask: number;
+  totalScore: number;
   functionSpecJson?: string | null;
   starterCodeJson?: string | null;
   createdAt: string;
@@ -51,6 +53,7 @@ export interface CreateProblemRequest {
   memoryLimitMb: number;
   isPublished: boolean;
   judgeMode: JudgeMode;
+  allowedLanguagesMask: number;
   functionSpecJson?: string | null;
   starterCodeJson?: string | null;
 }

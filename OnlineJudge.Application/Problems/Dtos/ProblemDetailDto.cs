@@ -22,6 +22,10 @@ public class ProblemDetailDto
 
     public JudgeMode JudgeMode { get; set; }
 
+    public int AllowedLanguagesMask { get; set; }
+
+    public int TotalScore { get; set; }
+
     public string? FunctionSpecJson { get; set; }
 
     public string? StarterCodeJson { get; set; }

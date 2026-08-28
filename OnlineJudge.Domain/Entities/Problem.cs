@@ -32,6 +32,12 @@ public class Problem
     public JudgeMode JudgeMode { get; set; } = JudgeMode.StandardInputOutput;
 
     /// <summary>
+    /// Bit mask of explicitly allowed judge languages. 0 means unrestricted.
+    /// C++17 = 1, C11 = 2, C# = 4.
+    /// </summary>
+    public int AllowedLanguagesMask { get; set; }
+
+    /// <summary>
     /// Function judge signature and parameter metadata.
     /// </summary>
     public string? FunctionSpecJson { get; set; }

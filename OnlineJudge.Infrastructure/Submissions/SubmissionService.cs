@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
@@ -38,6 +39,16 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
         if (problem is null)
         {
             return Result<SubmissionDto>.Failure("Problem not found.");
+        }
+
+        if (!IsLanguageAllowed(problem.AllowedLanguagesMask, request.Language))
+        {
+            return Result<SubmissionDto>.Failure("Selected language is not allowed for this problem.");
+        }
+
+        if (problem.JudgeMode == JudgeMode.Function && !IsFunctionLanguageSupported(problem.FunctionSpecJson, request.Language))
+        {
+            return Result<SubmissionDto>.Failure("Selected language is not supported by this function problem.");
         }
 
         if (problem.JudgeMode == JudgeMode.Function
@@ -379,6 +390,58 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
         }
 
         return Result.Success();
+    }
+
+    private static bool IsLanguageAllowed(int allowedLanguagesMask, JudgeLanguage language)
+    {
+        if (allowedLanguagesMask == 0)
+        {
+            return true;
+        }
+
+        var languageMask = language switch
+        {
+            JudgeLanguage.Cpp17 => 1,
+            JudgeLanguage.C11 => 2,
+            JudgeLanguage.CSharp => 4,
+            _ => 0
+        };
+
+        return languageMask != 0 && (allowedLanguagesMask & languageMask) != 0;
+    }
+
+    private static bool IsFunctionLanguageSupported(string? functionSpecJson, JudgeLanguage language)
+    {
+        if (string.IsNullOrWhiteSpace(functionSpecJson))
+        {
+            return true;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(functionSpecJson);
+            if (!document.RootElement.TryGetProperty("supportedLanguages", out var supportedLanguages)
+                || supportedLanguages.ValueKind != JsonValueKind.Array)
+            {
+                return true;
+            }
+
+            var languageKey = language switch
+            {
+                JudgeLanguage.Cpp17 => "cpp17",
+                JudgeLanguage.C11 => "c11",
+                JudgeLanguage.CSharp => "csharp",
+                _ => string.Empty
+            };
+
+            return !string.IsNullOrEmpty(languageKey)
+                && supportedLanguages.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.String
+                    && string.Equals(item.GetString(), languageKey, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
     }
 
     private async Task EnsureParticipantForChallengeTaskAsync(Guid challengeTaskId, Guid userId, DateTimeOffset joinedAt, CancellationToken cancellationToken)

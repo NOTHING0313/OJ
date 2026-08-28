@@ -20,6 +20,8 @@ public class UpdateProblemRequest
 
     public JudgeMode JudgeMode { get; set; } = JudgeMode.StandardInputOutput;
 
+    public int AllowedLanguagesMask { get; set; }
+
     public string? FunctionSpecJson { get; set; }
 
     public string? StarterCodeJson { get; set; }

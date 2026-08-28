@@ -21,7 +21,14 @@ export function ProblemDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const functionSpec = useMemo(() => parseFunctionSpec(problem?.functionSpecJson), [problem?.functionSpecJson]);
   const sampleTestCases = useMemo(() => problem?.testCases.filter((testCase) => testCase.visibility === 1) || [], [problem?.testCases]);
-  const sampleScoreTotal = useMemo(() => sampleTestCases.reduce((total, testCase) => total + testCase.score, 0), [sampleTestCases]);
+  const availableLanguages = useMemo(
+    () => getAvailableLanguages(problem?.allowedLanguagesMask ?? 0, functionSpec),
+    [problem?.allowedLanguagesMask, functionSpec]
+  );
+  const explicitLanguageTags = useMemo(
+    () => getLanguagesFromMask(problem?.allowedLanguagesMask ?? 0),
+    [problem?.allowedLanguagesMask]
+  );
   const hasListNode = useMemo(() => hasFunctionSpecListNode(functionSpec), [functionSpec]);
   const hasTreeNode = useMemo(() => hasFunctionSpecTreeNode(functionSpec), [functionSpec]);
   const hasC11UnsupportedComplexType = hasListNode || hasTreeNode;
@@ -49,31 +56,22 @@ export function ProblemDetailPage() {
     getProblem(id)
       .then((detail) => {
         setProblem(detail);
-        if (detail.judgeMode === 2) {
-          const cachedLanguage = languageCacheKey ? Number(localStorage.getItem(languageCacheKey)) : 1;
-          const parsedSpec = parseFunctionSpec(detail.functionSpecJson);
-          const c11UnsupportedProblem = hasFunctionSpecListNode(parsedSpec) || hasFunctionSpecTreeNode(parsedSpec);
-          setLanguage((cachedLanguage === 2 && !c11UnsupportedProblem) || cachedLanguage === 3 ? cachedLanguage : 1);
-        }
+        const cachedLanguage = languageCacheKey ? Number(localStorage.getItem(languageCacheKey)) : 1;
+        const parsedSpec = parseFunctionSpec(detail.functionSpecJson);
+        const languages = getAvailableLanguages(detail.allowedLanguagesMask, parsedSpec);
+        const cachedJudgeLanguage = cachedLanguage as JudgeLanguage;
+        setLanguage(languages.includes(cachedJudgeLanguage) ? cachedJudgeLanguage : languages[0] ?? 1);
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "加载题目失败"));
   }, [id, languageCacheKey]);
 
   useEffect(() => {
-    if (!languageCacheKey) {
+    if (!languageCacheKey || availableLanguages.length === 0) {
       return;
     }
 
-    const cachedLanguage = Number(localStorage.getItem(languageCacheKey));
-    if (problem?.judgeMode === 2) {
-      setLanguage((cachedLanguage === 2 && !hasC11UnsupportedComplexType) || cachedLanguage === 3 ? cachedLanguage : 1);
-      return;
-    }
-
-    if (cachedLanguage === 1 || cachedLanguage === 2 || cachedLanguage === 3) {
-      setLanguage(cachedLanguage as JudgeLanguage);
-    }
-  }, [hasC11UnsupportedComplexType, languageCacheKey, problem?.judgeMode]);
+    setLanguage((current) => availableLanguages.includes(current) ? current : availableLanguages[0]);
+  }, [availableLanguages, languageCacheKey]);
 
   useEffect(() => {
     if (!sourceCacheKey) {
@@ -97,6 +95,11 @@ export function ProblemDetailPage() {
     if (!isAuthenticated) {
       setError("请先登录");
       navigate(`/login?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
+      return;
+    }
+
+    if (!availableLanguages.includes(language)) {
+      setError("该题目不允许使用当前语言提交。");
       return;
     }
 
@@ -166,9 +169,12 @@ export function ProblemDetailPage() {
           <div>
             <p className="eyebrow">PROBLEM</p>
             <h1>{problem.title}</h1>
-            <p>
-              {problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {sampleScoreTotal} 分
-            </p>
+            <div className="button-row">
+              <span>{problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {problem.totalScore} 分</span>
+              {explicitLanguageTags.map((tagLanguage) => (
+                <span className="context-chip" key={tagLanguage}>{getProblemLanguageTag(tagLanguage)}</span>
+              ))}
+            </div>
           </div>
           <div className="button-row">
             {challengeId && (
@@ -281,10 +287,14 @@ export function ProblemDetailPage() {
         <form onSubmit={handleSubmit} className="form-stack">
           <label>
             语言
-            <select value={language} onChange={(event) => handleLanguageChange(Number(event.target.value) as JudgeLanguage)}>
-              <option value={1}>C++17</option>
-              <option value={2} disabled={problem.judgeMode === 2 && hasC11UnsupportedComplexType}>C11</option>
-              <option value={3}>C#</option>
+            <select
+              value={language}
+              disabled={availableLanguages.length === 0}
+              onChange={(event) => handleLanguageChange(Number(event.target.value) as JudgeLanguage)}
+            >
+              {availableLanguages.map((availableLanguage) => (
+                <option key={availableLanguage} value={availableLanguage}>{getJudgeLanguageName(availableLanguage)}</option>
+              ))}
             </select>
           </label>
 
@@ -298,7 +308,7 @@ export function ProblemDetailPage() {
             <button className="button" type="button" onClick={clearSourceCache}>
               清空本地缓存
             </button>
-            <button className="button primary" type="submit" disabled={isSubmitting}>
+            <button className="button primary" type="submit" disabled={isSubmitting || availableLanguages.length === 0}>
               {isSubmitting ? "提交中..." : "提交"}
             </button>
           </div>
@@ -565,7 +575,7 @@ function getC11UnsupportedComplexType(
 }
 
 function parseFunctionSpec(functionSpecJson?: string | null):
-  | { functionName: string; returnType: string; parameters: Array<{ name: string; type: string }> }
+  | { functionName: string; returnType: string; parameters: Array<{ name: string; type: string }>; supportedLanguages?: string[] }
   | null {
   if (!functionSpecJson) {
     return null;
@@ -576,6 +586,7 @@ function parseFunctionSpec(functionSpecJson?: string | null):
       functionName?: string;
       returnType?: string;
       parameters?: Array<{ name: string; type: string }>;
+      supportedLanguages?: string[];
     };
 
     if (!parsed.functionName || !parsed.returnType || !Array.isArray(parsed.parameters)) {
@@ -585,11 +596,58 @@ function parseFunctionSpec(functionSpecJson?: string | null):
     return {
       functionName: parsed.functionName,
       returnType: parsed.returnType,
-      parameters: parsed.parameters
+      parameters: parsed.parameters,
+      supportedLanguages: Array.isArray(parsed.supportedLanguages) ? parsed.supportedLanguages : undefined
     };
   } catch {
     return null;
   }
+}
+
+function getAvailableLanguages(
+  allowedLanguagesMask: number,
+  functionSpec?: { returnType: string; parameters: Array<{ type: string }>; supportedLanguages?: string[] } | null
+): JudgeLanguage[] {
+  return ([1, 2, 3] as JudgeLanguage[]).filter((candidate) => {
+    const explicitAllowed = allowedLanguagesMask === 0 || (allowedLanguagesMask & getJudgeLanguageMask(candidate)) !== 0;
+    return explicitAllowed && isFunctionLanguageSupported(functionSpec, candidate);
+  });
+}
+
+function getLanguagesFromMask(allowedLanguagesMask: number): JudgeLanguage[] {
+  if (allowedLanguagesMask === 0) {
+    return [];
+  }
+
+  return ([1, 2, 3] as JudgeLanguage[]).filter((candidate) => (allowedLanguagesMask & getJudgeLanguageMask(candidate)) !== 0);
+}
+
+function getJudgeLanguageMask(language: JudgeLanguage) {
+  return language === 1 ? 0b001 : language === 2 ? 0b010 : 0b100;
+}
+
+function getJudgeLanguageName(language: JudgeLanguage) {
+  return language === 1 ? "C++17" : language === 2 ? "C11" : "C#";
+}
+
+function getProblemLanguageTag(language: JudgeLanguage) {
+  return language === 1 ? "C++" : language === 2 ? "C" : "C#";
+}
+
+function isFunctionLanguageSupported(
+  functionSpec: { returnType: string; parameters: Array<{ type: string }>; supportedLanguages?: string[] } | null | undefined,
+  language: JudgeLanguage
+) {
+  if (!functionSpec) {
+    return true;
+  }
+
+  if (Array.isArray(functionSpec.supportedLanguages)) {
+    const languageKey = language === 1 ? "cpp17" : language === 2 ? "c11" : "csharp";
+    return functionSpec.supportedLanguages.some((item) => item.toLowerCase() === languageKey);
+  }
+
+  return language !== 2 || (!hasFunctionSpecListNode(functionSpec) && !hasFunctionSpecTreeNode(functionSpec));
 }
 
 function formatJsonString(value?: string | null) {
