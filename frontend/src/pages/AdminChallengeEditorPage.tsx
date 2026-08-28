@@ -22,7 +22,8 @@ export function AdminChallengeEditorPage() {
     description: "",
     startAt: toDateTimeLocalValue(new Date().toISOString()),
     endAt: toDateTimeLocalValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()),
-    isPublished: false
+    isPublished: false,
+    participationMode: 1 as 1 | 2
   });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -47,7 +48,8 @@ export function AdminChallengeEditorPage() {
             description: detail.description,
             startAt: toDateTimeLocalValue(detail.startAt),
             endAt: toDateTimeLocalValue(detail.endAt),
-            isPublished: detail.isPublished
+            isPublished: detail.isPublished,
+            participationMode: detail.participationMode
           });
           setError(null);
         }
@@ -86,7 +88,8 @@ export function AdminChallengeEditorPage() {
       description: form.description,
       startAt: toIsoString(form.startAt),
       endAt: toIsoString(form.endAt),
-      isPublished: form.isPublished
+      isPublished: form.isPublished,
+      participationMode: form.participationMode
     };
 
     try {
@@ -224,6 +227,18 @@ export function AdminChallengeEditorPage() {
         <label className="checkbox-line">
           <input type="checkbox" checked={form.isPublished} onChange={(event) => setForm((current) => ({ ...current, isPublished: event.target.checked }))} />
           发布挑战
+        </label>
+        <label>
+          参与模式
+          <select
+            value={form.participationMode}
+            disabled={challenge?.participationModeLocked}
+            onChange={(event) => setForm((current) => ({ ...current, participationMode: Number(event.target.value) as 1 | 2 }))}
+          >
+            <option value={1}>个人挑战</option>
+            <option value={2}>战队挑战（仅算法题）</option>
+          </select>
+          {challenge?.participationModeLocked && <small>挑战发布、开始或产生参与/提交后，参与模式不可更改。</small>}
         </label>
         <div className="button-row">
           <button className="button primary" disabled={isSaving} type="submit">

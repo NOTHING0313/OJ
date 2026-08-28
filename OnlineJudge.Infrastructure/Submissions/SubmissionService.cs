@@ -66,6 +66,8 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             return Result<SubmissionDto>.Failure("Function mode currently supports C++17, C# and C11 only.");
         }
 
+        Guid? challengeTeamParticipantId = null;
+        ChallengeParticipationMode? challengeParticipationMode = null;
         if (request.ChallengeTaskId.HasValue)
         {
             var challengeTaskValidation = await ValidateChallengeTaskSubmissionAsync(
@@ -78,11 +80,28 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             {
                 return Result<SubmissionDto>.Failure(challengeTaskValidation.ErrorMessage ?? "Invalid challenge task.");
             }
+
+            var challengeContext = await dbContext.ChallengeTasks.AsNoTracking()
+                .Where(task => task.Id == request.ChallengeTaskId.Value)
+                .Select(task => new { task.ChallengeId, task.Challenge!.ParticipationMode })
+                .SingleAsync(cancellationToken);
+            challengeParticipationMode = challengeContext.ParticipationMode;
+            if (challengeParticipationMode == ChallengeParticipationMode.TeamOnly)
+            {
+                challengeTeamParticipantId = await dbContext.ChallengeTeamRosterMembers.AsNoTracking()
+                    .Where(member => member.ChallengeId == challengeContext.ChallengeId && member.UserId == userResult.Value.Id)
+                    .Select(member => (Guid?)member.ChallengeTeamParticipantId)
+                    .SingleOrDefaultAsync(cancellationToken);
+                if (!challengeTeamParticipantId.HasValue)
+                {
+                    return Result<SubmissionDto>.Failure("User is not registered on a team for this challenge.");
+                }
+            }
         }
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        if (request.ChallengeTaskId.HasValue)
+        if (request.ChallengeTaskId.HasValue && challengeParticipationMode == ChallengeParticipationMode.Individual)
         {
             await EnsureParticipantForChallengeTaskAsync(request.ChallengeTaskId.Value, userResult.Value.Id, DateTimeOffset.UtcNow, cancellationToken);
         }
@@ -93,6 +112,7 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             ProblemId = request.ProblemId,
             UserId = userResult.Value.Id,
             ChallengeTaskId = request.ChallengeTaskId,
+            ChallengeTeamParticipantId = challengeTeamParticipantId,
             Language = request.Language,
             SourceCode = request.SourceCode,
             Status = JudgeStatus.Pending,

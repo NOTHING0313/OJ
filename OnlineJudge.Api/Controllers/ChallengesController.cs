@@ -177,6 +177,15 @@ public class ChallengesController(IChallengeService challengeService) : Controll
     }
 
     [Authorize]
+    [HttpPost("{id:guid}/team-registration")]
+    public async Task<IActionResult> RegisterTeam(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await challengeService.RegisterTeamAsync(id, cancellationToken);
+        if (result.IsFailure) return ToFailureResult(result.ErrorMessage);
+        return Ok(result.Value);
+    }
+
+    [Authorize]
     [HttpPost]
     public async Task<IActionResult> CreateChallenge(CreateChallengeRequest request, CancellationToken cancellationToken)
     {

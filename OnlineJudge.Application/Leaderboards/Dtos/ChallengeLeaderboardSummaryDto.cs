@@ -1,5 +1,7 @@
 namespace OnlineJudge.Application.Leaderboards.Dtos;
 
+using OnlineJudge.Domain.Enums;
+
 public class ChallengeLeaderboardSummaryDto
 {
     public Guid ChallengeId { get; set; }
@@ -11,6 +13,10 @@ public class ChallengeLeaderboardSummaryDto
     public int TotalTaskCount { get; set; }
 
     public int ParticipantCount { get; set; }
+
+    public int TeamCount { get; set; }
+
+    public ChallengeParticipationMode ParticipationMode { get; set; }
 
     public int CompletedUserCount { get; set; }
 

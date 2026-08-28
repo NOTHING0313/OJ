@@ -1,14 +1,20 @@
 namespace OnlineJudge.Application.Challenges.Dtos;
 
+using OnlineJudge.Domain.Enums;
+
 public class ChallengeLeaderboardProgressDto
 {
     public Guid ChallengeId { get; set; }
 
     public string ChallengeTitle { get; set; } = string.Empty;
 
+    public ChallengeParticipationMode ParticipationMode { get; set; }
+
     public IReadOnlyList<ChallengeLeaderboardProgressTaskDto> Tasks { get; set; } = [];
 
     public IReadOnlyList<ChallengeLeaderboardProgressUserDto> Users { get; set; } = [];
+
+    public IReadOnlyList<ChallengeTeamLeaderboardProgressDto> Teams { get; set; } = [];
 }
 
 public class ChallengeLeaderboardProgressTaskDto

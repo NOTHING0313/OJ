@@ -3,6 +3,7 @@ import type { RankHistory } from "./leaderboardsApi";
 
 export type ChallengeTaskType = 1 | 2;
 export type ChallengeTaskDifficulty = 1 | 2 | 3 | 4 | 5 | 6;
+export type ChallengeParticipationMode = 1 | 2;
 
 export interface ChallengeListItemDto {
   id: string;
@@ -11,6 +12,8 @@ export interface ChallengeListItemDto {
   startAt: string;
   endAt: string;
   isPublished: boolean;
+  participationMode: ChallengeParticipationMode;
+  teamCount: number;
   createdAt: string;
   totalTaskCount: number;
   completedTaskCount: number;
@@ -45,11 +48,14 @@ export interface ChallengeDetailDto {
   endAt: string;
   createdByUserId: string;
   isPublished: boolean;
+  participationMode: ChallengeParticipationMode;
+  participationModeLocked: boolean;
   createdAt: string;
   updatedAt: string;
   totalTaskCount: number;
   completedTaskCount: number;
   canManage: boolean;
+  teamParticipation: ChallengeTeamParticipation | null;
   tasks: ChallengeTaskDto[];
 }
 
@@ -77,6 +83,17 @@ export interface SaveChallengeRequest {
   startAt: string;
   endAt: string;
   isPublished: boolean;
+  participationMode: ChallengeParticipationMode;
+}
+
+export interface ChallengeTeamParticipation {
+  id: string | null;
+  teamId: string | null;
+  teamName: string;
+  registeredAt: string;
+  rosterMemberCount: number;
+  isRosterMember: boolean;
+  canRegisterTeam: boolean;
 }
 
 export interface CreateChallengeTaskRequest {
@@ -119,14 +136,38 @@ export interface ChallengeLeaderboard {
   challengeId: string;
   challengeTitle: string;
   totalTaskCount: number;
+  participationMode: ChallengeParticipationMode;
   entries: ChallengeLeaderboardEntry[];
+  teamEntries: ChallengeTeamLeaderboardEntry[];
+}
+
+export interface ChallengeTeamLeaderboardEntry {
+  rank: number;
+  teamParticipantId: string;
+  teamName: string;
+  completedTaskCount: number;
+  totalScore: number;
+  lastImprovedAt: string | null;
 }
 
 export interface ChallengeLeaderboardProgress {
   challengeId: string;
   challengeTitle: string;
+  participationMode: ChallengeParticipationMode;
   tasks: ChallengeLeaderboardProgressTask[];
   users: ChallengeLeaderboardProgressUser[];
+  teams: ChallengeTeamLeaderboardProgress[];
+}
+
+export interface ChallengeTeamLeaderboardProgress {
+  teamParticipantId: string;
+  teamName: string;
+  rank: number | null;
+  completedTaskCount: number;
+  totalScore: number;
+  lastImprovedAt: string | null;
+  completedTaskIds: string[];
+  taskScores: Record<string, number>;
 }
 
 export interface ChallengeLeaderboardProgressTask {
@@ -153,11 +194,25 @@ export interface ChallengeLeaderboardProgressUser {
 export interface ChallengeAdminSummary {
   challengeId: string;
   challengeTitle: string;
+  participationMode: ChallengeParticipationMode;
   totalTaskCount: number;
   participantCount: number;
   totalCompletionCount: number;
   users: ChallengeAdminUserProgress[];
   tasks: ChallengeAdminTaskProgress[];
+  teams: ChallengeAdminTeamProgress[];
+}
+
+export interface ChallengeAdminTeamProgress {
+  teamParticipantId: string;
+  teamId: string;
+  teamName: string;
+  registeredByUserId: string;
+  registeredAt: string;
+  totalScore: number;
+  completedTaskCount: number;
+  roster: { userId: string; userName: string; role: number }[];
+  tasks: { taskId: string; taskTitle: string; score: number; isCompleted: boolean; bestSubmissionId: string | null; contributorUserId: string | null; contributorUserName: string | null; completedAt: string | null; updatedAt: string | null }[];
 }
 
 export interface ChallengeAdminUserProgress {
@@ -269,6 +324,10 @@ export function joinChallenge(challengeId: string) {
   return request<void>(`/api/challenges/${challengeId}/join`, {
     method: "POST"
   });
+}
+
+export function registerChallengeTeam(challengeId: string) {
+  return request<ChallengeTeamParticipation>(`/api/challenges/${challengeId}/team-registration`, { method: "POST" });
 }
 
 export function getMyChallengeFileSubmission(challengeId: string, taskId: string) {

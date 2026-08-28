@@ -23,7 +23,9 @@ export function ChallengeLeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const rowKeys = leaderboard?.entries.map(entryKey) ?? [];
+  const rowKeys = leaderboard?.participationMode === 2
+    ? leaderboard.teamEntries.map((entry) => entry.teamParticipantId)
+    : leaderboard?.entries.map(entryKey) ?? [];
   const { capturePositions, setRowNode } = useRankMovementAnimation(rowKeys);
 
   useEffect(() => {
@@ -109,6 +111,22 @@ export function ChallengeLeaderboardPage() {
 
   if (!leaderboard) {
     return <div className="empty-state">暂无排行榜数据</div>;
+  }
+
+  if (leaderboard.participationMode === 2) {
+    const completedTaskTotal = leaderboard.teamEntries.reduce((sum, entry) => sum + entry.completedTaskCount, 0);
+    return (
+      <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
+        <div className="leaderboard-header leaderboard-v2-header">
+          <div><p className="eyebrow">TEAM CHALLENGE LEADERBOARD</p><h1>{leaderboard.challengeTitle}</h1><p>仅展示冻结报名战队的汇总成绩；成员与贡献者信息仅供管理员审计。</p></div>
+          <div className="leaderboard-header-actions"><span className="leaderboard-total">共 {leaderboard.teamEntries.length} 支战队</span><Link className="button" to={`/challenges/${leaderboard.challengeId}`}>返回棋盘</Link></div>
+        </div>
+        <div className="leaderboard-mini-metrics"><div><span>挑战任务</span><strong>{leaderboard.totalTaskCount}</strong></div><div><span>报名战队</span><strong>{leaderboard.teamEntries.length}</strong></div><div><span>当前第一</span><strong>{leaderboard.teamEntries[0]?.teamName ?? "—"}</strong></div><div><span>累计完成题目</span><strong>{completedTaskTotal}</strong></div></div>
+        {leaderboard.teamEntries.length === 0 ? <div className="management-state-panel management-empty-state"><strong>暂无战队成绩</strong><p>报名战队完成挑战任务后会出现在这里。</p></div> : (
+          <div className="leaderboard-v2-table-wrap leaderboard-live-table-wrap"><table className="leaderboard-table leaderboard-v2-table"><thead><tr><th>排名</th><th>战队</th><th>完成题目</th><th>总分</th><th>最后提升时间</th></tr></thead><tbody>{leaderboard.teamEntries.map((entry) => <tr key={entry.teamParticipantId} ref={(node) => setRowNode(entry.teamParticipantId, node)}><td><span className={`leaderboard-rank ${getRankClass(entry.rank)}`}>{entry.rank}</span></td><td><strong>{entry.teamName}</strong></td><td><span className="leaderboard-progress-copy"><strong>{entry.completedTaskCount}</strong><small>/ {leaderboard.totalTaskCount}</small></span></td><td><strong className="leaderboard-score">{entry.totalScore}</strong></td><td>{formatDate(entry.lastImprovedAt)}</td></tr>)}</tbody></table></div>
+        )}
+      </section>
+    );
   }
 
   const topEntry = leaderboard.entries[0];

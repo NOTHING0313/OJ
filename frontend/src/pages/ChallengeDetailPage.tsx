@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { getChallenge, joinChallenge, type ChallengeDetailDto, type ChallengeTaskDto } from "../api/challengesApi";
+import { getChallenge, joinChallenge, registerChallengeTeam, type ChallengeDetailDto, type ChallengeTaskDto } from "../api/challengesApi";
 import { useAuth } from "../auth/AuthContext";
 import { MarkdownRenderer } from "../components/MarkdownRenderer";
 
@@ -72,6 +72,7 @@ export function ChallengeDetailPage() {
     }
 
     setJoinedChallengeId(challenge.id);
+    if (challenge.participationMode === 2) return;
     joinChallenge(challenge.id).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : "加入挑战失败";
       if (message.includes("Forbidden") || message.includes("blacklisted") || message.includes("黑名单")) {
@@ -198,6 +199,17 @@ export function ChallengeDetailPage() {
   }
 
   const canOpenAdminSummary = challenge.canManage;
+  const challengeIdForRegistration = challenge.id;
+
+  async function registerTeam() {
+    try {
+      const teamParticipation = await registerChallengeTeam(challengeIdForRegistration);
+      setChallenge((current) => current ? { ...current, teamParticipation } : current);
+      setJoinWarning(null);
+    } catch (err) {
+      setJoinWarning(err instanceof Error ? err.message : "战队报名失败");
+    }
+  }
 
   return (
     <section className="challenge-page ui-v2-page challenge-detail-v2-page challenge-detail-v8-page">
@@ -209,6 +221,18 @@ export function ChallengeDetailPage() {
           <div className="challenge-description-v8">
             <MarkdownRenderer value={challenge.description} />
           </div>
+          {challenge.participationMode === 2 && (
+            <div className="quiet-note">
+              <strong>战队挑战</strong>
+              {challenge.teamParticipation?.isRosterMember
+                ? <span>已随「{challenge.teamParticipation.teamName}」报名 · 冻结阵容 {challenge.teamParticipation.rosterMemberCount} 人</span>
+                : challenge.teamParticipation?.id
+                  ? <span>你的当前战队「{challenge.teamParticipation.teamName}」已报名，但你未被登记在本场挑战的冻结参赛阵容中。</span>
+                : challenge.teamParticipation?.canRegisterTeam
+                  ? <button className="button primary" type="button" onClick={() => void registerTeam()}>以我的战队报名</button>
+                  : <span>等待队长报名；若你尚无战队，需要先加入或创建战队。报名阵容将被冻结。</span>}
+            </div>
+          )}
         </div>
         <div className="challenge-time-v8">
           <div>

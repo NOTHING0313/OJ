@@ -39,6 +39,8 @@ public class ChallengeTask
 
     public List<ChallengeTaskCompletion> Completions { get; set; } = [];
 
+    public List<ChallengeTeamTaskCompletion> TeamCompletions { get; set; } = [];
+
     public List<ChallengeTaskAnswer> Answers { get; set; } = [];
 
     public List<ChallengeTaskFileSubmission> FileSubmissions { get; set; } = [];

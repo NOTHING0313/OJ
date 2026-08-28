@@ -25,6 +25,12 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<ChallengeParticipant> ChallengeParticipants => Set<ChallengeParticipant>();
 
+    public DbSet<ChallengeTeamParticipant> ChallengeTeamParticipants => Set<ChallengeTeamParticipant>();
+
+    public DbSet<ChallengeTeamRosterMember> ChallengeTeamRosterMembers => Set<ChallengeTeamRosterMember>();
+
+    public DbSet<ChallengeTeamTaskCompletion> ChallengeTeamTaskCompletions => Set<ChallengeTeamTaskCompletion>();
+
     public DbSet<ChallengeTaskCompletion> ChallengeTaskCompletions => Set<ChallengeTaskCompletion>();
 
     public DbSet<ChallengeTaskAnswer> ChallengeTaskAnswers => Set<ChallengeTaskAnswer>();

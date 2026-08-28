@@ -212,7 +212,7 @@ export function AdminChallengeTaskEditorPage() {
               }))}
             >
               <option value={1}>算法题</option>
-              <option value={2}>文件题</option>
+              <option value={2} disabled={challenge?.participationMode === 2}>文件题{challenge?.participationMode === 2 ? "（战队赛暂不支持）" : ""}</option>
             </select>
           </label>
           <label>

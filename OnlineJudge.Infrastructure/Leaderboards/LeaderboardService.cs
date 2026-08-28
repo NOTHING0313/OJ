@@ -203,7 +203,8 @@ public class LeaderboardService(
                 challenge.Description,
                 challenge.StartAt,
                 challenge.EndAt,
-                challenge.IsPublished
+                challenge.IsPublished,
+                challenge.ParticipationMode
             })
             .ToListAsync(cancellationToken);
 
@@ -252,6 +253,29 @@ public class LeaderboardService(
             .ToListAsync(cancellationToken);
 
         var aliases = await identityService.EnsureCurrentSeasonAliasesAsync(completionRows.Select(row => row.UserId), cancellationToken);
+
+        var teamParticipants = await dbContext.ChallengeTeamParticipants.AsNoTracking()
+            .Where(participant => challengeIds.Contains(participant.ChallengeId))
+            .Include(participant => participant.TaskCompletions)
+            .ToListAsync(cancellationToken);
+        var teamCountMap = teamParticipants.GroupBy(participant => participant.ChallengeId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var teamTopEntriesMap = teamParticipants.GroupBy(participant => participant.ChallengeId).ToDictionary(
+            group => group.Key,
+            group => group.Select(participant => new
+                {
+                    participant.TeamNameSnapshot,
+                    CompletedTaskCount = participant.TaskCompletions.Count(completion => completion.IsCompleted),
+                    TotalScore = participant.TaskCompletions.Sum(completion => completion.Score),
+                    LastCompletedAt = participant.TaskCompletions.Count == 0 ? (DateTimeOffset?)null : participant.TaskCompletions.Max(completion => completion.UpdatedAt)
+                })
+                .OrderByDescending(entry => entry.TotalScore).ThenByDescending(entry => entry.CompletedTaskCount)
+                .ThenBy(entry => entry.LastCompletedAt).ThenBy(entry => entry.TeamNameSnapshot).Take(3)
+                .Select((entry, index) => new ChallengeLeaderboardTopEntryDto
+                {
+                    Rank = index + 1, UserName = entry.TeamNameSnapshot, CompletedTaskCount = entry.CompletedTaskCount,
+                    TotalScore = entry.TotalScore, LastCompletedAt = entry.LastCompletedAt
+                }).ToList());
 
         var participantCountMap = participantRows
             .Concat(completionRows.Select(row => new { row.ChallengeId, row.UserId }))
@@ -312,10 +336,16 @@ public class LeaderboardService(
                 StartAt = challenge.StartAt,
                 EndAt = challenge.EndAt,
                 IsPublished = challenge.IsPublished,
+                ParticipationMode = challenge.ParticipationMode,
+                TeamCount = teamCountMap.GetValueOrDefault(challenge.Id),
                 TotalTaskCount = taskCounts.GetValueOrDefault(challenge.Id),
-                ParticipantCount = participantCountMap.GetValueOrDefault(challenge.Id),
-                CompletedUserCount = completedUserCountMap.GetValueOrDefault(challenge.Id),
-                TopEntries = topEntriesMap.GetValueOrDefault(challenge.Id) ?? []
+                ParticipantCount = challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly ? teamCountMap.GetValueOrDefault(challenge.Id) : participantCountMap.GetValueOrDefault(challenge.Id),
+                CompletedUserCount = challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly
+                    ? teamParticipants.Count(participant => participant.ChallengeId == challenge.Id && participant.TaskCompletions.Any(completion => completion.IsCompleted))
+                    : completedUserCountMap.GetValueOrDefault(challenge.Id),
+                TopEntries = challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly
+                    ? teamTopEntriesMap.GetValueOrDefault(challenge.Id) ?? []
+                    : topEntriesMap.GetValueOrDefault(challenge.Id) ?? []
             })
             .ToList();
 

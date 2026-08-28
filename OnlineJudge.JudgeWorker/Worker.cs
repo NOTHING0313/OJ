@@ -214,6 +214,28 @@ public class Worker(
             : ChallengeScoreCalculator.CalculateEarnedScore(task.Score, passedTestCaseScore, totalTestCaseScore);
         var now = DateTimeOffset.UtcNow;
 
+        if (submission.ChallengeTeamParticipantId is { } teamParticipantId)
+        {
+            var teamCompletion = await dbContext.ChallengeTeamTaskCompletions.FirstOrDefaultAsync(
+                completion => completion.ChallengeTeamParticipantId == teamParticipantId && completion.ChallengeTaskId == task.Id,
+                cancellationToken);
+            if (teamCompletion is null)
+            {
+                if (earnedScore <= 0 && !isCompleted) return;
+                teamCompletion = new ChallengeTeamTaskCompletion
+                {
+                    Id = Guid.NewGuid(), ChallengeId = task.ChallengeId, ChallengeTaskId = task.Id,
+                    ChallengeTeamParticipantId = teamParticipantId, BestSubmissionId = submission.Id,
+                    ContributorUserId = submission.UserId, CompletedAt = now, UpdatedAt = now,
+                    IsCompleted = isCompleted, Score = earnedScore
+                };
+                dbContext.ChallengeTeamTaskCompletions.Add(teamCompletion);
+                return;
+            }
+            ChallengeTeamProgressUpdater.TryApply(teamCompletion, earnedScore, isCompleted, task.Score, submission.Id, submission.UserId, now);
+            return;
+        }
+
         var completion = await dbContext.ChallengeTaskCompletions
             .FirstOrDefaultAsync(
                 completion => completion.UserId == submission.UserId && completion.ChallengeTaskId == task.Id,

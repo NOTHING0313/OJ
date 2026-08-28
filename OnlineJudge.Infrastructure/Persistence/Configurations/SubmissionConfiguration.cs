@@ -20,6 +20,8 @@ public class SubmissionConfiguration : IEntityTypeConfiguration<Submission>
 
         builder.Property(submission => submission.ChallengeTaskId);
 
+        builder.Property(submission => submission.ChallengeTeamParticipantId);
+
         builder.Property(submission => submission.Language)
             .HasConversion<int>()
             .IsRequired();
@@ -53,6 +55,11 @@ public class SubmissionConfiguration : IEntityTypeConfiguration<Submission>
         builder.HasOne(submission => submission.ChallengeTask)
             .WithMany()
             .HasForeignKey(submission => submission.ChallengeTaskId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne(submission => submission.ChallengeTeamParticipant)
+            .WithMany(participant => participant.Submissions)
+            .HasForeignKey(submission => submission.ChallengeTeamParticipantId)
             .OnDelete(DeleteBehavior.SetNull);
     }
 }

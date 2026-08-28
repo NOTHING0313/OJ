@@ -28,6 +28,8 @@ export interface ChallengeLeaderboardSummary {
   description: string | null;
   totalTaskCount: number;
   participantCount: number;
+  teamCount: number;
+  participationMode: 1 | 2;
   completedUserCount: number;
   startAt: string;
   endAt: string;

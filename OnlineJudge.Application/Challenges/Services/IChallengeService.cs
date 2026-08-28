@@ -29,6 +29,8 @@ public interface IChallengeService
 
     Task<Result> JoinChallengeAsync(Guid challengeId, CancellationToken cancellationToken = default);
 
+    Task<Result<ChallengeTeamParticipationDto>> RegisterTeamAsync(Guid challengeId, CancellationToken cancellationToken = default);
+
     Task<Result<ChallengeDetailDto>> CreateChallengeAsync(CreateChallengeRequest request, CancellationToken cancellationToken = default);
 
     Task<Result<ChallengeDetailDto>> UpdateChallengeAsync(Guid id, UpdateChallengeRequest request, CancellationToken cancellationToken = default);

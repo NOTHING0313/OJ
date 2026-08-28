@@ -1,3 +1,5 @@
+using OnlineJudge.Domain.Enums;
+
 namespace OnlineJudge.Domain.Entities;
 
 public class Challenge
@@ -19,6 +21,8 @@ public class Challenge
 
     public bool IsPublished { get; set; }
 
+    public ChallengeParticipationMode ParticipationMode { get; set; } = ChallengeParticipationMode.Individual;
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
@@ -30,6 +34,12 @@ public class Challenge
     public List<ChallengeTaskCompletion> Completions { get; set; } = [];
 
     public List<ChallengeParticipant> Participants { get; set; } = [];
+
+    public List<ChallengeTeamParticipant> TeamParticipants { get; set; } = [];
+
+    public List<ChallengeTeamRosterMember> TeamRosterMembers { get; set; } = [];
+
+    public List<ChallengeTeamTaskCompletion> TeamTaskCompletions { get; set; } = [];
 
     public List<ChallengeTaskAnswer> Answers { get; set; } = [];
 

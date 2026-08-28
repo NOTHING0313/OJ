@@ -1,5 +1,7 @@
 namespace OnlineJudge.Application.Challenges.Dtos;
 
+using OnlineJudge.Domain.Enums;
+
 public class ChallengeListItemDto
 {
     public Guid Id { get; set; }
@@ -13,6 +15,10 @@ public class ChallengeListItemDto
     public DateTimeOffset EndAt { get; set; }
 
     public bool IsPublished { get; set; }
+
+    public ChallengeParticipationMode ParticipationMode { get; set; }
+
+    public int TeamCount { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 

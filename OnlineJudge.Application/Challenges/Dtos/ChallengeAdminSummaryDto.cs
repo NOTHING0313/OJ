@@ -1,10 +1,14 @@
 namespace OnlineJudge.Application.Challenges.Dtos;
 
+using OnlineJudge.Domain.Enums;
+
 public class ChallengeAdminSummaryDto
 {
     public Guid ChallengeId { get; set; }
 
     public string ChallengeTitle { get; set; } = string.Empty;
+
+    public ChallengeParticipationMode ParticipationMode { get; set; }
 
     public int TotalTaskCount { get; set; }
 
@@ -18,4 +22,6 @@ public class ChallengeAdminSummaryDto
     public IReadOnlyList<ChallengeAdminUserProgressDto> Users { get; set; } = [];
 
     public IReadOnlyList<ChallengeAdminTaskProgressDto> Tasks { get; set; } = [];
+
+    public IReadOnlyList<ChallengeAdminTeamProgressDto> Teams { get; set; } = [];
 }

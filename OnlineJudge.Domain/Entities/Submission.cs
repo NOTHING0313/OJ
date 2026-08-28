@@ -12,6 +12,8 @@ public class Submission
 
     public Guid? ChallengeTaskId { get; set; }
 
+    public Guid? ChallengeTeamParticipantId { get; set; }
+
     public JudgeLanguage Language { get; set; }
 
     /// <summary>
@@ -39,6 +41,8 @@ public class Submission
     public User? User { get; set; }
 
     public ChallengeTask? ChallengeTask { get; set; }
+
+    public ChallengeTeamParticipant? ChallengeTeamParticipant { get; set; }
 
     public List<SubmissionCaseResult> CaseResults { get; set; } = [];
 }

@@ -47,6 +47,7 @@ public class ChallengeService(
 
         var challenges = await visibilityPolicy.ApplyChallengeVisibility(query, visibilityRole)
             .Include(challenge => challenge.Tasks)
+            .Include(challenge => challenge.TeamParticipants)
             .OrderByDescending(challenge => challenge.CreatedAt)
             .ToListAsync(cancellationToken);
 
@@ -63,12 +64,29 @@ public class ChallengeService(
                 StartAt = challenge.StartAt,
                 EndAt = challenge.EndAt,
                 IsPublished = challenge.IsPublished,
+                ParticipationMode = challenge.ParticipationMode,
+                TeamCount = challenge.TeamParticipants.Count,
                 CreatedAt = challenge.CreatedAt,
                 TotalTaskCount = challenge.Tasks.Count,
                 CompletedTaskCount = CountCompletedTasks(challenge, completions),
                 CanManage = CanManageChallengeForCurrentUser(challenge, visibilityRole)
             })
             .ToList();
+
+        if (currentUser.IsAuthenticated && currentUser.UserId is { } currentUserId)
+        {
+            var teamProgress = await dbContext.ChallengeTeamRosterMembers.AsNoTracking()
+                .Where(member => member.UserId == currentUserId && challenges.Select(challenge => challenge.Id).Contains(member.ChallengeId))
+                .SelectMany(member => member.ChallengeTeamParticipant!.TaskCompletions)
+                .Where(completion => completion.IsCompleted)
+                .GroupBy(completion => completion.ChallengeId)
+                .Select(group => new { ChallengeId = group.Key, Count = group.Count() })
+                .ToDictionaryAsync(row => row.ChallengeId, row => row.Count, cancellationToken);
+            foreach (var item in items.Where(item => item.ParticipationMode == ChallengeParticipationMode.TeamOnly))
+            {
+                item.CompletedTaskCount = teamProgress.GetValueOrDefault(item.Id);
+            }
+        }
 
         return Result<IReadOnlyList<ChallengeListItemDto>>.Success(items);
     }
@@ -89,9 +107,13 @@ public class ChallengeService(
             return Result<ChallengeDetailDto>.Failure("Challenge not found.");
         }
 
-        var completions = await GetCurrentUserCompletionsAsync([challenge.Id], cancellationToken);
-
-        return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, completions, visibilityRole));
+        var completions = challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly
+            ? new Dictionary<Guid, ChallengeTaskCompletion>()
+            : await GetCurrentUserCompletionsAsync([challenge.Id], cancellationToken);
+        var detail = ToDetailDto(challenge, completions, visibilityRole);
+        detail.ParticipationModeLocked = await IsParticipationModeLockedAsync(challenge, cancellationToken);
+        await PopulateTeamParticipationAsync(detail, cancellationToken);
+        return Result<ChallengeDetailDto>.Success(detail);
     }
 
     public async Task<Result<ChallengeLeaderboardDto>> GetLeaderboardAsync(Guid challengeId, CancellationToken cancellationToken = default)
@@ -115,6 +137,11 @@ public class ChallengeService(
         if (!CanViewLeaderboard(user, challenge))
         {
             return Result<ChallengeLeaderboardDto>.Failure("Challenge not found.");
+        }
+
+        if (challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly)
+        {
+            return await GetTeamLeaderboardAsync(challenge, cancellationToken);
         }
 
         var viewer = user is null
@@ -209,6 +236,10 @@ public class ChallengeService(
         if (!CanViewLeaderboard(current, challenge))
         {
             return Result<ChallengeLeaderboardProgressDto>.Failure("Challenge not found.");
+        }
+        if (challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly)
+        {
+            return await GetTeamLeaderboardProgressAsync(challenge, cancellationToken);
         }
 
         var viewer = current is null
@@ -362,6 +393,10 @@ public class ChallengeService(
         {
             return Result<RankHistoryDto>.Failure("Challenge not found.");
         }
+        if (challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly)
+        {
+            return Result<RankHistoryDto>.Success(new RankHistoryDto());
+        }
 
         var viewer = current is null
             ? new LeaderboardViewer(null, null, false)
@@ -480,6 +515,11 @@ public class ChallengeService(
             .ThenBy(task => task.BoardX)
             .ToList();
 
+        if (challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly)
+        {
+            return await GetTeamAdminSummaryAsync(challenge, tasks, cancellationToken);
+        }
+
         var completions = await dbContext.ChallengeTaskCompletions
             .AsNoTracking()
             .Where(completion => completion.ChallengeId == challengeId)
@@ -569,11 +609,54 @@ public class ChallengeService(
         {
             ChallengeId = challenge.Id,
             ChallengeTitle = challenge.Title,
+            ParticipationMode = challenge.ParticipationMode,
             TotalTaskCount = tasks.Count,
             ParticipantCount = users.Count,
             TotalCompletionCount = completions.Count(completion => completion.IsCompleted),
             Users = userProgress,
             Tasks = taskProgress
+        });
+    }
+
+    private async Task<Result<ChallengeAdminSummaryDto>> GetTeamAdminSummaryAsync(Challenge challenge, IReadOnlyList<ChallengeTask> tasks, CancellationToken cancellationToken)
+    {
+        var participants = await dbContext.ChallengeTeamParticipants.AsNoTracking()
+            .Where(participant => participant.ChallengeId == challenge.Id)
+            .Include(participant => participant.RosterMembers)
+            .Include(participant => participant.TaskCompletions).ThenInclude(completion => completion.ContributorUser)
+            .ToListAsync(cancellationToken);
+        var teams = participants.Select(participant => new ChallengeAdminTeamProgressDto
+        {
+            TeamParticipantId = participant.Id, TeamId = participant.TeamId, TeamName = participant.TeamNameSnapshot,
+            RegisteredByUserId = participant.RegisteredByUserId, RegisteredAt = participant.RegisteredAt,
+            TotalScore = participant.TaskCompletions.Sum(completion => completion.Score),
+            CompletedTaskCount = participant.TaskCompletions.Count(completion => completion.IsCompleted),
+            Roster = participant.RosterMembers.OrderBy(member => member.UserNameSnapshot).Select(member => new ChallengeAdminTeamRosterMemberDto
+            { UserId = member.UserId, UserName = member.UserNameSnapshot, Role = (int)member.TeamMemberRoleSnapshot }).ToList(),
+            Tasks = tasks.Select(task =>
+            {
+                var completion = participant.TaskCompletions.FirstOrDefault(row => row.ChallengeTaskId == task.Id);
+                return new ChallengeAdminTeamTaskStatusDto
+                {
+                    TaskId = task.Id, TaskTitle = task.Title, Score = completion?.Score ?? 0,
+                    IsCompleted = completion?.IsCompleted == true, BestSubmissionId = completion?.BestSubmissionId,
+                    ContributorUserId = completion?.ContributorUserId, ContributorUserName = completion?.ContributorUser?.UserName,
+                    CompletedAt = completion?.IsCompleted == true ? completion.CompletedAt : null, UpdatedAt = completion?.UpdatedAt
+                };
+            }).ToList()
+        }).OrderByDescending(team => team.TotalScore).ThenByDescending(team => team.CompletedTaskCount).ThenBy(team => team.TeamName).ToList();
+
+        return Result<ChallengeAdminSummaryDto>.Success(new ChallengeAdminSummaryDto
+        {
+            ChallengeId = challenge.Id, ChallengeTitle = challenge.Title, ParticipationMode = ChallengeParticipationMode.TeamOnly,
+            TotalTaskCount = tasks.Count, ParticipantCount = participants.Sum(participant => participant.RosterMembers.Count),
+            TotalCompletionCount = participants.Sum(participant => participant.TaskCompletions.Count(completion => completion.IsCompleted)),
+            Teams = teams,
+            Tasks = tasks.Select(task => new ChallengeAdminTaskProgressDto
+            {
+                TaskId = task.Id, Title = task.Title, TaskType = (int)task.TaskType, Difficulty = (int)task.Difficulty,
+                Score = task.Score, CompletedUserCount = participants.Count(participant => participant.TaskCompletions.Any(row => row.ChallengeTaskId == task.Id && row.IsCompleted))
+            }).ToList()
         });
     }
 
@@ -682,6 +765,10 @@ public class ChallengeService(
         if (task.TaskType != ChallengeTaskType.FileUpload)
         {
             return Result<ChallengeTaskFileSubmissionDto?>.Failure("Challenge task is not a file upload task.");
+        }
+        if (task.Challenge?.ParticipationMode == ChallengeParticipationMode.TeamOnly)
+        {
+            return Result<ChallengeTaskFileSubmissionDto?>.Failure("Team-only challenges support algorithm tasks only.");
         }
 
         var fileSubmission = await dbContext.ChallengeTaskFileSubmissions
@@ -797,7 +884,7 @@ public class ChallengeService(
             .AsNoTracking()
             .FirstOrDefaultAsync(challenge => challenge.Id == challengeId, cancellationToken);
 
-        if (challenge is null || !visibilityPolicy.CanViewChallenge(userResult.Value.Role, challenge))
+        if (challenge is null || !challenge.IsPublished || !visibilityPolicy.CanViewChallenge(userResult.Value.Role, challenge))
         {
             return Result.Failure("Challenge not found.");
         }
@@ -807,10 +894,98 @@ public class ChallengeService(
             return Result.Failure("Challenge is not open.");
         }
 
+        if (challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly)
+        {
+            return Result.Failure("Team registration is required.");
+        }
+
         await EnsureParticipantAsync(challengeId, userResult.Value.Id, visibilityPolicy.UtcNow, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
+    }
+
+    public async Task<Result<ChallengeTeamParticipationDto>> RegisterTeamAsync(Guid challengeId, CancellationToken cancellationToken = default)
+    {
+        var userResult = await GetActiveCurrentUserAsync(cancellationToken);
+        if (userResult.IsFailure || userResult.Value is null)
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
+        }
+
+        var challenge = await dbContext.Challenges
+            .AsNoTracking()
+            .FirstOrDefaultAsync(challenge => challenge.Id == challengeId, cancellationToken);
+        if (challenge is null || !visibilityPolicy.CanViewChallenge(userResult.Value.Role, challenge))
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure("Challenge not found.");
+        }
+        if (challenge.ParticipationMode != ChallengeParticipationMode.TeamOnly)
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure("Challenge uses individual participation.");
+        }
+        if (!visibilityPolicy.IsChallengeOpen(challenge))
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure("Challenge is not open.");
+        }
+
+        var activeMembership = await dbContext.TeamMembers.AsNoTracking()
+            .FirstOrDefaultAsync(member => member.UserId == userResult.Value.Id && member.IsActive, cancellationToken);
+        if (activeMembership is null)
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure("Active team membership is required.");
+        }
+        if (activeMembership.Role != TeamMemberRole.Owner)
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure("Forbidden.");
+        }
+
+        var team = await dbContext.Teams
+            .Include(team => team.Members.Where(member => member.IsActive))
+                .ThenInclude(member => member.User)
+            .FirstOrDefaultAsync(team => team.Id == activeMembership.TeamId && !team.IsDeleted && team.OwnerUserId == userResult.Value.Id, cancellationToken);
+        if (team is null || team.Members.All(member => member.UserId != userResult.Value.Id || member.Role != TeamMemberRole.Owner))
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure("Forbidden.");
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        if (await dbContext.ChallengeTeamParticipants.AnyAsync(participant => participant.ChallengeId == challengeId && participant.TeamId == team.Id, cancellationToken))
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure("Team is already registered.");
+        }
+
+        var memberIds = team.Members.Select(member => member.UserId).ToList();
+        if (await dbContext.ChallengeTeamRosterMembers.AnyAsync(member => member.ChallengeId == challengeId && memberIds.Contains(member.UserId), cancellationToken))
+        {
+            return Result<ChallengeTeamParticipationDto>.Failure("A team member is already registered with another team.");
+        }
+
+        var now = visibilityPolicy.UtcNow;
+        var participant = new ChallengeTeamParticipant
+        {
+            Id = Guid.NewGuid(), ChallengeId = challengeId, TeamId = team.Id, TeamNameSnapshot = team.Name,
+            RegisteredByUserId = userResult.Value.Id, RegisteredAt = now
+        };
+        participant.RosterMembers = team.Members.Where(member => member.IsActive).Select(member => new ChallengeTeamRosterMember
+        {
+            Id = Guid.NewGuid(), ChallengeId = challengeId, ChallengeTeamParticipantId = participant.Id,
+            TeamId = team.Id, UserId = member.UserId, UserNameSnapshot = member.User?.UserName ?? string.Empty,
+            TeamMemberRoleSnapshot = member.Role, RegisteredAt = now
+        }).ToList();
+        dbContext.ChallengeTeamParticipants.Add(participant);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return Result<ChallengeTeamParticipationDto>.Failure("Team registration conflicts with an existing registration.");
+        }
+
+        return Result<ChallengeTeamParticipationDto>.Success(ToTeamParticipationDto(participant, userResult.Value.Id, false));
     }
 
     public async Task<Result<ChallengeDetailDto>> CreateChallengeAsync(CreateChallengeRequest request, CancellationToken cancellationToken = default)
@@ -831,6 +1006,10 @@ public class ChallengeService(
         {
             return Result<ChallengeDetailDto>.Failure(validation.ErrorMessage ?? "Invalid challenge time.");
         }
+        if (!Enum.IsDefined(request.ParticipationMode))
+        {
+            return Result<ChallengeDetailDto>.Failure("Invalid participation mode.");
+        }
 
         var now = DateTimeOffset.UtcNow;
         var challenge = new Challenge
@@ -842,6 +1021,7 @@ public class ChallengeService(
             EndAt = request.EndAt,
             CreatedByUserId = userResult.Value.Id,
             IsPublished = request.IsPublished,
+            ParticipationMode = request.ParticipationMode,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -885,11 +1065,34 @@ public class ChallengeService(
             return Result<ChallengeDetailDto>.Failure(validation.ErrorMessage ?? "Invalid challenge time.");
         }
 
+        if (!Enum.IsDefined(request.ParticipationMode))
+        {
+            return Result<ChallengeDetailDto>.Failure("Invalid participation mode.");
+        }
+        if (challenge.ParticipationMode != request.ParticipationMode)
+        {
+            var modeLocked = challenge.IsPublished
+                || visibilityPolicy.UtcNow >= challenge.StartAt
+                || await dbContext.ChallengeParticipants.AnyAsync(participant => participant.ChallengeId == id, cancellationToken)
+                || await dbContext.ChallengeTeamParticipants.AnyAsync(participant => participant.ChallengeId == id, cancellationToken)
+                || await dbContext.Submissions.AnyAsync(submission => submission.ChallengeTask != null && submission.ChallengeTask.ChallengeId == id, cancellationToken);
+            if (modeLocked)
+            {
+                return Result<ChallengeDetailDto>.Failure("Participation mode is locked.");
+            }
+            if (request.ParticipationMode == ChallengeParticipationMode.TeamOnly
+                && challenge.Tasks.Any(task => task.TaskType == ChallengeTaskType.FileUpload))
+            {
+                return Result<ChallengeDetailDto>.Failure("Team-only challenges support algorithm tasks only.");
+            }
+        }
+
         challenge.Title = request.Title;
         challenge.Description = request.Description;
         challenge.StartAt = request.StartAt;
         challenge.EndAt = request.EndAt;
         challenge.IsPublished = request.IsPublished;
+        challenge.ParticipationMode = request.ParticipationMode;
         challenge.UpdatedAt = DateTimeOffset.UtcNow;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -963,6 +1166,10 @@ public class ChallengeService(
         {
             return Result<ChallengeTaskDto>.Failure(validation.ErrorMessage ?? "Invalid challenge task.");
         }
+        if (challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly && request.TaskType != ChallengeTaskType.Algorithm)
+        {
+            return Result<ChallengeTaskDto>.Failure("Team-only challenges support algorithm tasks only.");
+        }
 
         var now = DateTimeOffset.UtcNow;
         var task = new ChallengeTask
@@ -1005,7 +1212,7 @@ public class ChallengeService(
             return Result<ChallengeTaskDto>.Failure("Challenge task not found.");
         }
 
-        if (!CanManageChallenge(userResult.Value, task.Challenge))
+        if (!CanManageChallenge(userResult.Value, task.Challenge!))
         {
             return Result<ChallengeTaskDto>.Failure("Forbidden.");
         }
@@ -1098,13 +1305,17 @@ public class ChallengeService(
         {
             return Result<ChallengeTaskFileSubmissionDto>.Failure("Challenge task is not a file upload task.");
         }
+        if (task.Challenge?.ParticipationMode == ChallengeParticipationMode.TeamOnly)
+        {
+            return Result<ChallengeTaskFileSubmissionDto>.Failure("Team-only challenges support algorithm tasks only.");
+        }
 
-        if (!visibilityPolicy.CanViewChallenge(userResult.Value.Role, task.Challenge))
+        if (!visibilityPolicy.CanViewChallenge(userResult.Value.Role, task.Challenge!))
         {
             return Result<ChallengeTaskFileSubmissionDto>.Failure("Challenge task not found.");
         }
 
-        if (!visibilityPolicy.IsChallengeOpen(task.Challenge))
+        if (!visibilityPolicy.IsChallengeOpen(task.Challenge!))
         {
             return Result<ChallengeTaskFileSubmissionDto>.Failure("Challenge is not open.");
         }
@@ -1589,6 +1800,8 @@ public class ChallengeService(
             EndAt = challenge.EndAt,
             CreatedByUserId = challenge.CreatedByUserId,
             IsPublished = challenge.IsPublished,
+            ParticipationMode = challenge.ParticipationMode,
+            ParticipationModeLocked = challenge.IsPublished || visibilityPolicy.UtcNow >= challenge.StartAt,
             CreatedAt = challenge.CreatedAt,
             UpdatedAt = challenge.UpdatedAt,
             TotalTaskCount = challenge.Tasks.Count,
@@ -1600,6 +1813,127 @@ public class ChallengeService(
                 .Select(task => ToTaskDto(task, completions.GetValueOrDefault(task.Id)))
                 .ToList()
         };
+    }
+
+    private async Task PopulateTeamParticipationAsync(ChallengeDetailDto detail, CancellationToken cancellationToken)
+    {
+        if (detail.ParticipationMode != ChallengeParticipationMode.TeamOnly || !currentUser.IsAuthenticated || currentUser.UserId is not { } userId) return;
+
+        var participant = await dbContext.ChallengeTeamParticipants
+            .AsNoTracking()
+            .Where(participant => participant.ChallengeId == detail.Id
+                && participant.RosterMembers.Any(member => member.UserId == userId))
+            .Include(participant => participant.RosterMembers)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (participant is not null)
+        {
+            detail.TeamParticipation = ToTeamParticipationDto(participant, userId, false);
+            var teamCompletions = await dbContext.ChallengeTeamTaskCompletions.AsNoTracking()
+                .Where(completion => completion.ChallengeTeamParticipantId == participant.Id)
+                .ToDictionaryAsync(completion => completion.ChallengeTaskId, cancellationToken);
+            detail.CompletedTaskCount = teamCompletions.Values.Count(completion => completion.IsCompleted);
+            foreach (var task in detail.Tasks)
+            {
+                if (!teamCompletions.TryGetValue(task.Id, out var completion)) continue;
+                task.IsCompleted = completion.IsCompleted;
+                task.CompletedAt = completion.IsCompleted ? completion.CompletedAt : null;
+                task.CompletedScore = completion.IsCompleted ? completion.Score : null;
+                task.EarnedScore = completion.Score;
+            }
+            return;
+        }
+
+        var currentTeamId = await dbContext.TeamMembers.AsNoTracking()
+            .Where(member => member.UserId == userId && member.IsActive)
+            .Select(member => (Guid?)member.TeamId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (currentTeamId.HasValue)
+        {
+            var registeredTeam = await dbContext.ChallengeTeamParticipants.AsNoTracking()
+                .Include(participant => participant.RosterMembers)
+                .FirstOrDefaultAsync(participant => participant.ChallengeId == detail.Id && participant.TeamId == currentTeamId.Value, cancellationToken);
+            if (registeredTeam is not null)
+            {
+                detail.TeamParticipation = ToTeamParticipationDto(registeredTeam, userId, false);
+                return;
+            }
+        }
+
+        var canRegister = await dbContext.TeamMembers.AsNoTracking()
+            .AnyAsync(member => member.UserId == userId && member.IsActive && member.Role == TeamMemberRole.Owner
+                && member.Team != null && !member.Team.IsDeleted && member.Team.OwnerUserId == userId, cancellationToken);
+        detail.TeamParticipation = new ChallengeTeamParticipationDto { CanRegisterTeam = canRegister };
+    }
+
+    private async Task<bool> IsParticipationModeLockedAsync(Challenge challenge, CancellationToken cancellationToken)
+    {
+        if (challenge.IsPublished || visibilityPolicy.UtcNow >= challenge.StartAt) return true;
+        return await dbContext.ChallengeParticipants.AnyAsync(participant => participant.ChallengeId == challenge.Id, cancellationToken)
+            || await dbContext.ChallengeTeamParticipants.AnyAsync(participant => participant.ChallengeId == challenge.Id, cancellationToken)
+            || await dbContext.Submissions.AnyAsync(submission => submission.ChallengeTask != null && submission.ChallengeTask.ChallengeId == challenge.Id, cancellationToken);
+    }
+
+    private static ChallengeTeamParticipationDto ToTeamParticipationDto(ChallengeTeamParticipant participant, Guid userId, bool canRegister)
+    {
+        return new ChallengeTeamParticipationDto
+        {
+            Id = participant.Id, TeamId = participant.TeamId, TeamName = participant.TeamNameSnapshot,
+            RegisteredAt = participant.RegisteredAt, RosterMemberCount = participant.RosterMembers.Count,
+            IsRosterMember = participant.RosterMembers.Any(member => member.UserId == userId), CanRegisterTeam = canRegister
+        };
+    }
+
+    private async Task<Result<ChallengeLeaderboardDto>> GetTeamLeaderboardAsync(Challenge challenge, CancellationToken cancellationToken)
+    {
+        var totalTaskCount = await dbContext.ChallengeTasks.AsNoTracking().CountAsync(task => task.ChallengeId == challenge.Id, cancellationToken);
+        var participants = await dbContext.ChallengeTeamParticipants.AsNoTracking()
+            .Where(participant => participant.ChallengeId == challenge.Id)
+            .Include(participant => participant.TaskCompletions)
+            .ToListAsync(cancellationToken);
+        var ordered = participants.Select(participant => new
+            {
+                Participant = participant,
+                Completed = participant.TaskCompletions.Count(completion => completion.IsCompleted),
+                Score = participant.TaskCompletions.Sum(completion => completion.Score),
+                UpdatedAt = participant.TaskCompletions.Count == 0 ? (DateTimeOffset?)null : participant.TaskCompletions.Max(completion => completion.UpdatedAt)
+            })
+            .OrderByDescending(entry => entry.Score).ThenByDescending(entry => entry.Completed)
+            .ThenBy(entry => entry.UpdatedAt).ThenBy(entry => entry.Participant.TeamNameSnapshot).ToList();
+        return Result<ChallengeLeaderboardDto>.Success(new ChallengeLeaderboardDto
+        {
+            ChallengeId = challenge.Id, ChallengeTitle = challenge.Title, TotalTaskCount = totalTaskCount,
+            ParticipationMode = ChallengeParticipationMode.TeamOnly,
+            TeamEntries = ordered.Select((entry, index) => new ChallengeTeamLeaderboardEntryDto
+            {
+                Rank = index + 1, TeamParticipantId = entry.Participant.Id, TeamName = entry.Participant.TeamNameSnapshot,
+                CompletedTaskCount = entry.Completed, TotalScore = entry.Score, LastImprovedAt = entry.UpdatedAt
+            }).ToList()
+        });
+    }
+
+    private async Task<Result<ChallengeLeaderboardProgressDto>> GetTeamLeaderboardProgressAsync(Challenge challenge, CancellationToken cancellationToken)
+    {
+        var leaderboard = await GetTeamLeaderboardAsync(challenge, cancellationToken);
+        var tasks = await dbContext.ChallengeTasks.AsNoTracking().Where(task => task.ChallengeId == challenge.Id)
+            .OrderBy(task => task.BoardY).ThenBy(task => task.BoardX).ToListAsync(cancellationToken);
+        var completions = await dbContext.ChallengeTeamTaskCompletions.AsNoTracking()
+            .Where(completion => completion.ChallengeId == challenge.Id).ToListAsync(cancellationToken);
+        return Result<ChallengeLeaderboardProgressDto>.Success(new ChallengeLeaderboardProgressDto
+        {
+            ChallengeId = challenge.Id, ChallengeTitle = challenge.Title, ParticipationMode = ChallengeParticipationMode.TeamOnly,
+            Tasks = tasks.Select(task => new ChallengeLeaderboardProgressTaskDto { TaskId = task.Id, Title = task.Title, Score = task.Score }).ToList(),
+            Teams = leaderboard.Value!.TeamEntries.Select(entry =>
+            {
+                var rows = completions.Where(completion => completion.ChallengeTeamParticipantId == entry.TeamParticipantId).ToList();
+                return new ChallengeTeamLeaderboardProgressDto
+                {
+                    TeamParticipantId = entry.TeamParticipantId, TeamName = entry.TeamName, Rank = entry.Rank,
+                    CompletedTaskCount = entry.CompletedTaskCount, TotalScore = entry.TotalScore, LastImprovedAt = entry.LastImprovedAt,
+                    CompletedTaskIds = rows.Where(row => row.IsCompleted).Select(row => row.ChallengeTaskId).ToList(),
+                    TaskScores = rows.ToDictionary(row => row.ChallengeTaskId, row => row.Score)
+                };
+            }).ToList()
+        });
     }
 
     private static ChallengeTaskDto ToTaskDto(ChallengeTask task, ChallengeTaskCompletion? completion)

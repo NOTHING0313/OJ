@@ -15,4 +15,5 @@ public class Team
     public List<TeamMember> Members { get; set; } = [];
     public List<TeamProject> Projects { get; set; } = [];
     public List<TeamInvitation> Invitations { get; set; } = [];
+    public List<ChallengeTeamParticipant> ChallengeParticipations { get; set; } = [];
 }

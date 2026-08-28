@@ -32,6 +32,11 @@ public class ChallengeConfiguration : IEntityTypeConfiguration<Challenge>
         builder.Property(challenge => challenge.IsPublished)
             .IsRequired();
 
+        builder.Property(challenge => challenge.ParticipationMode)
+            .HasConversion<int>()
+            .HasDefaultValue(OnlineJudge.Domain.Enums.ChallengeParticipationMode.Individual)
+            .IsRequired();
+
         builder.Property(challenge => challenge.CreatedAt)
             .IsRequired();
 

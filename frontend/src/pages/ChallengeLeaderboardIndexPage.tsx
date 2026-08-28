@@ -259,11 +259,11 @@ function ChallengeSummaryCard({
 
         <div className="leaderboard-challenge-stats">
           <div>
-            <span>参与人数</span>
+            <span>{challenge.participationMode === 2 ? "参赛战队" : "参与人数"}</span>
             <strong>{challenge.participantCount}</strong>
           </div>
           <div>
-            <span>完成人数</span>
+            <span>{challenge.participationMode === 2 ? "完成战队" : "完成人数"}</span>
             <strong>{challenge.completedUserCount}</strong>
           </div>
           <div>

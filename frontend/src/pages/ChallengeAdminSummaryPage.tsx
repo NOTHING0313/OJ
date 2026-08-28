@@ -173,6 +173,16 @@ export function ChallengeAdminSummaryPage() {
     return <div className="empty-state">暂无管理统计数据</div>;
   }
 
+  if (summary.participationMode === 2) {
+    return (
+      <section className="challenge-page admin-summary-page ui-v2-page analytics-v2-page">
+        <div className="leaderboard-header ui-v2-page-header"><div><p className="eyebrow">TEAM CHALLENGE AUDIT</p><h1>{summary.challengeTitle}</h1><p>冻结报名阵容、逐题最高分、最佳提交与实际贡献者审计。</p></div><Link className="button" to={`/challenges/${summary.challengeId}`}>返回棋盘</Link></div>
+        <div className="admin-metrics"><Metric label="报名战队" value={summary.teams.length} /><Metric label="冻结成员" value={summary.participantCount} /><Metric label="总任务数" value={summary.totalTaskCount} /><Metric label="完成次数" value={summary.totalCompletionCount} /></div>
+        {summary.teams.map((team) => <section className="admin-panel" key={team.teamParticipantId}><div className="admin-panel-header"><div><h2>{team.teamName}</h2><p>冻结阵容 {team.roster.length} 人 · {team.completedTaskCount}/{summary.totalTaskCount} 题 · {team.totalScore} 分</p></div></div><div className="table-wrap leaderboard-table-wrap"><table className="leaderboard-table"><thead><tr><th>任务</th><th>得分</th><th>状态</th><th>贡献者</th><th>最佳提交</th></tr></thead><tbody>{team.tasks.map((task) => <tr key={task.taskId}><td>{task.taskTitle}</td><td>{task.score}</td><td>{task.isCompleted ? "已完成" : "进行中"}</td><td>{task.contributorUserName ?? "—"}</td><td>{task.bestSubmissionId ? <Link to={`/submissions/${task.bestSubmissionId}`}>查看</Link> : "—"}</td></tr>)}</tbody></table></div><details><summary>查看冻结阵容</summary><div className="button-row">{team.roster.map((member) => <span className="context-chip" key={member.userId}>{member.userName}{member.role === 1 ? " · Owner" : ""}</span>)}</div></details></section>)}
+      </section>
+    );
+  }
+
   const overallCompletionRate = getCompletionRate(summary.totalCompletionCount, summary.participantCount * summary.totalTaskCount);
 
   return (

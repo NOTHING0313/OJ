@@ -1,5 +1,7 @@
 namespace OnlineJudge.Application.Challenges.Dtos;
 
+using OnlineJudge.Domain.Enums;
+
 public class ChallengeDetailDto
 {
     public Guid Id { get; set; }
@@ -16,6 +18,10 @@ public class ChallengeDetailDto
 
     public bool IsPublished { get; set; }
 
+    public ChallengeParticipationMode ParticipationMode { get; set; }
+
+    public bool ParticipationModeLocked { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
@@ -25,6 +31,8 @@ public class ChallengeDetailDto
     public int CompletedTaskCount { get; set; }
 
     public bool CanManage { get; set; }
+
+    public ChallengeTeamParticipationDto? TeamParticipation { get; set; }
 
     public IReadOnlyList<ChallengeTaskDto> Tasks { get; set; } = [];
 }
