@@ -17,16 +17,16 @@ public sealed class SeasonScoreService(
     {
     }
 
-    public async Task ApplySubmissionResultAsync(SeasonSubmissionResult submission, CancellationToken cancellationToken = default)
+    public async Task<SeasonScoreApplyResult> ApplySubmissionResultAsync(SeasonSubmissionResult submission, CancellationToken cancellationToken = default)
     {
-        if (submission.Status != JudgeStatus.Accepted) return;
+        if (submission.Status != JudgeStatus.Accepted) return SeasonScoreApplyResult.Ignored;
 
         var user = await dbContext.Users.AsNoTracking()
             .Where(user => user.Id == submission.UserId)
             .Select(user => new { user.Role, user.IsBlacklisted, user.IsDeleted })
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (user is null || user.Role != UserRole.Answerer || user.IsBlacklisted || user.IsDeleted) return;
+        if (user is null || user.Role != UserRole.Answerer || user.IsBlacklisted || user.IsDeleted) return SeasonScoreApplyResult.Ignored;
 
         var seasonProblem = await dbContext.LeaderboardSeasonProblems
             .Include(item => item.Season)
@@ -35,14 +35,17 @@ public sealed class SeasonScoreService(
 
         var now = timeProvider.GetUtcNow();
         if (seasonProblem?.Season is null
-            || LeaderboardSeasonLifecycle.GetEffectiveStatus(seasonProblem.Season, now) != LeaderboardSeasonStatus.Active)
+            || seasonProblem.Season.Status == LeaderboardSeasonStatus.Archived
+            || submission.CreatedAt < seasonProblem.Season.StartAt
+            || submission.CreatedAt >= LeaderboardSeasonLifecycle.GetSubmissionCutoff(seasonProblem.Season))
         {
-            return;
+            return SeasonScoreApplyResult.Ignored;
         }
 
         if (seasonProblem.Season.Status == LeaderboardSeasonStatus.Scheduled)
         {
             seasonProblem.Season.Status = LeaderboardSeasonStatus.Active;
+            seasonProblem.Season.ActivatedAt ??= now;
             seasonProblem.Season.UpdatedAt = now;
         }
 
@@ -63,18 +66,18 @@ public sealed class SeasonScoreService(
                 UserId = submission.UserId,
                 BestBaseScore = seasonProblem.BaseScore,
                 IsFullScore = true,
-                FirstFullScoreAt = submission.FinishedAt,
+                FirstFullScoreAt = submission.CreatedAt,
                 FirstFullSubmissionId = submission.SubmissionId,
                 BestPerformanceSubmissionId = submission.SubmissionId,
                 BestPerformanceLanguage = submission.Language,
                 BestRuntimeMs = submission.RuntimeMs,
                 BestMemoryKb = submission.MemoryKb,
                 BestPerformanceFinishedAt = submission.FinishedAt,
-                LastScoreImprovedAt = submission.FinishedAt,
-                CreatedAt = submission.FinishedAt,
-                UpdatedAt = submission.FinishedAt
+                LastScoreImprovedAt = submission.CreatedAt,
+                CreatedAt = now,
+                UpdatedAt = now
             });
-            return;
+            return new SeasonScoreApplyResult(true, seasonProblem.SeasonId, seasonProblem.Season.Status is LeaderboardSeasonStatus.Frozen or LeaderboardSeasonStatus.Public);
         }
 
         var changed = false;
@@ -89,7 +92,7 @@ public sealed class SeasonScoreService(
 
         if (!score.FirstFullScoreAt.HasValue)
         {
-            score.FirstFullScoreAt = submission.FinishedAt;
+            score.FirstFullScoreAt = submission.CreatedAt;
             score.FirstFullSubmissionId = submission.SubmissionId;
             score.IsFullScore = true;
             changed = true;
@@ -122,8 +125,11 @@ public sealed class SeasonScoreService(
             scoreIncreased |= candidate.PerformanceBonus > (current?.PerformanceBonus ?? 0);
         }
 
-        if (scoreIncreased) score.LastScoreImprovedAt = submission.FinishedAt;
-        if (changed) score.UpdatedAt = submission.FinishedAt;
+        if (scoreIncreased) score.LastScoreImprovedAt = submission.CreatedAt;
+        if (changed) score.UpdatedAt = now;
+        return changed
+            ? new SeasonScoreApplyResult(true, seasonProblem.SeasonId, seasonProblem.Season.Status is LeaderboardSeasonStatus.Frozen or LeaderboardSeasonStatus.Public)
+            : SeasonScoreApplyResult.Ignored;
     }
 
     private LeaderboardPerformanceScore? CreateCurrentPerformance(

@@ -26,6 +26,16 @@ public class LeaderboardSeason
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    public DateTimeOffset? ActivatedAt { get; set; }
+
+    public DateTimeOffset? FrozenAt { get; set; }
+
+    public DateTimeOffset? FinalizedAt { get; set; }
+
+    public DateTimeOffset? ArchivedAt { get; set; }
+
+    public DateTimeOffset? ManuallyFrozenAt { get; set; }
+
     public User? CreatedByUser { get; set; }
 
     public List<LeaderboardSeasonProblem> Problems { get; set; } = [];
@@ -35,4 +45,6 @@ public class LeaderboardSeason
     public List<LeaderboardSeasonAlias> Aliases { get; set; } = [];
 
     public List<LeaderboardSeasonArchiveEntry> ArchiveEntries { get; set; } = [];
+
+    public List<LeaderboardSeasonRankSnapshot> RankSnapshots { get; set; } = [];
 }

@@ -10,4 +10,19 @@ public sealed record SeasonSubmissionResult(
     JudgeStatus Status,
     int? RuntimeMs,
     int? MemoryKb,
-    DateTimeOffset FinishedAt);
+    DateTimeOffset CreatedAt,
+    DateTimeOffset FinishedAt)
+{
+    public SeasonSubmissionResult(
+        Guid submissionId,
+        Guid problemId,
+        Guid userId,
+        JudgeLanguage language,
+        JudgeStatus status,
+        int? runtimeMs,
+        int? memoryKb,
+        DateTimeOffset finishedAt)
+        : this(submissionId, problemId, userId, language, status, runtimeMs, memoryKb, finishedAt, finishedAt)
+    {
+    }
+}

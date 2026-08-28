@@ -19,6 +19,14 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
     public async Task<IActionResult> GetCurrentLeaderboard(CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetCurrentAuditLeaderboardAsync(cancellationToken));
 
+    [HttpGet("history")]
+    public async Task<IActionResult> GetHistory(CancellationToken cancellationToken) =>
+        ToActionResult(await seasonService.GetHistoryAsync(cancellationToken));
+
+    [HttpGet("history/{seasonId:guid}")]
+    public async Task<IActionResult> GetHistory(Guid seasonId, CancellationToken cancellationToken) =>
+        ToActionResult(await seasonService.GetHistoryAsync(seasonId, cancellationToken));
+
     [Authorize(Policy = "RequireRoot")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateLeaderboardSeasonRequest request, CancellationToken cancellationToken) =>

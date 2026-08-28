@@ -16,6 +16,9 @@ import { AdminUserListPage } from "./pages/AdminUserListPage";
 import { AdminTeamListPage } from "./pages/AdminTeamListPage";
 import { AdminLeaderboardSeasonPage } from "./pages/AdminLeaderboardSeasonPage";
 import { AccountSettingsPage } from "./pages/AccountSettingsPage";
+import { AccountCompetitionPage } from "./pages/AccountCompetitionPage";
+import { LeaderboardSeasonHistoryPage } from "./pages/LeaderboardSeasonHistoryPage";
+import { LeaderboardSeasonHistoryDetailPage } from "./pages/LeaderboardSeasonHistoryDetailPage";
 import { ChallengeAdminSummaryPage } from "./pages/ChallengeAdminSummaryPage";
 import { ChallengeAdminTaskDetailPage } from "./pages/ChallengeAdminTaskDetailPage";
 import { ChallengeDetailPage } from "./pages/ChallengeDetailPage";
@@ -60,6 +63,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/leaderboards/users" element={<SeasonLeaderboardPage />} />
             <Route path="/leaderboards/users/problems/:problemId" element={<SeasonProblemLeaderboardPage />} />
             <Route path="/leaderboards/challenges" element={<ChallengeLeaderboardIndexPage />} />
+            <Route path="/leaderboards/history" element={<LeaderboardSeasonHistoryPage />} />
+            <Route path="/leaderboards/history/:seasonId" element={<LeaderboardSeasonHistoryDetailPage />} />
             <Route path="/teams" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
             <Route
               path="/challenges/:challengeId/admin"
@@ -104,6 +109,7 @@ createRoot(document.getElementById("root")!).render(
                 </ProtectedRoute>
               )}
             />
+            <Route path="/account/competition" element={<ProtectedRoute><AccountCompetitionPage /></ProtectedRoute>} />
             <Route
               path="/submissions"
               element={(

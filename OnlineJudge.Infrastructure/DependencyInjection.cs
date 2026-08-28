@@ -82,9 +82,12 @@ public static class DependencyInjection
         services.AddScoped<IChallengeService, ChallengeService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
         services.AddSingleton(LeaderboardScoringOptions.FromConfiguration(configuration));
+        services.AddSingleton(LeaderboardSeasonLifecycleOptions.FromConfiguration(configuration));
         services.AddSingleton<ILeaderboardScoringEngine, LeaderboardScoringEngine>();
         services.AddScoped<LeaderboardIdentityService>();
-        services.AddScoped<ILeaderboardSeasonService, LeaderboardSeasonService>();
+        services.AddScoped<LeaderboardSeasonService>();
+        services.AddScoped<ILeaderboardSeasonService>(provider => provider.GetRequiredService<LeaderboardSeasonService>());
+        services.AddScoped<ILeaderboardSeasonLifecycleService>(provider => provider.GetRequiredService<LeaderboardSeasonService>());
         services.AddScoped<ISeasonScoreService, SeasonScoreService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ISiteSettingsService, SiteSettingsService>();

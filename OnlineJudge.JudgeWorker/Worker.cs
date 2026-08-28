@@ -62,6 +62,7 @@ public class Worker(
             var runnerFactory = scope.ServiceProvider.GetRequiredService<IJudgeRunnerFactory>();
             var compileAssetLoader = scope.ServiceProvider.GetRequiredService<IJudgeCompileAssetLoader>();
             var seasonScoreService = scope.ServiceProvider.GetRequiredService<ISeasonScoreService>();
+            var seasonLifecycleService = scope.ServiceProvider.GetRequiredService<ILeaderboardSeasonLifecycleService>();
 
             logger.LogInformation("Processing submission. SubmissionId={SubmissionId}, Stage={Stage}", submissionId, "LoadSubmission");
 
@@ -158,7 +159,7 @@ public class Worker(
                 await UpsertChallengeTaskProgressAsync(dbContext, submission, judgeResult, judgedCases, cancellationToken);
             }
 
-            await seasonScoreService.ApplySubmissionResultAsync(new SeasonSubmissionResult(
+            var seasonScoreResult = await seasonScoreService.ApplySubmissionResultAsync(new SeasonSubmissionResult(
                 submission.Id,
                 submission.ProblemId,
                 submission.UserId,
@@ -166,6 +167,7 @@ public class Worker(
                 judgeResult.Status,
                 judgeResult.TimeUsedMs,
                 judgeResult.MemoryUsedKb,
+                submission.CreatedAt,
                 submission.FinishedAt!.Value), cancellationToken);
 
             logger.LogInformation(
@@ -174,6 +176,10 @@ public class Worker(
                 "ApplyJudgeResult",
                 judgeResult.Status);
             await dbContext.SaveChangesAsync(cancellationToken);
+            if (seasonScoreResult.RequiresArchiveRefresh && seasonScoreResult.SeasonId is { } seasonId)
+            {
+                await seasonLifecycleService.RefreshPublicSeasonAsync(seasonId, cancellationToken);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

@@ -105,8 +105,88 @@ export interface LeaderboardSeason {
   status: LeaderboardSeasonStatus;
   effectiveStatus: LeaderboardSeasonStatus;
   isCurrent: boolean;
+  activatedAt: string | null;
+  frozenAt: string | null;
+  finalizedAt: string | null;
+  archivedAt: string | null;
+  manuallyFrozenAt: string | null;
   scoringRules: LeaderboardScoringRules;
   problems: LeaderboardSeasonProblem[];
+}
+
+export interface LeaderboardSeasonHistorySummary {
+  seasonId: string;
+  name: string;
+  startAt: string;
+  freezeAt: string;
+  publicUntil: string;
+  archivedAt: string | null;
+  participantCount: number;
+  top3: { rank: number; displayName: string; finalScore: number }[];
+}
+
+export interface LeaderboardSeasonArchiveProblemScore {
+  problemId: string;
+  problemTitleSnapshot: string;
+  baseScore: number;
+  earnedBaseScore: number;
+  timeRank: number | null;
+  firstFullScoreAt: string;
+  timeBonus: number;
+  runtimeMs: number | null;
+  runtimeBonus: number;
+  memoryKb: number | null;
+  memoryBonus: number;
+  finalProblemScore: number;
+}
+
+export interface LeaderboardSeasonArchive {
+  seasonId: string;
+  seasonName: string;
+  entries: {
+    userId: string | null;
+    alias: string;
+    displayNameSnapshot: string;
+    wasAnonymous: boolean;
+    finalRank: number;
+    finalScore: number;
+    finalBaseScore: number;
+    finalTimeBonus: number;
+    finalRuntimeBonus: number;
+    finalMemoryBonus: number;
+    solvedCount: number;
+    problemScores: LeaderboardSeasonArchiveProblemScore[];
+  }[];
+}
+
+export interface LeaderboardSeasonPersonal {
+  season: LeaderboardSeason | null;
+  currentRank: number | null;
+  totalParticipants: number;
+  totalScore: number;
+  totalBaseScore: number;
+  totalTimeBonus: number;
+  totalRuntimeBonus: number;
+  totalMemoryBonus: number;
+  solvedCount: number;
+  seasonProblemCount: number;
+  top10ProblemCount: number;
+  firstPlaceProblemCount: number;
+  bestRank: number | null;
+  rankChange: number | null;
+  problems: { problemId: string; title: string; score: number; timeRank: number | null; timeBonus: number; performanceBonus: number }[];
+  rankHistory: { recordedAt: string; rank: number; totalScore: number }[];
+}
+
+export interface LeaderboardSeasonPersonalHistory {
+  seasonId: string;
+  seasonName: string;
+  finalRank: number;
+  finalScore: number;
+  solvedCount: number;
+  timeBonus: number;
+  performanceBonus: number;
+  problems: LeaderboardSeasonArchiveProblemScore[];
 }
 
 export interface SeasonLeaderboardEntry {
@@ -186,6 +266,22 @@ export function getCurrentSeasonLeaderboard() {
 
 export function getCurrentSeasonProblemLeaderboard(problemId: string) {
   return request<SeasonProblemLeaderboard>(`/api/leaderboards/season/current/problems/${problemId}`);
+}
+
+export function getLeaderboardSeasonHistory() {
+  return request<LeaderboardSeasonHistorySummary[]>("/api/leaderboard-seasons/history");
+}
+
+export function getLeaderboardSeasonHistoryDetail(seasonId: string) {
+  return request<LeaderboardSeasonArchive>(`/api/leaderboard-seasons/history/${seasonId}`);
+}
+
+export function getCurrentSeasonPersonal() {
+  return request<LeaderboardSeasonPersonal>("/api/leaderboard-seasons/current/me");
+}
+
+export function getSeasonPersonalHistory() {
+  return request<LeaderboardSeasonPersonalHistory[]>("/api/leaderboard-seasons/me/history");
 }
 
 export function getAdminLeaderboardSeasons() {

@@ -21,6 +21,16 @@ public class LeaderboardSeasonDto
 
     public bool IsCurrent { get; set; }
 
+    public DateTimeOffset? ActivatedAt { get; set; }
+
+    public DateTimeOffset? FrozenAt { get; set; }
+
+    public DateTimeOffset? FinalizedAt { get; set; }
+
+    public DateTimeOffset? ArchivedAt { get; set; }
+
+    public DateTimeOffset? ManuallyFrozenAt { get; set; }
+
     public LeaderboardScoringRules ScoringRules { get; set; } = new();
 
     public IReadOnlyList<LeaderboardSeasonProblemDto> Problems { get; set; } = [];

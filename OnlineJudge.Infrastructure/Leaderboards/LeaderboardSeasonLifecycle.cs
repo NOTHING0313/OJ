@@ -13,4 +13,7 @@ internal static class LeaderboardSeasonLifecycle
         if (now < season.StartAt) return LeaderboardSeasonStatus.Scheduled;
         return now < season.FreezeAt ? LeaderboardSeasonStatus.Active : LeaderboardSeasonStatus.Frozen;
     }
+
+    public static DateTimeOffset GetSubmissionCutoff(LeaderboardSeason season) =>
+        season.ManuallyFrozenAt ?? season.FreezeAt;
 }

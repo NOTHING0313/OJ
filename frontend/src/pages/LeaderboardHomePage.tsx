@@ -55,6 +55,7 @@ export function LeaderboardHomePage() {
           <p>从全局积分到单个挑战，快速查看平台上的排名、参与和完成情况。</p>
         </div>
         <span className="leaderboard-live-badge">实时榜单</span>
+        <div className="leaderboard-header-actions"><Link className="button" to="/leaderboards/history">历史赛季</Link><Link className="button" to="/account/competition">我的赛季战绩</Link></div>
       </div>
 
       {error && <div className="leaderboard-inline-note">榜单概览暂不可用：{error}</div>}

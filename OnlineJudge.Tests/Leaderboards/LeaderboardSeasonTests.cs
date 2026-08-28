@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Text.Json;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Leaderboards.Models;
 using OnlineJudge.Application.Leaderboards.Requests;
@@ -458,6 +461,495 @@ public class LeaderboardSeasonTests
         Assert.Equal(1, Count(source, "ApplySubmissionResultAsync"));
     }
 
+    [Fact]
+    public async Task Lifecycle_ReconcileAutomaticallyActivatesFinalizesAndArchives()
+    {
+        await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddMinutes(1));
+        var service = fixture.RootSeasonService();
+
+        fixture.Time.Set(fixture.Season.StartAt);
+        await service.ReconcileCurrentSeasonAsync();
+        Assert.Equal(LeaderboardSeasonStatus.Active, fixture.Season.Status);
+        Assert.NotNull(fixture.Season.ActivatedAt);
+
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await service.ReconcileCurrentSeasonAsync();
+        Assert.Equal(LeaderboardSeasonStatus.Public, fixture.Season.Status);
+        Assert.NotNull(fixture.Season.FrozenAt);
+        Assert.NotNull(fixture.Season.FinalizedAt);
+        Assert.Single(fixture.Db.LeaderboardSeasonArchiveEntries);
+
+        fixture.Time.Set(fixture.Season.PublicUntil);
+        await service.ReconcileCurrentSeasonAsync();
+        Assert.Equal(LeaderboardSeasonStatus.Archived, fixture.Season.Status);
+        Assert.False(fixture.Season.IsCurrent);
+        Assert.NotNull(fixture.Season.ArchivedAt);
+    }
+
+    [Fact]
+    public async Task SubmissionCreatedBeforeStart_IsNeverImportedAfterActivation()
+    {
+        await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddMinutes(5));
+        var createdAt = fixture.Time.GetUtcNow();
+        fixture.Time.Set(fixture.Season.StartAt.AddMinutes(1));
+
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100, createdAt: createdAt);
+
+        Assert.Empty(fixture.Db.LeaderboardUserProblemScores);
+    }
+
+    [Fact]
+    public async Task SubmissionCreatedBeforeFreeze_CanFinishAfterFreezeAndRefreshPublicArchive()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var createdAt = fixture.Season.FreezeAt.AddSeconds(-1);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        var service = fixture.RootSeasonService();
+        await service.ReconcileCurrentSeasonAsync();
+        Assert.Equal(LeaderboardSeasonStatus.Public, fixture.Season.Status);
+
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100, createdAt: createdAt);
+        Assert.True(fixture.LastScoreResult!.RequiresArchiveRefresh);
+        await service.RefreshPublicSeasonAsync(fixture.Season.Id);
+
+        Assert.Equal(createdAt, (await fixture.Db.LeaderboardUserProblemScores.SingleAsync()).FirstFullScoreAt);
+        Assert.Single(fixture.Db.LeaderboardSeasonArchiveEntries);
+    }
+
+    [Fact]
+    public async Task SubmissionCreatedAtFreeze_IsExcluded()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Time.Set(fixture.Season.FreezeAt.AddMinutes(1));
+        await fixture.ApplyAcceptedAsync(
+            fixture.Answerer.Id, fixture.Problem.Id, 100, 100, createdAt: fixture.Season.FreezeAt);
+        Assert.Empty(fixture.Db.LeaderboardUserProblemScores);
+    }
+
+    [Fact]
+    public async Task ManualFreeze_RecordsActualCutoffWithoutChangingPlan()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var plannedFreeze = fixture.Season.FreezeAt;
+        var result = await fixture.RootSeasonService().FreezeSeasonAsync(fixture.Season.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(Now, fixture.Season.ManuallyFrozenAt);
+        Assert.Equal(plannedFreeze, fixture.Season.FreezeAt);
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100, createdAt: Now);
+        Assert.Empty(fixture.Db.LeaderboardUserProblemScores);
+    }
+
+    [Fact]
+    public async Task RankSnapshot_DeduplicatesUnchangedRankAndFeedsPersonalStatistics()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var service = fixture.RootSeasonService();
+        await service.ReconcileCurrentSeasonAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+
+        fixture.Time.Advance(TimeSpan.FromHours(1));
+        await service.ReconcileCurrentSeasonAsync();
+        await service.RefreshPublicSeasonAsync(fixture.Season.Id);
+
+        Assert.Single(fixture.Db.LeaderboardSeasonRankSnapshots);
+        var personal = await fixture.PublicSeasonService().GetCurrentPersonalAsync();
+        Assert.Equal(1, personal.Value!.CurrentRank);
+        Assert.Equal(1, personal.Value.BestRank);
+        Assert.Equal(1, personal.Value.FirstPlaceProblemCount);
+    }
+
+    [Fact]
+    public async Task ArchivedHistory_UsesAnonymousSnapshotAndRemainsAvailable()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Answerer.IsLeaderboardAnonymous = true;
+        await fixture.Db.SaveChangesAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        var service = fixture.RootSeasonService();
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await service.ReconcileCurrentSeasonAsync();
+        fixture.Time.Set(fixture.Season.PublicUntil);
+        await service.ReconcileCurrentSeasonAsync();
+
+        fixture.Answerer.IsLeaderboardAnonymous = false;
+        fixture.Answerer.UserName = "renamed-after-archive";
+        await fixture.Db.SaveChangesAsync();
+        var history = await fixture.PublicSeasonService().GetHistoryAsync(fixture.Season.Id);
+
+        var entry = Assert.Single(history.Value!.Entries);
+        Assert.StartsWith("NODE-", entry.DisplayNameSnapshot);
+        Assert.NotEqual(fixture.Answerer.UserName, entry.DisplayNameSnapshot);
+    }
+
+    [Fact]
+    public async Task SubmissionCreatedExactlyAtStart_IsEligible()
+    {
+        await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddMinutes(5));
+        fixture.Time.Set(fixture.Season.StartAt.AddSeconds(10));
+
+        await fixture.ApplyAcceptedAsync(
+            fixture.Answerer.Id, fixture.Problem.Id, 100, 100,
+            createdAt: fixture.Season.StartAt, finishedAt: fixture.Time.GetUtcNow());
+
+        Assert.Single(fixture.Db.LeaderboardUserProblemScores);
+    }
+
+    [Fact]
+    public async Task SubmissionCreatedAfterFreeze_IsExcluded()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Time.Set(fixture.Season.FreezeAt.AddSeconds(10));
+
+        await fixture.ApplyAcceptedAsync(
+            fixture.Answerer.Id, fixture.Problem.Id, 100, 100,
+            createdAt: fixture.Season.FreezeAt.AddTicks(1));
+
+        Assert.False(fixture.LastScoreResult!.Applied);
+        Assert.Empty(fixture.Db.LeaderboardUserProblemScores);
+    }
+
+    [Fact]
+    public async Task SubmissionCreatedBeforeManualFreeze_RemainsEligibleWhenFinishedAfterward()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var createdAt = Now.AddSeconds(-1);
+        Assert.True((await fixture.RootSeasonService().FreezeSeasonAsync(fixture.Season.Id)).IsSuccess);
+        fixture.Time.Advance(TimeSpan.FromSeconds(5));
+
+        await fixture.ApplyAcceptedAsync(
+            fixture.Answerer.Id, fixture.Problem.Id, 100, 100,
+            createdAt: createdAt, finishedAt: fixture.Time.GetUtcNow());
+        await fixture.RootSeasonService().RefreshPublicSeasonAsync(fixture.Season.Id);
+
+        Assert.True(fixture.LastScoreResult!.Applied);
+        Assert.Equal(createdAt, (await fixture.Db.LeaderboardUserProblemScores.SingleAsync()).FirstFullScoreAt);
+        Assert.Equal(fixture.Answerer.Id, Assert.Single(fixture.Db.LeaderboardSeasonArchiveEntries).UserId);
+    }
+
+    [Fact]
+    public async Task FirstFullTimeRank_UsesCreatedAtInsteadOfJudgeCompletionOrder()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var secondUser = fixture.NewUser("second", UserRole.Answerer);
+        await fixture.Db.SaveChangesAsync();
+
+        await fixture.ApplyAcceptedAsync(
+            secondUser.Id, fixture.Problem.Id, 100, 100,
+            createdAt: Now.AddSeconds(1), finishedAt: Now.AddSeconds(2));
+        await fixture.ApplyAcceptedAsync(
+            fixture.Answerer.Id, fixture.Problem.Id, 100, 100,
+            createdAt: Now, finishedAt: Now.AddSeconds(10));
+
+        var board = await fixture.PublicSeasonService().GetCurrentProblemLeaderboardAsync(fixture.Problem.Id);
+        Assert.Equal(fixture.Answerer.Id, board.Value!.Entries[0].UserId);
+        Assert.Equal(1, board.Value.Entries[0].TimeRank);
+        Assert.Equal(secondUser.Id, board.Value.Entries[1].UserId);
+        Assert.Equal(2, board.Value.Entries[1].TimeRank);
+    }
+
+    [Fact]
+    public async Task PublicLateInvalidSubmission_DoesNotChangeScoreOrArchive()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        var before = JsonSerializer.Serialize((await fixture.RootSeasonService().GetArchiveAsync(fixture.Season.Id)).Value);
+        var scoreCount = await fixture.Db.LeaderboardUserProblemScores.CountAsync();
+
+        fixture.Time.Advance(TimeSpan.FromSeconds(5));
+        await fixture.ApplyAcceptedAsync(
+            fixture.Answerer.Id, fixture.Problem.Id, 1, 1,
+            createdAt: fixture.Season.FreezeAt, finishedAt: fixture.Time.GetUtcNow());
+
+        Assert.False(fixture.LastScoreResult!.Applied);
+        Assert.Equal(scoreCount, await fixture.Db.LeaderboardUserProblemScores.CountAsync());
+        Assert.Equal(before, JsonSerializer.Serialize((await fixture.RootSeasonService().GetArchiveAsync(fixture.Season.Id)).Value));
+    }
+
+    [Fact]
+    public async Task LifecycleAndFinalize_AreIdempotentWithoutDuplicateSnapshots()
+    {
+        await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddMinutes(5));
+        var service = fixture.RootSeasonService();
+        await service.ReconcileCurrentSeasonAsync();
+        await service.ReconcileCurrentSeasonAsync();
+        Assert.Equal(LeaderboardSeasonStatus.Scheduled, fixture.Season.Status);
+
+        fixture.Time.Set(fixture.Season.StartAt);
+        await service.ReconcileCurrentSeasonAsync();
+        await service.ReconcileCurrentSeasonAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await service.ReconcileCurrentSeasonAsync();
+        await service.RefreshPublicSeasonAsync(fixture.Season.Id);
+        await service.RefreshPublicSeasonAsync(fixture.Season.Id);
+
+        Assert.Equal(LeaderboardSeasonStatus.Public, fixture.Season.Status);
+        Assert.Single(fixture.Db.LeaderboardSeasonArchiveEntries);
+        Assert.Single(fixture.Db.LeaderboardSeasonArchiveProblemScores);
+        Assert.Single(fixture.Db.LeaderboardSeasonRankSnapshots);
+
+        fixture.Time.Set(fixture.Season.PublicUntil);
+        await service.ReconcileCurrentSeasonAsync();
+        await service.ReconcileCurrentSeasonAsync();
+        Assert.True((await service.ArchiveSeasonAsync(fixture.Season.Id)).IsSuccess);
+        Assert.Single(fixture.Db.LeaderboardSeasonArchiveEntries);
+        Assert.Single(fixture.Db.LeaderboardSeasonArchiveProblemScores);
+    }
+
+    [Fact]
+    public async Task FinalizeFailure_LeavesFrozenWithoutPartialArchive_AndCanRetry()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        Assert.True((await fixture.RootSeasonService().FreezeSeasonAsync(fixture.Season.Id)).IsSuccess);
+
+        var interceptor = new FailingSaveChangesInterceptor(context =>
+            context.ChangeTracker.Entries<LeaderboardSeason>().Any(entry => entry.Entity.Status == LeaderboardSeasonStatus.Public));
+        await using (var failingDb = fixture.CreateContext(interceptor))
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                fixture.SeasonService(fixture.Root, failingDb).ReconcileCurrentSeasonAsync());
+        }
+
+        await using (var verifyDb = fixture.CreateContext())
+        {
+            Assert.Equal(LeaderboardSeasonStatus.Frozen, (await verifyDb.LeaderboardSeasons.SingleAsync()).Status);
+            Assert.Empty(verifyDb.LeaderboardSeasonArchiveEntries);
+            Assert.Empty(verifyDb.LeaderboardSeasonArchiveProblemScores);
+        }
+
+        await using (var retryDb = fixture.CreateContext())
+        {
+            await fixture.SeasonService(fixture.Root, retryDb).ReconcileCurrentSeasonAsync();
+            Assert.Equal(LeaderboardSeasonStatus.Public, (await retryDb.LeaderboardSeasons.SingleAsync()).Status);
+            Assert.Single(retryDb.LeaderboardSeasonArchiveEntries);
+            Assert.Single(retryDb.LeaderboardSeasonArchiveProblemScores);
+        }
+    }
+
+    [Fact]
+    public async Task ArchiveFailure_LeavesPublicSnapshotReadable_AndCanRetry()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        fixture.Time.Set(fixture.Season.PublicUntil);
+
+        var interceptor = new FailingSaveChangesInterceptor(context =>
+            context.ChangeTracker.Entries<LeaderboardSeason>().Any(entry => entry.Entity.Status == LeaderboardSeasonStatus.Archived));
+        await using (var failingDb = fixture.CreateContext(interceptor))
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                fixture.SeasonService(fixture.Root, failingDb).ReconcileCurrentSeasonAsync());
+        }
+
+        await using (var verifyDb = fixture.CreateContext())
+        {
+            Assert.Equal(LeaderboardSeasonStatus.Public, (await verifyDb.LeaderboardSeasons.SingleAsync()).Status);
+            Assert.Single((await fixture.SeasonService(fixture.Answerer, verifyDb).GetCurrentLeaderboardAsync()).Value!.Entries);
+        }
+
+        await using (var retryDb = fixture.CreateContext())
+        {
+            await fixture.SeasonService(fixture.Root, retryDb).ReconcileCurrentSeasonAsync();
+            Assert.Equal(LeaderboardSeasonStatus.Archived, (await retryDb.LeaderboardSeasons.SingleAsync()).Status);
+        }
+    }
+
+    [Fact]
+    public async Task ArchivedSnapshot_IsUnaffectedByAllLiveMutableFields()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Answerer.IsLeaderboardAnonymous = true;
+        await fixture.AddBenchmarkAsync(JudgeLanguage.Cpp17, 100, 100);
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 50, 50);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        fixture.Time.Set(fixture.Season.PublicUntil);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        var before = JsonSerializer.Serialize((await fixture.RootSeasonService().GetArchiveAsync(fixture.Season.Id)).Value);
+
+        fixture.Answerer.UserName = "changed";
+        fixture.Answerer.IsLeaderboardAnonymous = false;
+        fixture.Answerer.Role = UserRole.ProblemSetter;
+        fixture.Answerer.IsBlacklisted = true;
+        fixture.Problem.Title = "changed problem";
+        fixture.Season.ScoringRulesJson = "{}";
+        var benchmark = await fixture.Db.LeaderboardSeasonProblemBenchmarks.SingleAsync();
+        benchmark.RuntimeBaselineMs = 999;
+        benchmark.MemoryBaselineKb = 999;
+        await fixture.Db.SaveChangesAsync();
+
+        var after = JsonSerializer.Serialize((await fixture.RootSeasonService().GetArchiveAsync(fixture.Season.Id)).Value);
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
+    public async Task AnonymousArchive_HidesIdentityPubliclyButPreservesAuditSnapshot()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Answerer.IsLeaderboardAnonymous = true;
+        var publicViewer = fixture.NewUser("viewer", UserRole.Answerer);
+        await fixture.Db.SaveChangesAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        fixture.Time.Set(fixture.Season.PublicUntil);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+
+        fixture.Answerer.IsLeaderboardAnonymous = false;
+        await fixture.Db.SaveChangesAsync();
+        var publicEntry = Assert.Single((await fixture.SeasonService(publicViewer).GetHistoryAsync(fixture.Season.Id)).Value!.Entries);
+        var auditEntry = Assert.Single((await fixture.SeasonService(fixture.ProblemSetter).GetHistoryAsync(fixture.Season.Id)).Value!.Entries);
+
+        Assert.Null(publicEntry.UserId);
+        Assert.StartsWith("NODE-", publicEntry.DisplayNameSnapshot);
+        Assert.Equal(fixture.Answerer.Id, auditEntry.UserId);
+        Assert.Equal("answerer", auditEntry.DisplayNameSnapshot);
+    }
+
+    [Fact]
+    public async Task ArchiveClearsOnlyCurrentPointerAndPreservesAllSeasonFacts()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        fixture.Time.Set(fixture.Season.PublicUntil);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+
+        Assert.Null((await fixture.PublicSeasonService().GetCurrentLeaderboardAsync()).Value!.Season);
+        Assert.Single(fixture.Db.LeaderboardUserProblemScores);
+        Assert.Single(fixture.Db.LeaderboardSeasonArchiveEntries);
+        Assert.Single(fixture.Db.LeaderboardSeasonArchiveProblemScores);
+        Assert.Single(fixture.Db.LeaderboardSeasonRankSnapshots);
+        Assert.Single((await fixture.RootSeasonService().GetArchiveAsync(fixture.Season.Id)).Value!.Entries);
+    }
+
+    [Fact]
+    public async Task NextSeasonStartsWithIndependentScoreAliasAndFirstFullFacts()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Answerer.IsLeaderboardAnonymous = true;
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        fixture.Time.Set(fixture.Season.FreezeAt);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        fixture.Time.Set(fixture.Season.PublicUntil);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        var seasonAAlias = Assert.Single(fixture.Db.LeaderboardSeasonAliases).Alias;
+
+        var start = fixture.Time.GetUtcNow().AddMinutes(1);
+        var created = await fixture.RootSeasonService().CreateSeasonAsync(new CreateLeaderboardSeasonRequest
+        {
+            Name = "Season 2", StartAt = start, FreezeAt = start.AddHours(1), PublicUntil = start.AddHours(2)
+        });
+        Assert.True(created.IsSuccess);
+        var seasonB = created.Value!;
+        Assert.True((await fixture.RootSeasonService().AddProblemAsync(
+            seasonB.Id, new AddLeaderboardSeasonProblemRequest { ProblemId = fixture.Problem.Id })).IsSuccess);
+        Assert.Empty(fixture.Db.LeaderboardUserProblemScores.Where(score => score.SeasonId == seasonB.Id));
+
+        fixture.Time.Set(start);
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100, createdAt: start);
+        var board = await fixture.PublicSeasonService().GetCurrentLeaderboardAsync();
+        var seasonBAlias = Assert.Single(board.Value!.Entries).Alias;
+
+        Assert.NotEqual(seasonAAlias, seasonBAlias);
+        Assert.Single(fixture.Db.LeaderboardUserProblemScores.Where(score => score.SeasonId == fixture.Season.Id));
+        var seasonBScore = Assert.Single(fixture.Db.LeaderboardUserProblemScores.Where(score => score.SeasonId == seasonB.Id));
+        Assert.Equal(start, seasonBScore.FirstFullScoreAt);
+    }
+
+    [Fact]
+    public async Task RankSnapshot_InsertsWhenScoreChangesWithoutRankChange()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.AddBenchmarkAsync(JudgeLanguage.Cpp17, 100, 100);
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        fixture.Time.Advance(TimeSpan.FromMinutes(30));
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 50, 50);
+        fixture.Time.Advance(TimeSpan.FromMinutes(30));
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+
+        var snapshots = await fixture.Db.LeaderboardSeasonRankSnapshots.OrderBy(snapshot => snapshot.RecordedAt).ToListAsync();
+        Assert.Equal(2, snapshots.Count);
+        Assert.All(snapshots, snapshot => Assert.Equal(1, snapshot.Rank));
+        Assert.NotEqual(snapshots[0].TotalScore, snapshots[1].TotalScore);
+    }
+
+    [Fact]
+    public async Task RankSnapshot_InsertsWhenRankChangesWithoutScoreChange()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100);
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+        var initial = await fixture.Db.LeaderboardSeasonRankSnapshots.SingleAsync(snapshot => snapshot.UserId == fixture.Answerer.Id);
+
+        var secondProblem = new Problem
+        {
+            Id = Guid.NewGuid(), Title = "Higher Score", Description = "test", InputDescription = "", OutputDescription = "",
+            TimeLimitMs = 1000, MemoryLimitMb = 128, IsPublished = true, CreatedByUserId = fixture.ProblemSetter.Id,
+            CreatedAt = Now, UpdatedAt = Now
+        };
+        fixture.Db.Problems.Add(secondProblem);
+        fixture.Db.LeaderboardSeasonProblems.Add(new LeaderboardSeasonProblem
+        {
+            Id = Guid.NewGuid(), SeasonId = fixture.Season.Id, ProblemId = secondProblem.Id, BaseScore = 200, CreatedAt = Now
+        });
+        var other = fixture.NewUser("higher", UserRole.Answerer);
+        await fixture.Db.SaveChangesAsync();
+        await fixture.ApplyAcceptedAsync(other.Id, secondProblem.Id, 100, 100);
+        fixture.Time.Advance(TimeSpan.FromHours(1));
+        await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
+
+        var answererSnapshots = await fixture.Db.LeaderboardSeasonRankSnapshots
+            .Where(snapshot => snapshot.UserId == fixture.Answerer.Id).OrderBy(snapshot => snapshot.RecordedAt).ToListAsync();
+        Assert.Equal([1, 2], answererSnapshots.Select(snapshot => snapshot.Rank));
+        Assert.All(answererSnapshots, snapshot => Assert.Equal(initial.TotalScore, snapshot.TotalScore));
+    }
+
+    [Fact]
+    public async Task PersonalBestRankAndRankChange_UseSeasonSnapshots()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        for (var index = 0; index < 6; index++)
+        {
+            var user = fixture.NewUser($"ahead-{index}", UserRole.Answerer);
+            await fixture.Db.SaveChangesAsync();
+            await fixture.ApplyAcceptedAsync(user.Id, fixture.Problem.Id, 100, 100, createdAt: Now.AddMinutes(-10 + index));
+        }
+        await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100, createdAt: Now);
+        fixture.Db.LeaderboardSeasonRankSnapshots.Add(new LeaderboardSeasonRankSnapshot
+        {
+            Id = Guid.NewGuid(), SeasonId = fixture.Season.Id, UserId = fixture.Answerer.Id,
+            Rank = 10, TotalScore = 0, RecordedAt = Now.AddMinutes(-1)
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var personal = await fixture.PublicSeasonService().GetCurrentPersonalAsync();
+        Assert.Equal(7, personal.Value!.CurrentRank);
+        Assert.Equal(7, personal.Value.BestRank);
+        Assert.Equal(3, personal.Value.RankChange);
+    }
+
+    [Fact]
+    public void LifecycleWorker_RetriesAfterPollAndHandlesHostCancellation()
+    {
+        var source = File.ReadAllText(Path.Combine(ProjectRoot(), "OnlineJudge.Api", "Services", "LeaderboardSeasonLifecycleWorker.cs"));
+        Assert.Contains("PeriodicTimer", source, StringComparison.Ordinal);
+        Assert.Contains("catch (Exception exception)", source, StringComparison.Ordinal);
+        Assert.Contains("WaitForNextTickAsync(stoppingToken)", source, StringComparison.Ordinal);
+        Assert.Contains("OperationCanceledException", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.Delay", source, StringComparison.Ordinal);
+    }
+
     private static int Count(string value, string token) => (value.Length - value.Replace(token, string.Empty, StringComparison.Ordinal).Length) / token.Length;
 
     private static string ProjectRoot() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
@@ -465,10 +957,11 @@ public class LeaderboardSeasonTests
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly string databaseName = Guid.NewGuid().ToString();
+        private readonly InMemoryDatabaseRoot databaseRoot = new();
 
         private Fixture()
         {
-            Db = new OnlineJudgeDbContext(new DbContextOptionsBuilder<OnlineJudgeDbContext>().UseInMemoryDatabase(databaseName).Options);
+            Db = CreateContext();
             Time = new MutableTimeProvider(Now);
             Answerer = NewUser("answerer", UserRole.Answerer);
             ProblemSetter = NewUser("setter", UserRole.ProblemSetter);
@@ -496,6 +989,7 @@ public class LeaderboardSeasonTests
         public Problem Problem { get; }
         public TestCase TestCase { get; }
         public LeaderboardSeason Season { get; private set; } = null!;
+        public OnlineJudge.Application.Leaderboards.Services.SeasonScoreApplyResult? LastScoreResult { get; private set; }
 
         public static async Task<Fixture> CreateAsync(DateTimeOffset? seasonStart = null, bool addSeasonProblem = true)
         {
@@ -546,30 +1040,61 @@ public class LeaderboardSeasonTests
             Guid problemId,
             int? runtime,
             int? memory,
-            JudgeLanguage language = JudgeLanguage.Cpp17)
+            JudgeLanguage language = JudgeLanguage.Cpp17,
+            DateTimeOffset? createdAt = null,
+            DateTimeOffset? finishedAt = null)
         {
             var submission = new Submission
             {
                 Id = Guid.NewGuid(), UserId = userId, ProblemId = problemId, SourceCode = "test", Status = JudgeStatus.Accepted,
-                Language = language, TimeUsedMs = runtime, MemoryUsedKb = memory, CreatedAt = Time.GetUtcNow(), FinishedAt = Time.GetUtcNow()
+                Language = language, TimeUsedMs = runtime, MemoryUsedKb = memory,
+                CreatedAt = createdAt ?? Time.GetUtcNow(), FinishedAt = finishedAt ?? Time.GetUtcNow()
             };
             Db.Submissions.Add(submission);
-            await new SeasonScoreService(Db, Time).ApplySubmissionResultAsync(new SeasonSubmissionResult(
-                submission.Id, problemId, userId, submission.Language, JudgeStatus.Accepted, runtime, memory, submission.FinishedAt.Value));
+            LastScoreResult = await new SeasonScoreService(Db, Time).ApplySubmissionResultAsync(new SeasonSubmissionResult(
+                submission.Id, problemId, userId, submission.Language, JudgeStatus.Accepted, runtime, memory, submission.CreatedAt, submission.FinishedAt.Value));
             await Db.SaveChangesAsync();
             return submission.Id;
         }
 
         public LeaderboardSeasonService PublicSeasonService() => SeasonService(Answerer);
         public LeaderboardSeasonService RootSeasonService() => SeasonService(Root);
-        public LeaderboardSeasonService SeasonService(User user)
+        public OnlineJudgeDbContext CreateContext(params IInterceptor[] interceptors)
         {
+            var builder = new DbContextOptionsBuilder<OnlineJudgeDbContext>()
+                .UseInMemoryDatabase(databaseName, databaseRoot)
+                .ConfigureWarnings(warnings => warnings.Ignore(CoreEventId.ManyServiceProvidersCreatedWarning));
+            if (interceptors.Length > 0) builder.AddInterceptors(interceptors);
+            return new OnlineJudgeDbContext(builder.Options);
+        }
+
+        public LeaderboardSeasonService SeasonService(User user, OnlineJudgeDbContext? dbContext = null)
+        {
+            var context = dbContext ?? Db;
             var current = new TestCurrentUser(user);
-            var identity = new LeaderboardIdentityService(Db, current, Time);
-            return new LeaderboardSeasonService(Db, current, Time, identity);
+            var identity = new LeaderboardIdentityService(context, current, Time);
+            return new LeaderboardSeasonService(context, current, Time, identity);
         }
 
         public async ValueTask DisposeAsync() => await Db.DisposeAsync();
+    }
+
+    private sealed class FailingSaveChangesInterceptor(Func<DbContext, bool> shouldFail) : SaveChangesInterceptor
+    {
+        private bool hasFailed;
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (!hasFailed && eventData.Context is { } context && shouldFail(context))
+            {
+                hasFailed = true;
+                throw new InvalidOperationException("Injected persistence failure.");
+            }
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 
     private sealed class TestCurrentUser(User user) : ICurrentUser

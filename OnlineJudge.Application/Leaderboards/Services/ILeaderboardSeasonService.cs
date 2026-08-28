@@ -36,4 +36,12 @@ public interface ILeaderboardSeasonService
     Task<Result<LeaderboardSeasonDto>> ArchiveSeasonAsync(Guid seasonId, CancellationToken cancellationToken = default);
 
     Task<Result<LeaderboardSeasonArchiveDto>> GetArchiveAsync(Guid seasonId, CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<LeaderboardSeasonHistorySummaryDto>>> GetHistoryAsync(CancellationToken cancellationToken = default);
+
+    Task<Result<LeaderboardSeasonArchiveDto>> GetHistoryAsync(Guid seasonId, CancellationToken cancellationToken = default);
+
+    Task<Result<LeaderboardSeasonPersonalDto>> GetCurrentPersonalAsync(CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>> GetPersonalHistoryAsync(CancellationToken cancellationToken = default);
 }

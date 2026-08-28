@@ -8,6 +8,7 @@ export function SeasonLeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<SeasonLeaderboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     try {
@@ -28,6 +29,11 @@ export function SeasonLeaderboardPage() {
     return () => window.clearInterval(timer);
   }, [load]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   if (isLoading) return <div className="state-line">正在加载赛季排行榜...</div>;
 
   if (error) {
@@ -47,18 +53,22 @@ export function SeasonLeaderboardPage() {
   }
 
   const { season, entries } = leaderboard;
+  const state = getSeasonState(season.effectiveStatus, season.startAt, season.freezeAt, season.publicUntil, now);
   return (
     <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
       <div className="leaderboard-header leaderboard-v2-header">
         <div>
           <p className="eyebrow">SEASON LEADERBOARD</p>
           <h1>{season.name}</h1>
-          <p>赛季时间：{formatDate(season.startAt)} 至 {formatDate(season.freezeAt)}</p>
+          <p>开始：{formatDate(season.startAt)} · 结榜：{formatDate(season.freezeAt)}</p>
+          <div className="season-lifecycle-line"><span className={`season-status status-${season.effectiveStatus}`}>{state.label}</span><strong>{state.countdownLabel} {state.countdown}</strong></div>
+          <p className="season-status-note">{state.note}</p>
         </div>
         <div className="leaderboard-header-actions">
           <span className="leaderboard-live-status"><i /> 实时更新 · 10 秒</span>
           <span className="leaderboard-total">共 {entries.length} 名答题人</span>
           <Link className="button" to="/leaderboards">返回榜单中心</Link>
+          <Link className="button" to="/leaderboards/history">历史赛季</Link>
         </div>
       </div>
 
@@ -106,4 +116,20 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
   }).format(new Date(value));
+}
+
+function getSeasonState(status: number, startAt: string, freezeAt: string, publicUntil: string, now: number) {
+  if (status === 1) return { label: "未开始", countdownLabel: "距离开榜", countdown: countdown(startAt, now), note: "赛季尚未开始，当前提交不会获得赛季积分。" };
+  if (status === 2) return { label: "进行中", countdownLabel: "距离结榜", countdown: countdown(freezeAt, now), note: "赛季进行中，提交可以获得积分与奖励。" };
+  if (status === 4) return { label: "公示中", countdownLabel: "距离归档", countdown: countdown(publicUntil, now), note: "赛季已结榜，当前为公示期。" };
+  return { label: "待定榜", countdownLabel: "", countdown: "", note: "系统正在生成最终排名；失败时会自动重试。" };
+}
+
+function countdown(value: string, now: number) {
+  const total = Math.max(0, Math.floor((new Date(value).getTime() - now) / 1_000));
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor(total % 86_400 / 3_600);
+  const minutes = Math.floor(total % 3_600 / 60);
+  const seconds = total % 60;
+  return [days, hours, minutes, seconds].map(number => String(number).padStart(2, "0")).join(" : ");
 }

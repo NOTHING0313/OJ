@@ -5,6 +5,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using OnlineJudge.Api.Authorization;
 using OnlineJudge.Api.Common;
+using OnlineJudge.Api.Services;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Infrastructure;
 using OnlineJudge.Infrastructure.Auth;
@@ -35,6 +36,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddHostedService<LeaderboardSeasonLifecycleWorker>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

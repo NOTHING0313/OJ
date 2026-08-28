@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   addLeaderboardSeasonProblem,
   archiveLeaderboardSeason,
@@ -7,13 +8,15 @@ import {
   freezeLeaderboardSeason,
   getAdminLeaderboardSeasons,
   getCurrentSeasonAuditLeaderboard,
+  getLeaderboardSeasonHistory,
   removeLeaderboardSeasonProblem,
   updateLeaderboardSeasonProblemBenchmark,
   updateLeaderboardSeason,
   type LeaderboardJudgeLanguage,
   type LeaderboardSeasonProblem,
   type LeaderboardSeason,
-  type SeasonLeaderboard
+  type SeasonLeaderboard,
+  type LeaderboardSeasonHistorySummary
 } from "../api/leaderboardsApi";
 import { getProblems, type ProblemListItemDto } from "../api/problemsApi";
 import { useAuth } from "../auth/AuthContext";
@@ -23,6 +26,7 @@ export function AdminLeaderboardSeasonPage() {
   const isRoot = currentUser?.role === 3;
   const [seasons, setSeasons] = useState<LeaderboardSeason[]>([]);
   const [leaderboard, setLeaderboard] = useState<SeasonLeaderboard | null>(null);
+  const [history, setHistory] = useState<LeaderboardSeasonHistorySummary[]>([]);
   const [problems, setProblems] = useState<ProblemListItemDto[]>([]);
   const [selectedProblemId, setSelectedProblemId] = useState("");
   const [form, setForm] = useState(() => defaultForm());
@@ -34,14 +38,16 @@ export function AdminLeaderboardSeasonPage() {
 
   const reload = useCallback(async () => {
     try {
-      const [seasonData, leaderboardData, problemData] = await Promise.all([
+      const [seasonData, leaderboardData, problemData, historyData] = await Promise.all([
         getAdminLeaderboardSeasons(),
         getCurrentSeasonAuditLeaderboard(),
-        getProblems()
+        getProblems(),
+        getLeaderboardSeasonHistory()
       ]);
       setSeasons(seasonData);
       setLeaderboard(leaderboardData);
       setProblems(problemData);
+      setHistory(historyData);
       const current = seasonData.find((season) => season.isCurrent);
       if (current?.effectiveStatus === 1) setForm(toForm(current));
       setError(null);
@@ -142,10 +148,10 @@ export function AdminLeaderboardSeasonPage() {
           </div>
           {isRoot && (
             <div className="leaderboard-season-actions">
-              {currentSeason.effectiveStatus === 3 && currentSeason.status !== 4 && <button className="button" disabled={isBusy} onClick={() => void run(
-                () => freezeLeaderboardSeason(currentSeason.id), "赛季已冻结")}>确认冻结</button>}
+              {currentSeason.effectiveStatus === 2 && <button className="button" disabled={isBusy} onClick={() => void run(
+                () => freezeLeaderboardSeason(currentSeason.id), "赛季已提前冻结")}>提前冻结</button>}
               {(currentSeason.effectiveStatus === 3 || currentSeason.status === 4) && <button className="button primary" disabled={isBusy} onClick={() => void run(
-                () => finalizeLeaderboardSeason(currentSeason.id), "最终榜快照已生成")}>Finalize / Public</button>}
+                () => finalizeLeaderboardSeason(currentSeason.id), "最终榜快照已生成")}>{currentSeason.status === 4 ? "重新定榜" : "Finalize / Public"}</button>}
               {currentSeason.status === 4 && <button className="button danger" disabled={isBusy} onClick={() => void run(
                 () => archiveLeaderboardSeason(currentSeason.id), "赛季已归档")}>Archive</button>}
             </div>
@@ -160,6 +166,13 @@ export function AdminLeaderboardSeasonPage() {
             <tbody>{leaderboard.entries.map((entry) => <tr key={`${entry.rank}-${entry.alias}`}><td>{entry.rank}</td><td>{entry.userName ?? entry.displayName}</td><td>{entry.alias}</td><td>{entry.solvedCount}</td><td>{entry.totalScore}</td></tr>)}</tbody>
           </table></div>
         )}
+      </section>
+      <section className="admin-panel">
+        <div className="admin-panel-header"><div><h2>历史赛季审计</h2><p>只读查看归档身份快照与逐题分数明细。</p></div></div>
+        {history.length === 0 ? <div className="empty-state">暂无已归档赛季</div> : <div className="season-history-grid">{history.map(season =>
+          <Link className="leaderboard-v2-feature-card season-history-card" to={`/leaderboards/history/${season.seasonId}`} key={season.seasonId}>
+            <h3>{season.name}</h3><div className="season-history-facts"><span>参与人数<strong>{season.participantCount}</strong></span><span>冠军<strong>{season.top3[0]?.displayName ?? "—"}</strong></span><span>最高分<strong>{season.top3[0]?.finalScore ?? 0}</strong></span></div>
+          </Link>)}</div>}
       </section>
     </section>
   );

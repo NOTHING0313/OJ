@@ -57,6 +57,8 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<LeaderboardSeasonArchiveProblemScore> LeaderboardSeasonArchiveProblemScores => Set<LeaderboardSeasonArchiveProblemScore>();
 
+    public DbSet<LeaderboardSeasonRankSnapshot> LeaderboardSeasonRankSnapshots => Set<LeaderboardSeasonRankSnapshot>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

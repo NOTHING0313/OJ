@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Data;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Leaderboards.Dtos;
@@ -17,14 +20,16 @@ public sealed class LeaderboardSeasonService(
     TimeProvider timeProvider,
     LeaderboardIdentityService identityService,
     ILeaderboardScoringEngine scoringEngine,
-    LeaderboardScoringOptions scoringOptions) : ILeaderboardSeasonService
+    LeaderboardScoringOptions scoringOptions,
+    LeaderboardSeasonLifecycleOptions lifecycleOptions,
+    ILogger<LeaderboardSeasonService> logger) : ILeaderboardSeasonService, ILeaderboardSeasonLifecycleService
 {
     public LeaderboardSeasonService(
         OnlineJudgeDbContext dbContext,
         ICurrentUser currentUser,
         TimeProvider timeProvider,
         LeaderboardIdentityService identityService)
-        : this(dbContext, currentUser, timeProvider, identityService, new LeaderboardScoringEngine(), new LeaderboardScoringOptions())
+        : this(dbContext, currentUser, timeProvider, identityService, new LeaderboardScoringEngine(), new LeaderboardScoringOptions(), new LeaderboardSeasonLifecycleOptions(), NullLogger<LeaderboardSeasonService>.Instance)
     {
     }
 
@@ -34,7 +39,16 @@ public sealed class LeaderboardSeasonService(
         if (season is null) return Result<SeasonLeaderboardDto>.Success(new SeasonLeaderboardDto());
 
         var effectiveStatus = LeaderboardSeasonLifecycle.GetEffectiveStatus(season, timeProvider.GetUtcNow());
-        if (effectiveStatus is not LeaderboardSeasonStatus.Active and not LeaderboardSeasonStatus.Public)
+        if (effectiveStatus == LeaderboardSeasonStatus.Archived)
+        {
+            return Result<SeasonLeaderboardDto>.Success(new SeasonLeaderboardDto());
+        }
+
+        if (effectiveStatus == LeaderboardSeasonStatus.Scheduled)
+        {
+            return Result<SeasonLeaderboardDto>.Success(new SeasonLeaderboardDto { Season = ToDto(season) });
+        }
+        if (effectiveStatus == LeaderboardSeasonStatus.Frozen)
         {
             return Result<SeasonLeaderboardDto>.Success(new SeasonLeaderboardDto());
         }
@@ -251,18 +265,28 @@ public sealed class LeaderboardSeasonService(
         var userResult = await RequireRootAsync(cancellationToken);
         if (userResult.IsFailure) return Result<LeaderboardSeasonDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
         var season = await LoadSeasonAsync(seasonId, cancellationToken);
         if (season is null) return Result<LeaderboardSeasonDto>.Failure("Leaderboard season not found.");
-        if (season.Status is LeaderboardSeasonStatus.Public or LeaderboardSeasonStatus.Archived)
+        if (season.Status == LeaderboardSeasonStatus.Archived)
         {
             return Result<LeaderboardSeasonDto>.Failure("Leaderboard season cannot be frozen in its current state.");
         }
 
         var now = timeProvider.GetUtcNow();
-        if (now < season.FreezeAt) return Result<LeaderboardSeasonDto>.Failure("Season freeze time has not been reached.");
+        if (now < season.StartAt) return Result<LeaderboardSeasonDto>.Failure("A scheduled season cannot be frozen before it starts.");
+        if (season.Status == LeaderboardSeasonStatus.Frozen) return Result<LeaderboardSeasonDto>.Success(ToDto(season));
+        if (season.Status == LeaderboardSeasonStatus.Public) return Result<LeaderboardSeasonDto>.Failure("A public season must be re-finalized instead of frozen.");
         season.Status = LeaderboardSeasonStatus.Frozen;
+        season.ActivatedAt ??= now;
+        season.FrozenAt ??= now;
+        if (now < season.FreezeAt) season.ManuallyFrozenAt ??= now;
         season.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        logger.LogInformation("Leaderboard season operation completed. SeasonId={SeasonId}, Operation={Operation}, ActorUserId={ActorUserId}, Timestamp={Timestamp}", season.Id, "Freeze", userResult.Value!.Id, now);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
     }
 
@@ -271,71 +295,29 @@ public sealed class LeaderboardSeasonService(
         var userResult = await RequireRootAsync(cancellationToken);
         if (userResult.IsFailure) return Result<LeaderboardSeasonArchiveDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
         var season = await LoadSeasonAsync(seasonId, cancellationToken);
         if (season is null) return Result<LeaderboardSeasonArchiveDto>.Failure("Leaderboard season not found.");
         if (season.Status == LeaderboardSeasonStatus.Archived) return Result<LeaderboardSeasonArchiveDto>.Failure("Archived leaderboard snapshots are immutable.");
 
         var now = timeProvider.GetUtcNow();
-        if (now < season.FreezeAt) return Result<LeaderboardSeasonArchiveDto>.Failure("Season freeze time has not been reached.");
-
-        var rows = await LoadEligibleScoreRowsAsync(season.Id, cancellationToken);
-        var aliases = await identityService.EnsureAliasesAsync(season.Id, rows.Select(row => row.UserId), cancellationToken);
-        var ranked = Rank(rows, aliases);
-
-        if (season.ArchiveEntries.Count > 0)
+        if (season.Status is not LeaderboardSeasonStatus.Frozen and not LeaderboardSeasonStatus.Public
+            && LeaderboardSeasonLifecycle.GetEffectiveStatus(season, now) != LeaderboardSeasonStatus.Frozen)
         {
-            dbContext.LeaderboardSeasonArchiveProblemScores.RemoveRange(season.ArchiveEntries.SelectMany(entry => entry.ProblemScores));
-            dbContext.LeaderboardSeasonArchiveEntries.RemoveRange(season.ArchiveEntries);
+            return Result<LeaderboardSeasonArchiveDto>.Failure("Only a frozen or public season can be finalized.");
+        }
+        if (season.Status != LeaderboardSeasonStatus.Public)
+        {
+            season.Status = LeaderboardSeasonStatus.Frozen;
+            season.ActivatedAt ??= now;
+            season.FrozenAt ??= now;
         }
 
-        foreach (var rankedUser in ranked)
-        {
-            var entry = new LeaderboardSeasonArchiveEntry
-            {
-                Id = Guid.NewGuid(),
-                SeasonId = season.Id,
-                UserId = rankedUser.UserId,
-                Alias = aliases[rankedUser.UserId],
-                DisplayNameSnapshot = rankedUser.UserName,
-                WasAnonymous = rankedUser.IsAnonymous,
-                FinalRank = rankedUser.Rank,
-                FinalScore = rankedUser.TotalScore,
-                FinalBaseScore = rankedUser.BaseScore,
-                FinalTimeBonus = rankedUser.TimeBonus,
-                FinalRuntimeBonus = rankedUser.RuntimeBonus,
-                FinalMemoryBonus = rankedUser.MemoryBonus,
-                SolvedCount = rankedUser.SolvedCount,
-                LastScoreImprovedAt = rankedUser.LastScoreImprovedAt,
-                CreatedAt = now
-            };
-
-            entry.ProblemScores = rankedUser.Problems.Select(problem => new LeaderboardSeasonArchiveProblemScore
-            {
-                Id = Guid.NewGuid(),
-                SeasonId = season.Id,
-                ArchiveEntryId = entry.Id,
-                ProblemId = problem.ProblemId,
-                ProblemTitleSnapshot = problem.ProblemTitle,
-                BaseScore = problem.BaseScore,
-                EarnedBaseScore = problem.EarnedBaseScore,
-                TimeRank = problem.TimeRank,
-                FirstFullScoreAt = problem.FirstFullScoreAt,
-                TimeBonus = problem.TimeBonus,
-                PerformanceLanguage = problem.PerformanceLanguage,
-                RuntimeMs = problem.RuntimeMs,
-                RuntimeBaselineMs = problem.RuntimeBaselineMs,
-                RuntimeBonus = problem.RuntimeBonus,
-                MemoryKb = problem.MemoryKb,
-                MemoryBaselineKb = problem.MemoryBaselineKb,
-                MemoryBonus = problem.MemoryBonus,
-                FinalProblemScore = problem.TotalProblemScore
-            }).ToList();
-            dbContext.LeaderboardSeasonArchiveEntries.Add(entry);
-        }
-
-        season.Status = LeaderboardSeasonStatus.Public;
-        season.UpdatedAt = now;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await FinalizeCoreAsync(season, now, cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        logger.LogInformation("Leaderboard season operation completed. SeasonId={SeasonId}, Operation={Operation}, ActorUserId={ActorUserId}, Timestamp={Timestamp}", season.Id, "Finalize", userResult.Value!.Id, now);
         return await GetArchiveCoreAsync(season, cancellationToken);
     }
 
@@ -344,15 +326,22 @@ public sealed class LeaderboardSeasonService(
         var userResult = await RequireRootAsync(cancellationToken);
         if (userResult.IsFailure) return Result<LeaderboardSeasonDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
         var season = await LoadSeasonAsync(seasonId, cancellationToken);
         if (season is null) return Result<LeaderboardSeasonDto>.Failure("Leaderboard season not found.");
+        if (season.Status == LeaderboardSeasonStatus.Archived) return Result<LeaderboardSeasonDto>.Success(ToDto(season));
         if (season.Status != LeaderboardSeasonStatus.Public) return Result<LeaderboardSeasonDto>.Failure("Only a public season can be archived.");
         if (timeProvider.GetUtcNow() < season.PublicUntil) return Result<LeaderboardSeasonDto>.Failure("Season public period has not ended.");
 
         season.Status = LeaderboardSeasonStatus.Archived;
         season.IsCurrent = false;
-        season.UpdatedAt = timeProvider.GetUtcNow();
+        season.ArchivedAt = timeProvider.GetUtcNow();
+        season.UpdatedAt = season.ArchivedAt.Value;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        logger.LogInformation("Leaderboard season operation completed. SeasonId={SeasonId}, Operation={Operation}, ActorUserId={ActorUserId}, Timestamp={Timestamp}", season.Id, "Archive", userResult.Value!.Id, season.ArchivedAt);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
     }
 
@@ -366,6 +355,311 @@ public sealed class LeaderboardSeasonService(
             ? Result<LeaderboardSeasonArchiveDto>.Failure("Leaderboard season not found.")
             : await GetArchiveCoreAsync(season, cancellationToken);
     }
+
+    public async Task<Result<IReadOnlyList<LeaderboardSeasonHistorySummaryDto>>> GetHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        var viewer = await identityService.GetViewerAsync(cancellationToken);
+        var seasons = await dbContext.LeaderboardSeasons.AsNoTracking()
+            .Where(season => season.Status == LeaderboardSeasonStatus.Archived)
+            .Include(season => season.ArchiveEntries)
+            .OrderByDescending(season => season.ArchivedAt)
+            .ToListAsync(cancellationToken);
+
+        return Result<IReadOnlyList<LeaderboardSeasonHistorySummaryDto>>.Success(seasons.Select(season => new LeaderboardSeasonHistorySummaryDto
+        {
+            SeasonId = season.Id,
+            Name = season.Name,
+            StartAt = season.StartAt,
+            FreezeAt = season.FreezeAt,
+            PublicUntil = season.PublicUntil,
+            ArchivedAt = season.ArchivedAt,
+            ParticipantCount = season.ArchiveEntries.Count,
+            Top3 = season.ArchiveEntries.OrderBy(entry => entry.FinalRank).Take(3).Select(entry => new LeaderboardSeasonHistoryTopEntryDto
+            {
+                Rank = entry.FinalRank,
+                DisplayName = entry.WasAnonymous && !viewer.CanAudit ? entry.Alias : entry.DisplayNameSnapshot,
+                FinalScore = entry.FinalScore
+            }).ToList()
+        }).ToList());
+    }
+
+    public async Task<Result<LeaderboardSeasonArchiveDto>> GetHistoryAsync(Guid seasonId, CancellationToken cancellationToken = default)
+    {
+        var season = await LoadSeasonAsync(seasonId, cancellationToken);
+        if (season is null || season.Status != LeaderboardSeasonStatus.Archived)
+        {
+            return Result<LeaderboardSeasonArchiveDto>.Failure("Leaderboard season history not found.");
+        }
+
+        var viewer = await identityService.GetViewerAsync(cancellationToken);
+        return Result<LeaderboardSeasonArchiveDto>.Success(BuildArchiveDto(season, viewer.CanAudit));
+    }
+
+    public async Task<Result<LeaderboardSeasonPersonalDto>> GetCurrentPersonalAsync(CancellationToken cancellationToken = default)
+    {
+        var userResult = await RequireAnswererAsync(cancellationToken);
+        if (userResult.IsFailure) return Result<LeaderboardSeasonPersonalDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
+
+        var season = await LoadCurrentSeasonAsync(cancellationToken);
+        if (season is null) return Result<LeaderboardSeasonPersonalDto>.Success(new LeaderboardSeasonPersonalDto());
+
+        var userId = userResult.Value!.Id;
+        var snapshots = await dbContext.LeaderboardSeasonRankSnapshots.AsNoTracking()
+            .Where(snapshot => snapshot.SeasonId == season.Id && snapshot.UserId == userId)
+            .OrderBy(snapshot => snapshot.RecordedAt)
+            .ToListAsync(cancellationToken);
+
+        RankedScoreUserRow? current = null;
+        LeaderboardSeasonArchiveEntry? archived = null;
+        if (season.Status == LeaderboardSeasonStatus.Public)
+        {
+            archived = season.ArchiveEntries.SingleOrDefault(entry => entry.UserId == userId);
+        }
+        else
+        {
+            var rows = await LoadEligibleScoreRowsAsync(season.Id, cancellationToken);
+            var aliases = await identityService.EnsureAliasesAsync(season.Id, rows.Select(row => row.UserId), cancellationToken);
+            current = Rank(rows, aliases).SingleOrDefault(row => row.UserId == userId);
+        }
+
+        var currentRank = current?.Rank ?? archived?.FinalRank;
+        var currentScore = current?.TotalScore ?? archived?.FinalScore ?? 0;
+        var previousSnapshotIndex = snapshots.Count - 1;
+        if (previousSnapshotIndex >= 0 && currentRank.HasValue
+            && snapshots[previousSnapshotIndex].Rank == currentRank.Value
+            && snapshots[previousSnapshotIndex].TotalScore == currentScore)
+        {
+            previousSnapshotIndex--;
+        }
+        var previousRank = previousSnapshotIndex >= 0 ? snapshots[previousSnapshotIndex].Rank : (int?)null;
+        var problemRows = current?.Problems.Select(problem => new LeaderboardSeasonPersonalProblemDto
+        {
+            ProblemId = problem.ProblemId,
+            Title = problem.ProblemTitle,
+            Score = problem.TotalProblemScore,
+            TimeRank = problem.TimeRank,
+            TimeBonus = problem.TimeBonus,
+            PerformanceBonus = problem.RuntimeBonus + problem.MemoryBonus
+        }).ToList() ?? archived?.ProblemScores.Select(problem => new LeaderboardSeasonPersonalProblemDto
+        {
+            ProblemId = problem.ProblemId,
+            Title = problem.ProblemTitleSnapshot,
+            Score = problem.FinalProblemScore,
+            TimeRank = problem.TimeRank,
+            TimeBonus = problem.TimeBonus,
+            PerformanceBonus = problem.RuntimeBonus + problem.MemoryBonus
+        }).ToList() ?? [];
+
+        return Result<LeaderboardSeasonPersonalDto>.Success(new LeaderboardSeasonPersonalDto
+        {
+            Season = ToDto(season),
+            CurrentRank = currentRank,
+            TotalParticipants = season.Status == LeaderboardSeasonStatus.Public
+                ? season.ArchiveEntries.Count
+                : await CountEligibleParticipantsAsync(season.Id, cancellationToken),
+            TotalScore = currentScore,
+            TotalBaseScore = current?.BaseScore ?? archived?.FinalBaseScore ?? 0,
+            TotalTimeBonus = current?.TimeBonus ?? archived?.FinalTimeBonus ?? 0,
+            TotalRuntimeBonus = current?.RuntimeBonus ?? archived?.FinalRuntimeBonus ?? 0,
+            TotalMemoryBonus = current?.MemoryBonus ?? archived?.FinalMemoryBonus ?? 0,
+            SolvedCount = current?.SolvedCount ?? archived?.SolvedCount ?? 0,
+            SeasonProblemCount = season.Problems.Count,
+            Top10ProblemCount = problemRows.Count(problem => problem.TimeRank is >= 1 and <= 10),
+            FirstPlaceProblemCount = problemRows.Count(problem => problem.TimeRank == 1),
+            BestRank = snapshots.Select(snapshot => (int?)snapshot.Rank).Append(currentRank).Min(),
+            RankChange = currentRank.HasValue && previousRank.HasValue ? previousRank.Value - currentRank.Value : null,
+            Problems = problemRows,
+            RankHistory = snapshots.Select(snapshot => new LeaderboardSeasonRankPointDto
+            {
+                RecordedAt = snapshot.RecordedAt,
+                Rank = snapshot.Rank,
+                TotalScore = snapshot.TotalScore
+            }).ToList()
+        });
+    }
+
+    public async Task<Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>> GetPersonalHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        var userResult = await RequireAnswererAsync(cancellationToken);
+        if (userResult.IsFailure) return Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>.Failure(userResult.ErrorMessage ?? "Forbidden.");
+
+        var entries = await dbContext.LeaderboardSeasonArchiveEntries.AsNoTracking()
+            .Where(entry => entry.UserId == userResult.Value!.Id && entry.Season!.Status == LeaderboardSeasonStatus.Archived)
+            .Include(entry => entry.Season)
+            .Include(entry => entry.ProblemScores)
+            .OrderByDescending(entry => entry.Season!.ArchivedAt)
+            .ToListAsync(cancellationToken);
+
+        return Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>.Success(entries.Select(entry => new LeaderboardSeasonPersonalHistoryDto
+        {
+            SeasonId = entry.SeasonId,
+            SeasonName = entry.Season!.Name,
+            FinalRank = entry.FinalRank,
+            FinalScore = entry.FinalScore,
+            SolvedCount = entry.SolvedCount,
+            TimeBonus = entry.FinalTimeBonus,
+            PerformanceBonus = entry.FinalRuntimeBonus + entry.FinalMemoryBonus,
+            Problems = entry.ProblemScores.Select(ToArchiveProblemDto).ToList()
+        }).ToList());
+    }
+
+    public async Task ReconcileCurrentSeasonAsync(CancellationToken cancellationToken = default)
+    {
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        var season = await LoadCurrentSeasonAsync(cancellationToken);
+        if (season is null) return;
+
+        var now = timeProvider.GetUtcNow();
+        if (season.Status == LeaderboardSeasonStatus.Scheduled && now >= season.StartAt)
+        {
+            season.Status = LeaderboardSeasonStatus.Active;
+            season.ActivatedAt ??= now;
+            season.UpdatedAt = now;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Leaderboard season lifecycle advanced. SeasonId={SeasonId}, Operation={Operation}, Timestamp={Timestamp}", season.Id, "Activate", now);
+            await CaptureRankSnapshotsAsync(season, now, force: true, cancellationToken);
+        }
+
+        if (season.Status == LeaderboardSeasonStatus.Active)
+        {
+            await CaptureRankSnapshotsAsync(season, now, force: false, cancellationToken);
+            if (now >= season.FreezeAt)
+            {
+                await CaptureRankSnapshotsAsync(season, now, force: true, cancellationToken);
+                season.Status = LeaderboardSeasonStatus.Frozen;
+                season.FrozenAt ??= now;
+                season.UpdatedAt = now;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                logger.LogInformation("Leaderboard season lifecycle advanced. SeasonId={SeasonId}, Operation={Operation}, Timestamp={Timestamp}", season.Id, "Freeze", now);
+            }
+        }
+
+        if (season.Status == LeaderboardSeasonStatus.Frozen)
+        {
+            await FinalizeCoreAsync(season, now, cancellationToken);
+            logger.LogInformation("Leaderboard season lifecycle advanced. SeasonId={SeasonId}, Operation={Operation}, Timestamp={Timestamp}", season.Id, "Finalize", now);
+        }
+
+        if (season.Status == LeaderboardSeasonStatus.Public && now >= season.PublicUntil)
+        {
+            season.Status = LeaderboardSeasonStatus.Archived;
+            season.IsCurrent = false;
+            season.ArchivedAt ??= now;
+            season.UpdatedAt = now;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Leaderboard season lifecycle advanced. SeasonId={SeasonId}, Operation={Operation}, Timestamp={Timestamp}", season.Id, "Archive", now);
+        }
+
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task RefreshPublicSeasonAsync(Guid seasonId, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        var season = await LoadSeasonAsync(seasonId, cancellationToken);
+        if (season?.Status is LeaderboardSeasonStatus.Frozen or LeaderboardSeasonStatus.Public)
+        {
+            await FinalizeCoreAsync(season, timeProvider.GetUtcNow(), cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        }
+    }
+
+    private async Task FinalizeCoreAsync(LeaderboardSeason season, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var rows = await LoadEligibleScoreRowsAsync(season.Id, cancellationToken);
+        var aliases = await identityService.EnsureAliasesAsync(season.Id, rows.Select(row => row.UserId), cancellationToken);
+        var ranked = Rank(rows, aliases);
+
+        if (season.ArchiveEntries.Count > 0)
+        {
+            dbContext.LeaderboardSeasonArchiveProblemScores.RemoveRange(season.ArchiveEntries.SelectMany(entry => entry.ProblemScores));
+            dbContext.LeaderboardSeasonArchiveEntries.RemoveRange(season.ArchiveEntries);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            season.ArchiveEntries.Clear();
+        }
+
+        foreach (var rankedUser in ranked)
+        {
+            var entry = new LeaderboardSeasonArchiveEntry
+            {
+                Id = Guid.NewGuid(), SeasonId = season.Id, UserId = rankedUser.UserId,
+                Alias = aliases[rankedUser.UserId], DisplayNameSnapshot = rankedUser.UserName,
+                WasAnonymous = rankedUser.IsAnonymous, FinalRank = rankedUser.Rank,
+                FinalScore = rankedUser.TotalScore, FinalBaseScore = rankedUser.BaseScore,
+                FinalTimeBonus = rankedUser.TimeBonus, FinalRuntimeBonus = rankedUser.RuntimeBonus,
+                FinalMemoryBonus = rankedUser.MemoryBonus, SolvedCount = rankedUser.SolvedCount,
+                LastScoreImprovedAt = rankedUser.LastScoreImprovedAt, CreatedAt = now,
+                ProblemScores = rankedUser.Problems.Select(problem => new LeaderboardSeasonArchiveProblemScore
+                {
+                    Id = Guid.NewGuid(), SeasonId = season.Id, ProblemId = problem.ProblemId,
+                    ProblemTitleSnapshot = problem.ProblemTitle, BaseScore = problem.BaseScore,
+                    EarnedBaseScore = problem.EarnedBaseScore, TimeRank = problem.TimeRank,
+                    FirstFullScoreAt = problem.FirstFullScoreAt, TimeBonus = problem.TimeBonus,
+                    PerformanceLanguage = problem.PerformanceLanguage, RuntimeMs = problem.RuntimeMs,
+                    RuntimeBaselineMs = problem.RuntimeBaselineMs, RuntimeBonus = problem.RuntimeBonus,
+                    MemoryKb = problem.MemoryKb, MemoryBaselineKb = problem.MemoryBaselineKb,
+                    MemoryBonus = problem.MemoryBonus, FinalProblemScore = problem.TotalProblemScore
+                }).ToList()
+            };
+            entry.Season = season;
+            foreach (var problemScore in entry.ProblemScores)
+            {
+                problemScore.ArchiveEntryId = entry.Id;
+                problemScore.ArchiveEntry = entry;
+                problemScore.Season = season;
+            }
+            season.ArchiveEntries.Add(entry);
+            dbContext.LeaderboardSeasonArchiveEntries.Add(entry);
+        }
+
+        season.Status = LeaderboardSeasonStatus.Public;
+        season.FinalizedAt = now;
+        season.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await CaptureRankSnapshotsAsync(season, now, force: true, cancellationToken);
+    }
+
+    private async Task CaptureRankSnapshotsAsync(LeaderboardSeason season, DateTimeOffset now, bool force, CancellationToken cancellationToken)
+    {
+        var latestRecordedAt = await dbContext.LeaderboardSeasonRankSnapshots.AsNoTracking()
+            .Where(snapshot => snapshot.SeasonId == season.Id)
+            .MaxAsync(snapshot => (DateTimeOffset?)snapshot.RecordedAt, cancellationToken);
+        if (!force && latestRecordedAt.HasValue
+            && now - latestRecordedAt.Value < TimeSpan.FromMinutes(lifecycleOptions.RankSnapshotIntervalMinutes)) return;
+
+        var rows = await LoadEligibleScoreRowsAsync(season.Id, cancellationToken);
+        var aliases = await identityService.EnsureAliasesAsync(season.Id, rows.Select(row => row.UserId), cancellationToken);
+        var ranked = Rank(rows, aliases);
+        var latest = await dbContext.LeaderboardSeasonRankSnapshots.AsNoTracking()
+            .Where(snapshot => snapshot.SeasonId == season.Id)
+            .OrderBy(snapshot => snapshot.RecordedAt)
+            .ToListAsync(cancellationToken);
+        var latestByUser = latest.GroupBy(snapshot => snapshot.UserId).ToDictionary(group => group.Key, group => group.Last());
+
+        foreach (var row in ranked)
+        {
+            if (latestByUser.TryGetValue(row.UserId, out var previous)
+                && previous.Rank == row.Rank && previous.TotalScore == row.TotalScore) continue;
+            dbContext.LeaderboardSeasonRankSnapshots.Add(new LeaderboardSeasonRankSnapshot
+            {
+                Id = Guid.NewGuid(), SeasonId = season.Id, UserId = row.UserId,
+                Rank = row.Rank, TotalScore = row.TotalScore, RecordedAt = now
+            });
+        }
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private Task<int> CountEligibleParticipantsAsync(Guid seasonId, CancellationToken cancellationToken) =>
+        dbContext.LeaderboardUserProblemScores.AsNoTracking()
+            .Where(score => score.SeasonId == seasonId && score.IsFullScore && score.BestBaseScore > 0
+                && score.User!.Role == UserRole.Answerer && !score.User.IsBlacklisted && !score.User.IsDeleted)
+            .Select(score => score.UserId)
+            .Distinct()
+            .CountAsync(cancellationToken);
 
     private async Task<SeasonLeaderboardDto> BuildLeaderboardAsync(
         LeaderboardSeason season,
@@ -650,15 +944,21 @@ public sealed class LeaderboardSeasonService(
             .OrderBy(entry => entry.FinalRank)
             .ToListAsync(cancellationToken);
 
-        return Result<LeaderboardSeasonArchiveDto>.Success(new LeaderboardSeasonArchiveDto
+        return Result<LeaderboardSeasonArchiveDto>.Success(BuildArchiveDto(season, canAudit: true, entries));
+    }
+
+    private static LeaderboardSeasonArchiveDto BuildArchiveDto(
+        LeaderboardSeason season,
+        bool canAudit,
+        IReadOnlyCollection<LeaderboardSeasonArchiveEntry>? archiveEntries = null) => new()
+    {
+        SeasonId = season.Id,
+        SeasonName = season.Name,
+        Entries = (archiveEntries ?? season.ArchiveEntries).OrderBy(entry => entry.FinalRank).Select(entry => new LeaderboardSeasonArchiveEntryDto
         {
-            SeasonId = season.Id,
-            SeasonName = season.Name,
-            Entries = entries.Select(entry => new LeaderboardSeasonArchiveEntryDto
-            {
-                UserId = entry.UserId,
+                UserId = entry.WasAnonymous && !canAudit ? null : entry.UserId,
                 Alias = entry.Alias,
-                DisplayNameSnapshot = entry.DisplayNameSnapshot,
+                DisplayNameSnapshot = entry.WasAnonymous && !canAudit ? entry.Alias : entry.DisplayNameSnapshot,
                 WasAnonymous = entry.WasAnonymous,
                 FinalRank = entry.FinalRank,
                 FinalScore = entry.FinalScore,
@@ -668,27 +968,28 @@ public sealed class LeaderboardSeasonService(
                 FinalMemoryBonus = entry.FinalMemoryBonus,
                 SolvedCount = entry.SolvedCount,
                 LastScoreImprovedAt = entry.LastScoreImprovedAt,
-                ProblemScores = entry.ProblemScores.Select(score => new LeaderboardSeasonArchiveProblemScoreDto
-                {
-                    ProblemId = score.ProblemId,
-                    ProblemTitleSnapshot = score.ProblemTitleSnapshot,
-                    BaseScore = score.BaseScore,
-                    EarnedBaseScore = score.EarnedBaseScore,
-                    TimeRank = score.TimeRank,
-                    FirstFullScoreAt = score.FirstFullScoreAt,
-                    TimeBonus = score.TimeBonus,
-                    PerformanceLanguage = score.PerformanceLanguage,
-                    RuntimeMs = score.RuntimeMs,
-                    RuntimeBaselineMs = score.RuntimeBaselineMs,
-                    RuntimeBonus = score.RuntimeBonus,
-                    MemoryKb = score.MemoryKb,
-                    MemoryBaselineKb = score.MemoryBaselineKb,
-                    MemoryBonus = score.MemoryBonus,
-                    FinalProblemScore = score.FinalProblemScore
-                }).ToList()
+                ProblemScores = entry.ProblemScores.Select(ToArchiveProblemDto).ToList()
             }).ToList()
-        });
-    }
+    };
+
+    private static LeaderboardSeasonArchiveProblemScoreDto ToArchiveProblemDto(LeaderboardSeasonArchiveProblemScore score) => new()
+    {
+        ProblemId = score.ProblemId,
+        ProblemTitleSnapshot = score.ProblemTitleSnapshot,
+        BaseScore = score.BaseScore,
+        EarnedBaseScore = score.EarnedBaseScore,
+        TimeRank = score.TimeRank,
+        FirstFullScoreAt = score.FirstFullScoreAt,
+        TimeBonus = score.TimeBonus,
+        PerformanceLanguage = score.PerformanceLanguage,
+        RuntimeMs = score.RuntimeMs,
+        RuntimeBaselineMs = score.RuntimeBaselineMs,
+        RuntimeBonus = score.RuntimeBonus,
+        MemoryKb = score.MemoryKb,
+        MemoryBaselineKb = score.MemoryBaselineKb,
+        MemoryBonus = score.MemoryBonus,
+        FinalProblemScore = score.FinalProblemScore
+    };
 
     private async Task<LeaderboardSeason?> LoadCurrentSeasonAsync(CancellationToken cancellationToken) =>
         await dbContext.LeaderboardSeasons
@@ -728,6 +1029,17 @@ public sealed class LeaderboardSeasonService(
             : Result<User>.Failure("Forbidden.");
     }
 
+    private async Task<Result<User>> RequireAnswererAsync(CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated || currentUser.UserId is not { } userId) return Result<User>.Failure("Unauthorized.");
+        var user = await dbContext.Users.AsNoTracking().FirstOrDefaultAsync(
+            user => user.Id == userId && !user.IsDeleted && !user.IsBlacklisted,
+            cancellationToken);
+        return user?.Role == UserRole.Answerer
+            ? Result<User>.Success(user)
+            : Result<User>.Failure("Forbidden.");
+    }
+
     private async Task<Result<User>> RequireRootAsync(CancellationToken cancellationToken)
     {
         var result = await RequireProblemSetterAsync(cancellationToken);
@@ -746,6 +1058,11 @@ public sealed class LeaderboardSeasonService(
         Status = season.Status,
         EffectiveStatus = LeaderboardSeasonLifecycle.GetEffectiveStatus(season, timeProvider.GetUtcNow()),
         IsCurrent = season.IsCurrent,
+        ActivatedAt = season.ActivatedAt,
+        FrozenAt = season.FrozenAt,
+        FinalizedAt = season.FinalizedAt,
+        ArchivedAt = season.ArchivedAt,
+        ManuallyFrozenAt = season.ManuallyFrozenAt,
         ScoringRules = LeaderboardScoringRulesSerializer.Deserialize(season.ScoringRulesJson),
         Problems = season.Problems.OrderBy(problem => problem.CreatedAt).Select(problem => new LeaderboardSeasonProblemDto
         {
