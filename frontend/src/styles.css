@@ -9548,3 +9548,110 @@ h2 {
     width: 100%;
   }
 }
+
+/* FUNCTION-SAMPLE-UX-01 */
+.site-theme-content * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(110, 123, 255, 0.5) rgba(255, 255, 255, 0.035);
+  scrollbar-color: color-mix(in srgb, var(--oj-accent) 54%, transparent) rgba(255, 255, 255, 0.035);
+}
+
+.site-theme-content *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.site-theme-content *::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.site-theme-content *::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  min-height: 28px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(110, 123, 255, 0.5);
+  background: color-mix(in srgb, var(--oj-accent) 54%, transparent);
+  background-clip: padding-box;
+}
+
+.site-theme-content *::-webkit-scrollbar-thumb:hover {
+  background: rgba(126, 136, 255, 0.76);
+  background: color-mix(in srgb, var(--oj-accent) 76%, transparent);
+  background-clip: padding-box;
+}
+
+.site-theme-content *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Monaco uses its own div-based scrollbar rather than the browser native scrollbar. */
+.code-editor-shell .monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: 999px !important;
+  background: rgba(110, 123, 255, 0.46) !important;
+  background: color-mix(in srgb, var(--oj-accent) 52%, transparent) !important;
+}
+
+.code-editor-shell .monaco-scrollable-element > .scrollbar > .slider:hover {
+  background: rgba(126, 136, 255, 0.72) !important;
+  background: color-mix(in srgb, var(--oj-accent) 74%, transparent) !important;
+}
+
+.code-editor-shell .monaco-scrollable-element > .scrollbar > .slider:active {
+  background: rgba(142, 151, 255, 0.9) !important;
+  background: color-mix(in srgb, var(--oj-accent) 90%, #ffffff 10%) !important;
+}
+
+.function-sample {
+  display: grid;
+  gap: 14px;
+}
+
+.function-sample-section {
+  min-width: 0;
+}
+
+.function-sample-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--oj-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.function-sample-code {
+  width: 100%;
+  min-height: 48px;
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 8px;
+  background: rgba(5, 8, 14, 0.82);
+  color: var(--oj-text-primary);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 14px 16px;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.theme-mystic-background .function-sample-code {
+  background: color-mix(in srgb, var(--oj-panel-bg) 72%, #05080e 28%);
+}
+
+.source-code-block,
+.sample-grid pre,
+.function-sample-code {
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 760px) {
+  .function-sample-code {
+    max-height: 300px;
+    font-size: 12px;
+    padding: 12px;
+  }
+}

@@ -25,6 +25,13 @@ export function CodeEditor({ value, language, onChange, height = "540px", readOn
           mouseWheelZoom: true,
           readOnly,
           renderWhitespace: "selection",
+          scrollbar: {
+            horizontalScrollbarSize: 10,
+            horizontalSliderSize: 6,
+            useShadows: false,
+            verticalScrollbarSize: 10,
+            verticalSliderSize: 6
+          },
           scrollBeyondLastLine: false,
           tabSize: 4,
           wordWrap: "on"

@@ -258,14 +258,14 @@ export function ProblemDetailPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="sample-grid">
-                      <div>
-                        <span>ArgumentsJson</span>
-                        <pre>{formatJsonString(testCase.argumentsJson)}</pre>
+                    <div className="function-sample">
+                      <div className="function-sample-section">
+                        <span className="function-sample-label">输入</span>
+                        <pre className="function-sample-code">{formatFunctionSampleArguments(testCase.argumentsJson, functionSpec)}</pre>
                       </div>
-                      <div>
-                        <span>ExpectedJson</span>
-                        <pre>{formatJsonString(testCase.expectedJson)}</pre>
+                      <div className="function-sample-section">
+                        <span className="function-sample-label">输出</span>
+                        <pre className="function-sample-code">{formatFunctionSampleExpected(testCase.expectedJson)}</pre>
                       </div>
                     </div>
                   )}
@@ -649,6 +649,115 @@ function isFunctionLanguageSupported(
   }
 
   return language !== 2 || (!hasFunctionSpecListNode(functionSpec) && !hasFunctionSpecTreeNode(functionSpec));
+}
+
+function formatFunctionSampleArguments(
+  value: string | null | undefined,
+  functionSpec?: { parameters: Array<{ name: string; type: string }> } | null
+) {
+  if (!value) {
+    return "-";
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!isPlainRecord(parsed)) {
+      return formatSampleValue(parsed);
+    }
+
+    const parameterNames = functionSpec?.parameters.map((parameter) => parameter.name) ?? Object.keys(parsed);
+    const orderedNames = [
+      ...parameterNames.filter((name) => Object.prototype.hasOwnProperty.call(parsed, name)),
+      ...Object.keys(parsed).filter((name) => !parameterNames.includes(name))
+    ];
+
+    return orderedNames
+      .map((name) => `${name} = ${formatSampleValue(parsed[name])}`)
+      .join("\n");
+  } catch {
+    return value;
+  }
+}
+
+function formatFunctionSampleExpected(value?: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  try {
+    return formatSampleValue(JSON.parse(value) as unknown);
+  } catch {
+    return value;
+  }
+}
+
+function formatSampleValue(value: unknown, indent = 0): string {
+  if (value === null) {
+    return "null";
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return "[]";
+    }
+
+    if (value.every(isSamplePrimitive)) {
+      return `[${value.map((item) => formatSampleValue(item)).join(", ")}]`;
+    }
+
+    const padding = "  ".repeat(indent);
+    const childPadding = "  ".repeat(indent + 1);
+    return `[\n${value.map((item) => `${childPadding}${indentMultiline(formatSampleValue(item, indent + 1), indent + 1)}`).join(",\n")}\n${padding}]`;
+  }
+
+  if (isPlainRecord(value)) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+      return "{}";
+    }
+
+    if (entries.every(([, item]) => isSamplePrimitive(item))) {
+      const compact = `{ ${entries.map(([key, item]) => `${formatSampleKey(key)}: ${formatSampleValue(item)}`).join(", ")} }`;
+      if (compact.length <= 92) {
+        return compact;
+      }
+    }
+
+    const padding = "  ".repeat(indent);
+    const childPadding = "  ".repeat(indent + 1);
+    return `{\n${entries.map(([key, item]) => `${childPadding}${formatSampleKey(key)}: ${indentMultiline(formatSampleValue(item, indent + 1), indent + 1)}`).join(",\n")}\n${padding}}`;
+  }
+
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return JSON.stringify(value);
+}
+
+function indentMultiline(value: string, indent: number) {
+  if (!value.includes("\n")) {
+    return value;
+  }
+
+  const padding = "  ".repeat(indent);
+  return value.split("\n").map((line, index) => index === 0 ? line : `${padding}${line}`).join("\n");
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSamplePrimitive(value: unknown) {
+  return value === null || ["string", "number", "boolean"].includes(typeof value);
+}
+
+function formatSampleKey(key: string) {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? key : JSON.stringify(key);
 }
 
 function formatJsonString(value?: string | null) {
