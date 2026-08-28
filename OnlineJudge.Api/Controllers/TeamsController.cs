@@ -8,7 +8,7 @@ namespace OnlineJudge.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/teams")]
-public class TeamsController(ITeamService teamService) : ControllerBase
+public class TeamsController(ITeamService teamService, ITeamGitRepositoryService teamGitRepositoryService) : ControllerBase
 {
     [HttpGet("my")]
     public async Task<IActionResult> GetMyTeam(CancellationToken cancellationToken)
@@ -146,6 +146,30 @@ public class TeamsController(ITeamService teamService) : ControllerBase
         return result.IsFailure ? ToFailureResult(result.ErrorMessage) : NoContent();
     }
 
+    [Authorize(Policy = "RequireProblemSetter")]
+    [HttpGet("/api/admin/teams/{teamId:guid}/projects")]
+    public async Task<IActionResult> GetAuditProjects(Guid teamId, CancellationToken cancellationToken)
+    {
+        var result = await teamGitRepositoryService.GetProjectsAsync(teamId, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [Authorize(Policy = "RequireProblemSetter")]
+    [HttpPost("/api/admin/teams/{teamId:guid}/projects/{projectId:guid}/sync")]
+    public async Task<IActionResult> SyncProject(Guid teamId, Guid projectId, CancellationToken cancellationToken)
+    {
+        var result = await teamGitRepositoryService.SyncAsync(teamId, projectId, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [Authorize(Policy = "RequireProblemSetter")]
+    [HttpGet("/api/admin/teams/{teamId:guid}/projects/{projectId:guid}/commits")]
+    public async Task<IActionResult> GetProjectCommits(Guid teamId, Guid projectId, [FromQuery] int skip = 0, [FromQuery] int limit = 50, CancellationToken cancellationToken = default)
+    {
+        var result = await teamGitRepositoryService.GetCommitHistoryAsync(teamId, projectId, skip, limit, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
     private IActionResult ToFailureResult(string? errorMessage)
     {
         return errorMessage switch
@@ -154,7 +178,8 @@ public class TeamsController(ITeamService teamService) : ControllerBase
             "Forbidden." or "Account is blacklisted." => Forbid(),
             "Team not found." or "Invitation not found." or "Member not found." or "Project not found." or "User not found." => NotFound(errorMessage),
             "Team name already exists." or "User already belongs to an active team." or "A pending invitation already exists."
-                or "Invitation is no longer pending." or "Team is full." or "The team operation conflicted with another request. Please retry." => Conflict(errorMessage),
+                or "Invitation is no longer pending." or "Team is full." or "The team operation conflicted with another request. Please retry."
+                or "Repository was synchronized too recently." => Conflict(errorMessage),
             _ => BadRequest(errorMessage)
         };
     }

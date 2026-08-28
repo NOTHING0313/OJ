@@ -22,6 +22,26 @@ export interface TeamProjectDto {
   updatedAt: string;
 }
 
+export interface TeamProjectAuditDto extends TeamProjectDto {
+  lastSyncedAt: string | null;
+  lastSyncAttemptAt: string | null;
+  lastSyncStatus: number;
+  lastSyncError: string | null;
+  defaultBranch: string | null;
+}
+
+export interface TeamGitCommitDto {
+  sha: string;
+  shortSha: string;
+  authorName: string;
+  authorEmail: string;
+  authoredAt: string;
+  committerName: string;
+  committerEmail: string;
+  committedAt: string;
+  subject: string;
+}
+
 export interface TeamInvitationDto {
   id: string;
   teamId: string;
@@ -57,6 +77,9 @@ export const getTeam = (teamId: string) => request<TeamDto>(`/api/teams/${teamId
 export const getAllTeams = () => request<TeamListItemDto[]>("/api/admin/teams");
 export const getMyInvitations = () => request<TeamInvitationDto[]>("/api/team-invitations/my");
 export const getTeamInvitations = (teamId: string) => request<TeamInvitationDto[]>(`/api/teams/${teamId}/invitations`);
+export const getAuditProjects = (teamId: string) => request<TeamProjectAuditDto[]>(`/api/admin/teams/${teamId}/projects`);
+export const syncProject = (teamId: string, projectId: string) => request<TeamProjectAuditDto>(`/api/admin/teams/${teamId}/projects/${projectId}/sync`, { method: "POST" });
+export const getProjectCommits = (teamId: string, projectId: string, skip = 0, limit = 50) => request<TeamGitCommitDto[]>(`/api/admin/teams/${teamId}/projects/${projectId}/commits?skip=${skip}&limit=${limit}`);
 
 export function createTeam(name: string, description: string) {
   return request<TeamDto>("/api/teams", { method: "POST", body: JSON.stringify({ name, description: description || null }) });

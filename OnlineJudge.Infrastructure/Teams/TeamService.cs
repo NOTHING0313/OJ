@@ -16,10 +16,16 @@ public class TeamService(
     OnlineJudgeDbContext dbContext,
     ICurrentUser currentUser,
     TimeProvider timeProvider,
-    TeamRepositoryUrlValidator repositoryUrlValidator) : ITeamService
+    TeamRepositoryUrlValidator repositoryUrlValidator,
+    ITeamGitRepositoryCache repositoryCache) : ITeamService
 {
     private const int MaximumMemberCount = 10;
     private const int MaximumProjectCount = 5;
+
+    public TeamService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, TimeProvider timeProvider, TeamRepositoryUrlValidator repositoryUrlValidator)
+        : this(dbContext, currentUser, timeProvider, repositoryUrlValidator, new NullTeamGitRepositoryCache())
+    {
+    }
 
     public async Task<Result<TeamDto?>> GetMyTeamAsync(CancellationToken cancellationToken = default)
     {
@@ -458,6 +464,7 @@ public class TeamService(
             RepositoryUrl = validation.Value,
             NormalizedRepositoryUrl = validation.Value,
             CreatedByUserId = ownerResult.Value.OwnerUserId,
+            LastSyncStatus = TeamProjectSyncStatus.NeverSynced,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -497,12 +504,25 @@ public class TeamService(
             return Result<TeamProjectDto>.Failure("Repository is already bound to this team.");
         }
 
+        var repositoryChanged = project.NormalizedRepositoryUrl != validation.Value;
         project.Name = request.Name.Trim();
         project.NormalizedName = normalizedName;
         project.RepositoryUrl = validation.Value;
         project.NormalizedRepositoryUrl = validation.Value;
         project.UpdatedAt = timeProvider.GetUtcNow();
+        if (repositoryChanged)
+        {
+            project.LastSyncedAt = null;
+            project.LastSyncAttemptAt = null;
+            project.LastSyncStatus = TeamProjectSyncStatus.NeverSynced;
+            project.LastSyncError = null;
+            project.DefaultBranch = null;
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (repositoryChanged)
+        {
+            await repositoryCache.DeleteAsync(project.Id, cancellationToken);
+        }
         return Result<TeamProjectDto>.Success(ToProjectDto(project));
     }
 
@@ -520,6 +540,7 @@ public class TeamService(
             return Result.Failure("Project not found.");
         }
 
+        await repositoryCache.DeleteAsync(project.Id, cancellationToken);
         dbContext.TeamProjects.Remove(project);
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result.Success();

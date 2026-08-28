@@ -59,8 +59,20 @@ public static class DependencyInjection
         {
             teamProjectOptions.AllowedGitHosts = configuredGitHosts;
         }
+        teamProjectOptions.RepositoryStorageRoot = configuration[$"{TeamProjectOptions.SectionName}:RepositoryStorageRoot"]
+            ?? teamProjectOptions.RepositoryStorageRoot;
+        teamProjectOptions.MaxCommitHistory = ReadPositiveInt(configuration, $"{TeamProjectOptions.SectionName}:MaxCommitHistory", teamProjectOptions.MaxCommitHistory);
+        teamProjectOptions.GitTimeoutSeconds = ReadPositiveInt(configuration, $"{TeamProjectOptions.SectionName}:GitTimeoutSeconds", teamProjectOptions.GitTimeoutSeconds);
+        teamProjectOptions.MaxRepositorySizeMb = ReadPositiveInt(configuration, $"{TeamProjectOptions.SectionName}:MaxRepositorySizeMb", teamProjectOptions.MaxRepositorySizeMb);
+        teamProjectOptions.SyncCooldownSeconds = ReadPositiveInt(configuration, $"{TeamProjectOptions.SectionName}:SyncCooldownSeconds", teamProjectOptions.SyncCooldownSeconds);
         services.AddSingleton(teamProjectOptions);
         services.AddSingleton<TeamRepositoryUrlValidator>();
+        services.AddSingleton<ITeamGitRepositoryStorage, TeamGitRepositoryStorage>();
+        services.AddSingleton<ITeamGitRepositoryCache>(provider => provider.GetRequiredService<ITeamGitRepositoryStorage>());
+        services.AddSingleton<IGitProcessRunner, GitProcessRunner>();
+        services.AddSingleton<ITeamGitHostResolver, TeamGitHostResolver>();
+        services.AddSingleton<TeamGitRemoteSecurityValidator>();
+        services.AddSingleton<TeamGitSyncLockProvider>();
 
         var redisConnectionString = configuration["Redis:ConnectionString"] ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
@@ -76,6 +88,7 @@ public static class DependencyInjection
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<ITeamService, TeamService>();
+        services.AddScoped<ITeamGitRepositoryService, TeamGitRepositoryService>();
         services.AddScoped<ISmsVerificationService, SmsVerificationService>();
         services.AddScoped<ISmsSender, DevSmsSender>();
         services.AddScoped<IEmailVerificationService, EmailVerificationService>();
@@ -101,5 +114,10 @@ public static class DependencyInjection
         services.AddScoped<IJudgeRunner, CSharpJudgeRunner>();
 
         return services;
+    }
+
+    private static int ReadPositiveInt(IConfiguration configuration, string key, int fallback)
+    {
+        return int.TryParse(configuration[key], out var value) && value > 0 ? value : fallback;
     }
 }

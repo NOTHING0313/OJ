@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using OnlineJudge.Domain.Entities;
+using OnlineJudge.Domain.Enums;
 
 namespace OnlineJudge.Infrastructure.Persistence.Configurations;
 
@@ -18,6 +19,12 @@ public class TeamProjectConfiguration : IEntityTypeConfiguration<TeamProject>
         builder.Property(project => project.NormalizedRepositoryUrl).HasMaxLength(2048).IsRequired();
         builder.Property(project => project.CreatedAt).IsRequired();
         builder.Property(project => project.UpdatedAt).IsRequired();
+        builder.Property(project => project.LastSyncStatus)
+            .HasConversion<int>()
+            .HasDefaultValue(TeamProjectSyncStatus.NeverSynced)
+            .IsRequired();
+        builder.Property(project => project.LastSyncError).HasMaxLength(500);
+        builder.Property(project => project.DefaultBranch).HasMaxLength(255);
         builder.HasOne(project => project.Team)
             .WithMany(team => team.Projects)
             .HasForeignKey(project => project.TeamId)

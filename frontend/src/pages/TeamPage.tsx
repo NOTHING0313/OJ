@@ -10,6 +10,8 @@ import {
   dissolveTeam,
   getMyInvitations,
   getMyTeam,
+  getAuditProjects,
+  getProjectCommits,
   getTeam,
   getTeamInvitations,
   inviteMember,
@@ -18,10 +20,18 @@ import {
   transferOwnership,
   updateProject,
   updateTeam,
+  syncProject,
+  type TeamGitCommitDto,
+  type TeamProjectAuditDto,
+  type TeamProjectDto,
   type TeamDto,
   type TeamInvitationDto
 } from "../api/teamsApi";
 import { useAuth } from "../auth/AuthContext";
+
+function isAuditProject(project: TeamProjectDto | TeamProjectAuditDto): project is TeamProjectAuditDto {
+  return "lastSyncStatus" in project;
+}
 
 export function TeamPage() {
   const { teamId } = useParams();
@@ -36,6 +46,10 @@ export function TeamPage() {
   const [inviteUserName, setInviteUserName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [auditProjects, setAuditProjects] = useState<TeamProjectAuditDto[]>([]);
+  const [commits, setCommits] = useState<TeamGitCommitDto[]>([]);
+  const [historyProjectName, setHistoryProjectName] = useState<string | null>(null);
+  const [syncingProjectId, setSyncingProjectId] = useState<string | null>(null);
   const isAuditView = Boolean(teamId);
   const isOwner = Boolean(team && currentUser?.id === team.owner.id);
 
@@ -49,6 +63,7 @@ export function TeamPage() {
         setName(loadedTeam.name);
         setDescription(loadedTeam.description ?? "");
         setInvitations(isOwner || currentUser?.id === loadedTeam.owner.id ? await getTeamInvitations(loadedTeam.id) : []);
+        setAuditProjects(teamId ? await getAuditProjects(loadedTeam.id) : []);
       } else {
         setInvitations(await getMyInvitations());
       }
@@ -84,6 +99,32 @@ export function TeamPage() {
       setProjectName("");
       setRepositoryUrl("");
     });
+  }
+
+  async function handleSync(projectId: string) {
+    if (!team) return;
+    setSyncingProjectId(projectId);
+    let syncError: string | null = null;
+    try {
+      await syncProject(team.id, projectId);
+    } catch (err) {
+      syncError = err instanceof Error ? err.message : "同步仓库失败";
+    } finally {
+      await load();
+      setError(syncError);
+      setSyncingProjectId(null);
+    }
+  }
+
+  async function handleHistory(project: TeamProjectAuditDto) {
+    if (!team) return;
+    setError(null);
+    try {
+      setCommits(await getProjectCommits(team.id, project.id));
+      setHistoryProjectName(project.name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载提交历史失败");
+    }
   }
 
   if (isLoading) return <div className="state-line">正在加载战队...</div>;
@@ -148,8 +189,8 @@ export function TeamPage() {
 
         <div className="admin-panel team-panel">
           <div className="admin-panel-header"><h2>项目</h2><span>{team.projects.length} / 5</span></div>
-          {team.projects.length === 0 && <p className="muted">尚未绑定项目。</p>}
-          {team.projects.map((project) => (
+          {(isAuditView ? auditProjects : team.projects).length === 0 && <p className="muted">尚未绑定项目。</p>}
+          {(isAuditView ? auditProjects : team.projects).map((project) => (
             <div className="team-project-card" key={project.id}>
               <strong>{project.name}</strong>
               <a href={project.repositoryUrl} target="_blank" rel="noreferrer noopener">{project.repositoryUrl}</a>
@@ -160,6 +201,18 @@ export function TeamPage() {
                   if (nextName && nextUrl) void run(() => updateProject(team.id, project.id, nextName, nextUrl));
                 }}>编辑</button>
                 <button className="button danger" onClick={() => void run(() => deleteProject(team.id, project.id))}>删除</button>
+              </div>}
+              {isAuditView && isAuditProject(project) && <div className="team-git-audit">
+                <span className={`team-sync-status status-${project.lastSyncStatus}`}>
+                  {project.lastSyncStatus === 2 ? "同步成功" : project.lastSyncStatus === 3 ? "同步失败" : "尚未同步"}
+                </span>
+                <span>最后同步：{project.lastSyncedAt ? new Date(project.lastSyncedAt).toLocaleString() : "—"}</span>
+                <span>默认分支：{project.defaultBranch || "—"}</span>
+                {project.lastSyncError && <span className="alert error">{project.lastSyncError}</span>}
+                <div className="button-row">
+                  <button className="button primary" disabled={syncingProjectId === project.id} onClick={() => void handleSync(project.id)}>{syncingProjectId === project.id ? "同步中..." : "同步仓库"}</button>
+                  <button className="button" disabled={!project.lastSyncedAt} onClick={() => void handleHistory(project)}>查看提交历史</button>
+                </div>
               </div>}
             </div>
           ))}
@@ -172,6 +225,13 @@ export function TeamPage() {
           </form>}
         </div>
       </div>
+
+      {isAuditView && historyProjectName && <div className="admin-panel team-panel team-commit-history">
+        <div className="admin-panel-header"><h2>{historyProjectName} · 提交历史</h2><button className="button" onClick={() => { setHistoryProjectName(null); setCommits([]); }}>关闭</button></div>
+        {commits.length === 0 ? <p className="muted">暂无提交记录。</p> : <div className="table-wrap"><table><thead><tr><th>SHA</th><th>作者</th><th>时间</th><th>提交信息</th></tr></thead><tbody>
+          {commits.map((commit) => <tr key={commit.sha}><td><code>{commit.shortSha}</code></td><td>{commit.authorName}</td><td>{new Date(commit.committedAt).toLocaleString()}</td><td>{commit.subject}</td></tr>)}
+        </tbody></table></div>}
+      </div>}
 
       {isOwner && <div className="team-grid">
         <div className="admin-panel team-panel">

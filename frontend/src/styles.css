@@ -9841,6 +9841,42 @@ h2 {
   margin: 0;
 }
 
+.team-git-audit {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 10px;
+  color: var(--oj-text-secondary);
+  font-size: 0.88rem;
+}
+
+.team-sync-status {
+  width: fit-content;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(127, 135, 152, 0.16);
+}
+
+.team-sync-status.status-2 {
+  color: #8bd9aa;
+  background: rgba(52, 168, 100, 0.16);
+}
+
+.team-sync-status.status-3 {
+  color: #ffaaa2;
+  background: rgba(214, 72, 66, 0.16);
+}
+
+.team-commit-history {
+  margin-top: 20px;
+}
+
+.team-commit-history code {
+  color: #aeb8ff;
+}
+
 .team-dissolve {
   margin-top: 22px;
 }
