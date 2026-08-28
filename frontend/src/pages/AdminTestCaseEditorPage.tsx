@@ -2,11 +2,14 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   addTestCase,
+  deleteTestCase,
   exportTestCases,
   getProblem,
   importTestCases,
+  updateTestCase,
   type ImportTestCaseError,
   type ProblemDetailDto,
+  type TestCaseDto,
   type TestCaseVisibility
 } from "../api/problemsApi";
 import { visibilityLabel } from "../utils/labels";
@@ -37,6 +40,13 @@ export function AdminTestCaseEditorPage() {
   const [importErrors, setImportErrors] = useState<ImportTestCaseError[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [editingTestCase, setEditingTestCase] = useState<TestCaseDto | null>(null);
+  const [editInput, setEditInput] = useState("");
+  const [editExpectedOutput, setEditExpectedOutput] = useState("");
+  const [editArgumentsJson, setEditArgumentsJson] = useState("");
+  const [editExpectedJson, setEditExpectedJson] = useState("");
+  const [editVisibility, setEditVisibility] = useState<TestCaseVisibility>(2);
+  const [editScore, setEditScore] = useState(100);
   const functionSpec = useMemo(() => parseFunctionSpec(problem?.functionSpecJson), [problem?.functionSpecJson]);
   const importExample = useMemo(() => buildImportExample(problem, functionSpec), [problem, functionSpec]);
 
@@ -145,6 +155,71 @@ export function AdminTestCaseEditorPage() {
       setNotice("测试点 JSON 已导出。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "导出测试点失败");
+    }
+  }
+
+  function beginEdit(testCase: TestCaseDto) {
+    setEditingTestCase(testCase);
+    setEditInput(testCase.input);
+    setEditExpectedOutput(testCase.expectedOutput);
+    setEditArgumentsJson(testCase.argumentsJson || "");
+    setEditExpectedJson(testCase.expectedJson || "");
+    setEditVisibility(testCase.visibility);
+    setEditScore(testCase.score);
+    setError(null);
+    setNotice(null);
+  }
+
+  async function handleUpdate() {
+    if (!id || !problem || !editingTestCase) {
+      return;
+    }
+
+    if (problem.judgeMode === 2 && !isValidJson(editArgumentsJson)) {
+      setError("Arguments JSON 格式无效");
+      return;
+    }
+
+    if (problem.judgeMode === 2 && !isValidJson(editExpectedJson)) {
+      setError("Expected JSON 格式无效");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    try {
+      await updateTestCase(id, editingTestCase.id, {
+        input: problem.judgeMode === 1 ? editInput : "",
+        expectedOutput: problem.judgeMode === 1 ? editExpectedOutput : "",
+        argumentsJson: problem.judgeMode === 2 ? editArgumentsJson : null,
+        expectedJson: problem.judgeMode === 2 ? editExpectedJson : null,
+        visibility: editVisibility,
+        score: editScore
+      });
+      setEditingTestCase(null);
+      await loadProblem(id);
+      setNotice("测试用例已更新。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "更新测试用例失败");
+    }
+  }
+
+  async function handleDelete(testCaseId: string) {
+    if (!id || !window.confirm("确定删除该测试点吗？删除后不会影响历史提交，但不会再参与未来判题。")) {
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteTestCase(id, testCaseId);
+      if (editingTestCase?.id === testCaseId) {
+        setEditingTestCase(null);
+      }
+      await loadProblem(id);
+      setNotice("测试用例已删除。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除测试用例失败");
     }
   }
 
@@ -258,12 +333,25 @@ export function AdminTestCaseEditorPage() {
                 )}
                 <th>可见性</th>
                 <th>分数</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
               {problem.testCases.map((testCase) => (
                 <tr key={testCase.id}>
-                  {problem.judgeMode === 1 ? (
+                  {editingTestCase?.id === testCase.id ? (
+                    problem.judgeMode === 1 ? (
+                      <>
+                        <td><textarea value={editInput} onChange={(event) => setEditInput(event.target.value)} /></td>
+                        <td><textarea value={editExpectedOutput} onChange={(event) => setEditExpectedOutput(event.target.value)} /></td>
+                      </>
+                    ) : (
+                      <>
+                        <td><textarea value={editArgumentsJson} onChange={(event) => setEditArgumentsJson(event.target.value)} /></td>
+                        <td><textarea value={editExpectedJson} onChange={(event) => setEditExpectedJson(event.target.value)} /></td>
+                      </>
+                    )
+                  ) : problem.judgeMode === 1 ? (
                     <>
                       <td className="pre-line">{testCase.input}</td>
                       <td className="pre-line">{testCase.expectedOutput}</td>
@@ -274,10 +362,36 @@ export function AdminTestCaseEditorPage() {
                       <td className="pre-line">{formatJsonString(testCase.expectedJson)}</td>
                     </>
                   )}
-                  <td>
-                    <span className={`visibility-badge visibility-${testCase.visibility}`}>{visibilityLabel(testCase.visibility)}</span>
-                  </td>
-                  <td>{testCase.score}</td>
+                  {editingTestCase?.id === testCase.id ? (
+                    <>
+                      <td>
+                        <select value={editVisibility} onChange={(event) => setEditVisibility(Number(event.target.value) as TestCaseVisibility)}>
+                          <option value={1}>示例</option>
+                          <option value={2}>隐藏</option>
+                        </select>
+                      </td>
+                      <td><input type="number" min={0} value={editScore} onChange={(event) => setEditScore(Number(event.target.value))} /></td>
+                      <td>
+                        <div className="button-row test-case-actions">
+                          <button className="button primary" type="button" onClick={handleUpdate}>保存</button>
+                          <button className="button" type="button" onClick={() => setEditingTestCase(null)}>取消</button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td>
+                        <span className={`visibility-badge visibility-${testCase.visibility}`}>{visibilityLabel(testCase.visibility)}</span>
+                      </td>
+                      <td>{testCase.score}</td>
+                      <td>
+                        <div className="button-row test-case-actions">
+                          <button className="button" type="button" onClick={() => beginEdit(testCase)}>编辑</button>
+                          <button className="button danger" type="button" onClick={() => handleDelete(testCase.id)}>删除</button>
+                        </div>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>

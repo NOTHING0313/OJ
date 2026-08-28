@@ -1,11 +1,9 @@
-namespace OnlineJudge.Application.Judging.Models;
-
 using OnlineJudge.Domain.Enums;
 
-public class JudgeCaseRequest
-{
-    public Guid TestCaseId { get; set; }
+namespace OnlineJudge.Application.Problems.Requests;
 
+public class UpdateTestCaseRequest
+{
     public string Input { get; set; } = string.Empty;
 
     public string ExpectedOutput { get; set; } = string.Empty;

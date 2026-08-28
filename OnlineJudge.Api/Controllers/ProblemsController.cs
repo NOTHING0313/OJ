@@ -100,6 +100,22 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [HttpPut("{id:guid}/test-cases/{testCaseId:guid}")]
+    public async Task<IActionResult> UpdateTestCase(Guid id, Guid testCaseId, UpdateTestCaseRequest request, CancellationToken cancellationToken)
+    {
+        var result = await problemService.UpdateTestCaseAsync(id, testCaseId, request, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [Authorize(Policy = "RequireProblemSetter")]
+    [HttpDelete("{id:guid}/test-cases/{testCaseId:guid}")]
+    public async Task<IActionResult> DeleteTestCase(Guid id, Guid testCaseId, CancellationToken cancellationToken)
+    {
+        var result = await problemService.DeleteTestCaseAsync(id, testCaseId, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : NoContent();
+    }
+
+    [Authorize(Policy = "RequireProblemSetter")]
     [HttpPost("{id:guid}/test-cases/import")]
     public async Task<IActionResult> ImportTestCases(Guid id, ImportTestCasesRequest request, CancellationToken cancellationToken)
     {
@@ -222,6 +238,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
             "Unauthorized." => Unauthorized(errorMessage),
             "Forbidden." or "Account is blacklisted." => Forbid(),
             "Problem not found." => NotFound(errorMessage),
+            "Test case not found." => NotFound(errorMessage),
             "Judge asset not found." => NotFound(errorMessage),
             "User not found." or "Collaborator not found." => NotFound(errorMessage),
             "该题目已被挑战任务引用，请先移除相关挑战任务后再删除。" => Conflict(errorMessage),

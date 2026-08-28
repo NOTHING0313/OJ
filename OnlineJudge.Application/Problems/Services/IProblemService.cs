@@ -18,6 +18,10 @@ public interface IProblemService
 
     Task<Result<TestCaseDto>> AddTestCaseAsync(Guid problemId, CreateTestCaseRequest request, CancellationToken cancellationToken = default);
 
+    Task<Result<TestCaseDto>> UpdateTestCaseAsync(Guid problemId, Guid testCaseId, UpdateTestCaseRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result> DeleteTestCaseAsync(Guid problemId, Guid testCaseId, CancellationToken cancellationToken = default);
+
     Task<Result<ImportTestCasesResultDto>> ImportTestCasesAsync(Guid problemId, ImportTestCasesRequest request, CancellationToken cancellationToken = default);
 
     Task<Result<IReadOnlyList<TestCaseExportItemDto>>> ExportTestCasesAsync(Guid problemId, CancellationToken cancellationToken = default);

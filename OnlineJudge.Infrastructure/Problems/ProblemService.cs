@@ -42,7 +42,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
     {
         var problem = await dbContext.Problems
             .AsNoTracking()
-            .Include(problem => problem.TestCases)
+            .Include(problem => problem.TestCases.Where(testCase => !testCase.IsDeleted))
             .FirstOrDefaultAsync(problem => problem.Id == id && !problem.IsDeleted, cancellationToken);
 
         if (problem is null)
@@ -109,7 +109,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         }
 
         var problem = await dbContext.Problems
-            .Include(problem => problem.TestCases)
+            .Include(problem => problem.TestCases.Where(testCase => !testCase.IsDeleted))
             .FirstOrDefaultAsync(problem => problem.Id == id && !problem.IsDeleted, cancellationToken);
 
         if (problem is null)
@@ -208,13 +208,14 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<TestCaseDto>.Failure("Forbidden.");
         }
 
-        var validation = ValidateTestCaseRequest(problem, request);
+        var validation = ValidateTestCaseValues(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score);
         if (validation.IsFailure)
         {
             return Result<TestCaseDto>.Failure(validation.ErrorMessage!);
         }
 
         var visibility = Enum.IsDefined(request.Visibility) ? request.Visibility : TestCaseVisibility.Hidden;
+        var now = DateTimeOffset.UtcNow;
 
         var testCase = new TestCase
         {
@@ -226,13 +227,100 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             ExpectedJson = problem.JudgeMode == JudgeMode.Function ? request.ExpectedJson : null,
             Visibility = visibility,
             Score = request.Score,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
         dbContext.TestCases.Add(testCase);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<TestCaseDto>.Success(ToTestCaseDto(testCase));
+    }
+
+    public async Task<Result<TestCaseDto>> UpdateTestCaseAsync(Guid problemId, Guid testCaseId, UpdateTestCaseRequest request, CancellationToken cancellationToken = default)
+    {
+        var userResult = await GetActiveCurrentUserAsync(cancellationToken);
+        if (userResult.IsFailure || userResult.Value is null)
+        {
+            return Result<TestCaseDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
+        }
+
+        var problem = await dbContext.Problems
+            .AsNoTracking()
+            .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
+
+        if (problem is null)
+        {
+            return Result<TestCaseDto>.Failure("Problem not found.");
+        }
+
+        if (!await CanManageTestCasesAsync(userResult.Value, problem, cancellationToken))
+        {
+            return Result<TestCaseDto>.Failure("Forbidden.");
+        }
+
+        var testCase = await dbContext.TestCases
+            .FirstOrDefaultAsync(testCase => testCase.Id == testCaseId && testCase.ProblemId == problemId && !testCase.IsDeleted, cancellationToken);
+
+        if (testCase is null)
+        {
+            return Result<TestCaseDto>.Failure("Test case not found.");
+        }
+
+        var validation = ValidateTestCaseValues(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score);
+        if (validation.IsFailure)
+        {
+            return Result<TestCaseDto>.Failure(validation.ErrorMessage!);
+        }
+
+        testCase.Input = problem.JudgeMode == JudgeMode.StandardInputOutput ? request.Input : string.Empty;
+        testCase.ExpectedOutput = problem.JudgeMode == JudgeMode.StandardInputOutput ? request.ExpectedOutput : string.Empty;
+        testCase.ArgumentsJson = problem.JudgeMode == JudgeMode.Function ? request.ArgumentsJson : null;
+        testCase.ExpectedJson = problem.JudgeMode == JudgeMode.Function ? request.ExpectedJson : null;
+        testCase.Visibility = Enum.IsDefined(request.Visibility) ? request.Visibility : TestCaseVisibility.Hidden;
+        testCase.Score = request.Score;
+        testCase.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Result<TestCaseDto>.Success(ToTestCaseDto(testCase));
+    }
+
+    public async Task<Result> DeleteTestCaseAsync(Guid problemId, Guid testCaseId, CancellationToken cancellationToken = default)
+    {
+        var userResult = await GetActiveCurrentUserAsync(cancellationToken);
+        if (userResult.IsFailure || userResult.Value is null)
+        {
+            return Result.Failure(userResult.ErrorMessage ?? "Unauthorized.");
+        }
+
+        var problem = await dbContext.Problems
+            .AsNoTracking()
+            .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
+
+        if (problem is null)
+        {
+            return Result.Failure("Problem not found.");
+        }
+
+        if (!await CanManageTestCasesAsync(userResult.Value, problem, cancellationToken))
+        {
+            return Result.Failure("Forbidden.");
+        }
+
+        var testCase = await dbContext.TestCases
+            .FirstOrDefaultAsync(testCase => testCase.Id == testCaseId && testCase.ProblemId == problemId && !testCase.IsDeleted, cancellationToken);
+
+        if (testCase is null)
+        {
+            return Result.Failure("Test case not found.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        testCase.IsDeleted = true;
+        testCase.DeletedAt = now;
+        testCase.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Result.Success();
     }
 
     public async Task<Result<ImportTestCasesResultDto>> ImportTestCasesAsync(Guid problemId, ImportTestCasesRequest request, CancellationToken cancellationToken = default)
@@ -319,7 +407,8 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
                 ExpectedJson = problem.JudgeMode == JudgeMode.Function ? ToRawJson(item.ExpectedJson) : null,
                 Visibility = visibility,
                 Score = score,
-                CreatedAt = now.AddTicks(index)
+                CreatedAt = now.AddTicks(index),
+                UpdatedAt = now.AddTicks(index)
             });
         }
 
@@ -362,7 +451,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
 
         var problem = await dbContext.Problems
             .AsNoTracking()
-            .Include(problem => problem.TestCases)
+            .Include(problem => problem.TestCases.Where(testCase => !testCase.IsDeleted))
             .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
 
         if (problem is null)
@@ -715,13 +804,21 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         }
     }
 
-    private static Result ValidateTestCaseRequest(Problem problem, CreateTestCaseRequest request)
+    private static Result ValidateTestCaseValues(
+        Problem problem,
+        string input,
+        string expectedOutput,
+        string? argumentsJson,
+        string? expectedJson,
+        TestCaseVisibility visibility,
+        int score)
     {
-        if (request.Score < 0) return Result.Failure("Score cannot be negative.");
+        if (score < 0) return Result.Failure("Score cannot be negative.");
+        if (!Enum.IsDefined(visibility)) return Result.Failure("Unsupported test case visibility.");
 
         if (problem.JudgeMode == JudgeMode.StandardInputOutput)
         {
-            if (!string.IsNullOrWhiteSpace(request.ArgumentsJson) || !string.IsNullOrWhiteSpace(request.ExpectedJson))
+            if (!string.IsNullOrWhiteSpace(argumentsJson) || !string.IsNullOrWhiteSpace(expectedJson))
             {
                 return Result.Failure("Standard input/output test cases cannot use function JSON fields.");
             }
@@ -729,7 +826,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result.Success();
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Input) || !string.IsNullOrWhiteSpace(request.ExpectedOutput))
+        if (!string.IsNullOrWhiteSpace(input) || !string.IsNullOrWhiteSpace(expectedOutput))
         {
             return Result.Failure("Function test cases cannot use standard input/output fields.");
         }
@@ -740,7 +837,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result.Failure(specResult.ErrorMessage ?? "Invalid function spec.");
         }
 
-        return FunctionJudgeSpecParser.ValidateTestCase(specResult.Value, request.ArgumentsJson, request.ExpectedJson);
+        return FunctionJudgeSpecParser.ValidateTestCase(specResult.Value, argumentsJson, expectedJson);
     }
 
     private static ProblemDetailDto ToDetailDto(Problem problem, bool includeHiddenTestCases)
@@ -757,13 +854,13 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             IsPublished = problem.IsPublished,
             JudgeMode = problem.JudgeMode,
             AllowedLanguagesMask = problem.AllowedLanguagesMask,
-            TotalScore = problem.TestCases.Sum(testCase => testCase.Score),
+            TotalScore = problem.TestCases.Where(testCase => !testCase.IsDeleted).Sum(testCase => testCase.Score),
             FunctionSpecJson = problem.FunctionSpecJson,
             StarterCodeJson = problem.StarterCodeJson,
             CreatedAt = problem.CreatedAt,
             UpdatedAt = problem.UpdatedAt,
             TestCases = problem.TestCases
-                .Where(testCase => includeHiddenTestCases || testCase.Visibility == TestCaseVisibility.Sample)
+                .Where(testCase => !testCase.IsDeleted && (includeHiddenTestCases || testCase.Visibility == TestCaseVisibility.Sample))
                 .OrderBy(testCase => testCase.CreatedAt)
                 .Select(ToTestCaseDto)
                 .ToList()

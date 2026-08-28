@@ -22,6 +22,8 @@ public class SubmissionCaseResultDto
 
     public string? ErrorMessage { get; set; }
 
+    public int Score { get; set; }
+
     public bool IsHidden { get; set; }
 
     public bool IsRedacted { get; set; }

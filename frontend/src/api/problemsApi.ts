@@ -144,6 +144,8 @@ export function deleteProblem(id: string) {
   });
 }
 
+export type UpdateTestCaseRequest = CreateTestCaseRequest;
+
 export function getJudgeAssets(problemId: string) {
   return request<ProblemJudgeAssetDto[]>(`/api/problems/${problemId}/judge-assets`);
 }
@@ -169,6 +171,19 @@ export function addTestCase(problemId: string, payload: CreateTestCaseRequest) {
   return request<TestCaseDto>(`/api/problems/${problemId}/test-cases`, {
     method: "POST",
     body: JSON.stringify(payload)
+  });
+}
+
+export function updateTestCase(problemId: string, testCaseId: string, payload: UpdateTestCaseRequest) {
+  return request<TestCaseDto>(`/api/problems/${problemId}/test-cases/${testCaseId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteTestCase(problemId: string, testCaseId: string) {
+  return request<void>(`/api/problems/${problemId}/test-cases/${testCaseId}`, {
+    method: "DELETE"
   });
 }
 

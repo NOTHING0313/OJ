@@ -340,8 +340,13 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
 
     private static SubmissionCaseResultDto ToCaseResultDto(SubmissionCaseResult caseResult, bool canViewHiddenCaseResults)
     {
-        var isHidden = caseResult.TestCase?.Visibility == TestCaseVisibility.Hidden;
+        var visibility = caseResult.VisibilitySnapshot ?? caseResult.TestCase?.Visibility;
+        var isHidden = visibility == TestCaseVisibility.Hidden;
         var isRedacted = isHidden && !canViewHiddenCaseResults;
+        var expectedOutput = caseResult.ExpectedJsonSnapshot
+            ?? caseResult.ExpectedOutputSnapshot
+            ?? caseResult.TestCase?.ExpectedJson
+            ?? caseResult.TestCase?.ExpectedOutput;
 
         return new SubmissionCaseResultDto
         {
@@ -352,10 +357,11 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             TimeUsedMs = caseResult.TimeUsedMs,
             MemoryUsedKb = caseResult.MemoryUsedKb,
             ActualOutput = isRedacted ? null : caseResult.ActualOutput,
-            ExpectedOutput = isRedacted ? null : caseResult.TestCase?.ExpectedJson ?? caseResult.TestCase?.ExpectedOutput,
+            ExpectedOutput = isRedacted ? null : expectedOutput,
             ErrorMessage = isRedacted && !string.IsNullOrWhiteSpace(caseResult.ErrorMessage)
                 ? "隐藏测试点错误详情已脱敏。"
                 : caseResult.ErrorMessage,
+            Score = caseResult.ScoreSnapshot ?? caseResult.TestCase?.Score ?? 0,
             IsHidden = isHidden,
             IsRedacted = isRedacted
         };

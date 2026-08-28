@@ -38,5 +38,13 @@ public class TestCaseConfiguration : IEntityTypeConfiguration<TestCase>
 
         builder.Property(testCase => testCase.CreatedAt)
             .IsRequired();
+
+        builder.Property(testCase => testCase.UpdatedAt)
+            .IsRequired();
+
+        builder.Property(testCase => testCase.IsDeleted)
+            .IsRequired();
+
+        builder.Property(testCase => testCase.DeletedAt);
     }
 }

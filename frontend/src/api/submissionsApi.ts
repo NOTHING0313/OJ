@@ -20,6 +20,7 @@ export interface SubmissionCaseResultDto {
   actualOutput: string | null;
   expectedOutput: string | null;
   errorMessage: string | null;
+  score: number;
   isHidden: boolean;
   isRedacted: boolean;
 }

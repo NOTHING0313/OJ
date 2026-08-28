@@ -35,6 +35,35 @@ public class ProblemEditorSourceTests
         Assert.DoesNotContain("judgeAssets", editorSource[editorSource.IndexOf("const payload", StringComparison.Ordinal)..editorSource.IndexOf("try {", editorSource.IndexOf("const payload", StringComparison.Ordinal), StringComparison.Ordinal)]);
     }
 
+    [Fact]
+    public void AdminTestCaseEditor_HasCrudValidationAndScopedAuthoringScrollbars()
+    {
+        var editorSource = File.ReadAllText(ResolveRepoFile("frontend", "src", "pages", "AdminTestCaseEditorPage.tsx"));
+        var styles = File.ReadAllText(ResolveRepoFile("frontend", "src", "styles.css"));
+        var detailSource = File.ReadAllText(ResolveRepoFile("frontend", "src", "pages", "ProblemDetailPage.tsx"));
+
+        Assert.Contains("updateTestCase", editorSource);
+        Assert.Contains("deleteTestCase", editorSource);
+        Assert.Contains("确定删除该测试点吗？删除后不会影响历史提交，但不会再参与未来判题。", editorSource);
+        Assert.Contains("Arguments JSON 格式无效", editorSource);
+        Assert.Contains("Expected JSON 格式无效", editorSource);
+        Assert.Contains(".testcase-editor-v2-page :is(textarea, .table-wrap, .content-block)", styles);
+        Assert.Contains("formatFunctionSampleArguments", detailSource);
+        Assert.Contains("formatFunctionSampleExpected", detailSource);
+    }
+
+    [Fact]
+    public void JudgeWorker_FiltersDeletedCasesAndPersistsImmutableSnapshots()
+    {
+        var source = File.ReadAllText(ResolveRepoFile("OnlineJudge.JudgeWorker", "Worker.cs"));
+
+        Assert.Contains("TestCases.Where(testCase => !testCase.IsDeleted)", source);
+        Assert.Contains("ExpectedOutputSnapshot = judgedCases[caseResult.TestCaseId].ExpectedOutput", source);
+        Assert.Contains("ExpectedJsonSnapshot = judgedCases[caseResult.TestCaseId].ExpectedJson", source);
+        Assert.Contains("VisibilitySnapshot = judgedCases[caseResult.TestCaseId].Visibility", source);
+        Assert.Contains("ScoreSnapshot = judgedCases[caseResult.TestCaseId].Score", source);
+    }
+
     private static string ResolveRepoFile(params string[] relativeSegments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -34,5 +34,11 @@ public class TestCase
 
     public DateTimeOffset CreatedAt { get; set; }
 
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public bool IsDeleted { get; set; }
+
+    public DateTimeOffset? DeletedAt { get; set; }
+
     public Problem? Problem { get; set; }
 }

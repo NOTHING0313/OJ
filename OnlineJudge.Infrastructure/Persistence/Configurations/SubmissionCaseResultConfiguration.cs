@@ -34,6 +34,21 @@ public class SubmissionCaseResultConfiguration : IEntityTypeConfiguration<Submis
             .HasColumnType("text")
             .IsRequired(false);
 
+        builder.Property(caseResult => caseResult.ExpectedOutputSnapshot)
+            .HasColumnType("text")
+            .IsRequired(false);
+
+        builder.Property(caseResult => caseResult.ExpectedJsonSnapshot)
+            .HasColumnType("text")
+            .IsRequired(false);
+
+        builder.Property(caseResult => caseResult.VisibilitySnapshot)
+            .HasConversion<int?>()
+            .IsRequired(false);
+
+        builder.Property(caseResult => caseResult.ScoreSnapshot)
+            .IsRequired(false);
+
         builder.HasOne(caseResult => caseResult.TestCase)
             .WithMany()
             .HasForeignKey(caseResult => caseResult.TestCaseId)

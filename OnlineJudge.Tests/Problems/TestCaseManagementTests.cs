@@ -275,6 +275,268 @@ public class TestCaseManagementTests
         Assert.Equal("secret expected", hidden.ExpectedOutput);
     }
 
+    [Fact]
+    public async Task UpdateAndDeleteStandardTestCase_ChangesOnlyActiveProblemSemantics()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedUsersAndProblem(dbContext, JudgeMode.StandardInputOutput);
+        var testCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Hidden, 20, "1 2", "3");
+        var service = CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter);
+
+        var updated = await service.UpdateTestCaseAsync(ids.Problem, testCase.Id, new UpdateTestCaseRequest
+        {
+            Input = "2 3",
+            ExpectedOutput = "5",
+            Visibility = TestCaseVisibility.Sample,
+            Score = 30
+        });
+
+        Assert.True(updated.IsSuccess);
+        Assert.Equal("2 3", updated.Value!.Input);
+        Assert.Equal(30, updated.Value.Score);
+        Assert.True(updated.Value.CreatedAt < (await dbContext.TestCases.SingleAsync()).UpdatedAt);
+
+        var deleted = await service.DeleteTestCaseAsync(ids.Problem, testCase.Id);
+        var repeated = await service.DeleteTestCaseAsync(ids.Problem, testCase.Id);
+        var detail = await service.GetProblemAsync(ids.Problem);
+        var export = await service.ExportTestCasesAsync(ids.Problem);
+        var stored = await dbContext.TestCases.SingleAsync();
+
+        Assert.True(deleted.IsSuccess);
+        Assert.True(repeated.IsFailure);
+        Assert.Equal("Test case not found.", repeated.ErrorMessage);
+        Assert.True(stored.IsDeleted);
+        Assert.NotNull(stored.DeletedAt);
+        Assert.Empty(detail.Value!.TestCases);
+        Assert.Equal(0, detail.Value.TotalScore);
+        Assert.Empty(export.Value!);
+    }
+
+    [Fact]
+    public async Task UpdateFunctionTestCase_UsesAuthoritativeModeAndJsonValidation()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedUsersAndProblem(dbContext, JudgeMode.Function);
+        var testCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Hidden, 10, argumentsJson: """{"nums":[2,7],"target":9}""", expectedJson: "[0,1]");
+        var service = CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter);
+
+        var invalidJson = await service.UpdateTestCaseAsync(ids.Problem, testCase.Id, new UpdateTestCaseRequest
+        {
+            ArgumentsJson = "not-json",
+            ExpectedJson = "[0,1]",
+            Visibility = TestCaseVisibility.Hidden,
+            Score = 20
+        });
+        var wrongMode = await service.UpdateTestCaseAsync(ids.Problem, testCase.Id, new UpdateTestCaseRequest
+        {
+            Input = "1 2",
+            ArgumentsJson = """{"nums":[2,7],"target":9}""",
+            ExpectedJson = "[0,1]",
+            Visibility = TestCaseVisibility.Hidden,
+            Score = 20
+        });
+        var updated = await service.UpdateTestCaseAsync(ids.Problem, testCase.Id, new UpdateTestCaseRequest
+        {
+            ArgumentsJson = """{"nums":[3,3],"target":6}""",
+            ExpectedJson = "[0,1]",
+            Visibility = TestCaseVisibility.Sample,
+            Score = 20
+        });
+
+        Assert.True(invalidJson.IsFailure);
+        Assert.True(wrongMode.IsFailure);
+        Assert.True(updated.IsSuccess);
+        Assert.Equal("""{"nums":[3,3],"target":6}""", updated.Value!.ArgumentsJson);
+    }
+
+    [Fact]
+    public async Task UpdateAndDeleteTestCase_EnforceRbacAndProblemBoundary()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedUsersAndProblem(dbContext, JudgeMode.StandardInputOutput);
+        var testCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Sample, 10, "1", "1");
+        var ownerCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Sample, 10, "1", "1");
+        var collaboratorCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Sample, 10, "1", "1");
+        var deniedCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Sample, 10, "1", "1");
+        var unrelatedSetterId = Guid.NewGuid();
+        dbContext.Users.Add(User(unrelatedSetterId, "unrelated-setter", UserRole.ProblemSetter));
+        dbContext.ProblemCollaborators.Add(new ProblemCollaborator
+        {
+            Id = Guid.NewGuid(),
+            ProblemId = ids.Problem,
+            UserId = ids.OtherSetter,
+            GrantedByUserId = ids.Owner,
+            CanManageTestCases = true,
+            CreatedAt = BaseTime
+        });
+        await dbContext.SaveChangesAsync();
+        var update = new UpdateTestCaseRequest { Input = "2", ExpectedOutput = "2", Visibility = TestCaseVisibility.Sample, Score = 10 };
+
+        Assert.True((await CreateProblemService(dbContext, ids.Root, UserRole.Root).UpdateTestCaseAsync(ids.Problem, testCase.Id, update)).IsSuccess);
+        Assert.True((await CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter).UpdateTestCaseAsync(ids.Problem, testCase.Id, update)).IsSuccess);
+        Assert.True((await CreateProblemService(dbContext, ids.OtherSetter, UserRole.ProblemSetter).UpdateTestCaseAsync(ids.Problem, testCase.Id, update)).IsSuccess);
+        Assert.True((await CreateProblemService(dbContext, ids.Answerer, UserRole.Answerer).UpdateTestCaseAsync(ids.Problem, testCase.Id, update)).IsFailure);
+        Assert.True((await CreateProblemService(dbContext, unrelatedSetterId, UserRole.ProblemSetter).UpdateTestCaseAsync(ids.Problem, deniedCase.Id, update)).IsFailure);
+        Assert.True((await CreateProblemService(dbContext, ids.Answerer, UserRole.Answerer).DeleteTestCaseAsync(ids.Problem, deniedCase.Id)).IsFailure);
+        Assert.True((await CreateProblemService(dbContext, unrelatedSetterId, UserRole.ProblemSetter).DeleteTestCaseAsync(ids.Problem, deniedCase.Id)).IsFailure);
+        Assert.True((await CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter).DeleteTestCaseAsync(ids.Problem, ownerCase.Id)).IsSuccess);
+        Assert.True((await CreateProblemService(dbContext, ids.OtherSetter, UserRole.ProblemSetter).DeleteTestCaseAsync(ids.Problem, collaboratorCase.Id)).IsSuccess);
+
+        var otherProblem = Guid.NewGuid();
+        dbContext.Problems.Add(new Problem
+        {
+            Id = otherProblem,
+            Title = "Other",
+            Description = "Description",
+            InputDescription = "Input",
+            OutputDescription = "Output",
+            TimeLimitMs = 1000,
+            MemoryLimitMb = 128,
+            JudgeMode = JudgeMode.StandardInputOutput,
+            CreatedByUserId = ids.Owner,
+            CreatedAt = BaseTime,
+            UpdatedAt = BaseTime
+        });
+        await dbContext.SaveChangesAsync();
+
+        var crossUpdate = await CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter).UpdateTestCaseAsync(otherProblem, testCase.Id, update);
+        var crossDelete = await CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter).DeleteTestCaseAsync(otherProblem, testCase.Id);
+        Assert.Equal("Test case not found.", crossUpdate.ErrorMessage);
+        Assert.Equal("Test case not found.", crossDelete.ErrorMessage);
+        Assert.True((await CreateProblemService(dbContext, ids.Root, UserRole.Root).DeleteTestCaseAsync(ids.Problem, testCase.Id)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task SubmissionDetail_UsesSnapshotsAndLegacyFallbackAfterTestCaseChanges()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedUsersAndProblem(dbContext, JudgeMode.StandardInputOutput);
+        var submissionId = SeedSubmissionWithCaseResults(dbContext, ids);
+        var results = await dbContext.SubmissionCaseResults.Include(item => item.TestCase).OrderBy(item => item.TestCase!.Visibility).ToListAsync();
+        var sample = results[0];
+        var hidden = results[1];
+        sample.ExpectedOutputSnapshot = "snapshot expected";
+        sample.VisibilitySnapshot = TestCaseVisibility.Hidden;
+        sample.ScoreSnapshot = 40;
+        hidden.ExpectedOutputSnapshot = null;
+        hidden.VisibilitySnapshot = null;
+        hidden.ScoreSnapshot = null;
+        await dbContext.SaveChangesAsync();
+        var update = await CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter).UpdateTestCaseAsync(ids.Problem, sample.TestCaseId, new UpdateTestCaseRequest
+        {
+            Input = "changed input",
+            ExpectedOutput = "changed expected",
+            Visibility = TestCaseVisibility.Sample,
+            Score = 90
+        });
+        Assert.True(update.IsSuccess);
+        Assert.True((await CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter).DeleteTestCaseAsync(ids.Problem, sample.TestCaseId)).IsSuccess);
+
+        var answerer = await CreateSubmissionService(dbContext, ids.Answerer, UserRole.Answerer).GetSubmissionAsync(submissionId);
+        var root = await CreateSubmissionService(dbContext, ids.Root, UserRole.Root).GetSubmissionAsync(submissionId);
+
+        var snapshotted = Assert.Single(answerer.Value!.CaseResults, item => item.TestCaseId == sample.TestCaseId);
+        Assert.True(snapshotted.IsHidden);
+        Assert.True(snapshotted.IsRedacted);
+        Assert.Equal("snapshot expected", Assert.Single(root.Value!.CaseResults, item => item.TestCaseId == sample.TestCaseId).ExpectedOutput);
+        Assert.Equal(40, (await dbContext.SubmissionCaseResults.SingleAsync(item => item.Id == sample.Id)).ScoreSnapshot);
+        Assert.Equal("secret expected", Assert.Single(root.Value.CaseResults, item => item.TestCaseId == hidden.TestCaseId).ExpectedOutput);
+        Assert.Equal(50, Assert.Single(root.Value.CaseResults, item => item.TestCaseId == hidden.TestCaseId).Score);
+        Assert.Equal(JudgeStatus.WrongAnswer, (await dbContext.Submissions.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task FunctionSubmissionDetail_UsesExpectedJsonSnapshotAfterTestCaseUpdate()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedUsersAndProblem(dbContext, JudgeMode.Function);
+        var testCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Sample, 25, argumentsJson: """{"nums":[2,7],"target":9}""", expectedJson: "[0,1]");
+        var submission = new Submission
+        {
+            Id = Guid.NewGuid(),
+            ProblemId = ids.Problem,
+            UserId = ids.Answerer,
+            Language = JudgeLanguage.Cpp17,
+            SourceCode = "source",
+            Status = JudgeStatus.Accepted,
+            CreatedAt = BaseTime
+        };
+        dbContext.Submissions.Add(submission);
+        dbContext.SubmissionCaseResults.Add(new SubmissionCaseResult
+        {
+            Id = Guid.NewGuid(),
+            SubmissionId = submission.Id,
+            TestCaseId = testCase.Id,
+            Status = JudgeStatus.Accepted,
+            ExpectedJsonSnapshot = "[0,1]",
+            VisibilitySnapshot = TestCaseVisibility.Sample,
+            ScoreSnapshot = 25
+        });
+        testCase.ExpectedJson = "[1,0]";
+        testCase.Visibility = TestCaseVisibility.Hidden;
+        testCase.Score = 80;
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateSubmissionService(dbContext, ids.Answerer, UserRole.Answerer).GetSubmissionAsync(submission.Id);
+
+        var caseResult = Assert.Single(result.Value!.CaseResults);
+        Assert.Equal("[0,1]", caseResult.ExpectedOutput);
+        Assert.False(caseResult.IsHidden);
+        Assert.False(caseResult.IsRedacted);
+        Assert.Equal(25, (await dbContext.SubmissionCaseResults.SingleAsync()).ScoreSnapshot);
+    }
+
+    [Fact]
+    public async Task SubmissionDetail_DistinguishesLegacyUnknownScoreFromRealZeroSnapshot()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedUsersAndProblem(dbContext, JudgeMode.StandardInputOutput);
+        var legacyCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Hidden, 10, "legacy", "legacy expected");
+        var zeroCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Sample, 20, "zero", "zero expected");
+        var submission = new Submission
+        {
+            Id = Guid.NewGuid(),
+            ProblemId = ids.Problem,
+            UserId = ids.Answerer,
+            Language = JudgeLanguage.Cpp17,
+            SourceCode = "source",
+            Status = JudgeStatus.Accepted,
+            CreatedAt = BaseTime
+        };
+        dbContext.Submissions.Add(submission);
+        dbContext.SubmissionCaseResults.AddRange(
+            new SubmissionCaseResult
+            {
+                Id = Guid.NewGuid(),
+                SubmissionId = submission.Id,
+                TestCaseId = legacyCase.Id,
+                Status = JudgeStatus.Accepted,
+                ScoreSnapshot = null,
+                VisibilitySnapshot = null
+            },
+            new SubmissionCaseResult
+            {
+                Id = Guid.NewGuid(),
+                SubmissionId = submission.Id,
+                TestCaseId = zeroCase.Id,
+                Status = JudgeStatus.Accepted,
+                ScoreSnapshot = 0,
+                VisibilitySnapshot = TestCaseVisibility.Hidden
+            });
+        zeroCase.Score = 20;
+        zeroCase.Visibility = TestCaseVisibility.Sample;
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateSubmissionService(dbContext, ids.Root, UserRole.Root).GetSubmissionAsync(submission.Id);
+
+        var legacy = Assert.Single(result.Value!.CaseResults, item => item.TestCaseId == legacyCase.Id);
+        var snapshottedZero = Assert.Single(result.Value.CaseResults, item => item.TestCaseId == zeroCase.Id);
+        Assert.Equal(10, legacy.Score);
+        Assert.True(legacy.IsHidden);
+        Assert.Equal(0, snapshottedZero.Score);
+        Assert.True(snapshottedZero.IsHidden);
+    }
+
     private static OnlineJudgeDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<OnlineJudgeDbContext>()
@@ -348,6 +610,34 @@ public class TestCaseManagementTests
                 CreatedAt = BaseTime.AddMinutes(1)
             });
         dbContext.SaveChanges();
+    }
+
+    private static TestCase AddTestCase(
+        OnlineJudgeDbContext dbContext,
+        Guid problemId,
+        TestCaseVisibility visibility,
+        int score,
+        string input = "",
+        string expectedOutput = "",
+        string? argumentsJson = null,
+        string? expectedJson = null)
+    {
+        var testCase = new TestCase
+        {
+            Id = Guid.NewGuid(),
+            ProblemId = problemId,
+            Input = input,
+            ExpectedOutput = expectedOutput,
+            ArgumentsJson = argumentsJson,
+            ExpectedJson = expectedJson,
+            Visibility = visibility,
+            Score = score,
+            CreatedAt = BaseTime,
+            UpdatedAt = BaseTime
+        };
+        dbContext.TestCases.Add(testCase);
+        dbContext.SaveChanges();
+        return testCase;
     }
 
     private static Guid SeedSubmissionWithCaseResults(OnlineJudgeDbContext dbContext, TestIds ids)

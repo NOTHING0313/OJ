@@ -26,6 +26,14 @@ public class SubmissionCaseResult
     /// </summary>
     public string? ErrorMessage { get; set; }
 
+    public string? ExpectedOutputSnapshot { get; set; }
+
+    public string? ExpectedJsonSnapshot { get; set; }
+
+    public TestCaseVisibility? VisibilitySnapshot { get; set; }
+
+    public int? ScoreSnapshot { get; set; }
+
     public Submission? Submission { get; set; }
 
     public TestCase? TestCase { get; set; }

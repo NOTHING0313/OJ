@@ -64,7 +64,7 @@ public class Worker(
 
             var submission = await dbContext.Submissions
                 .Include(submission => submission.Problem)
-                .ThenInclude(problem => problem!.TestCases)
+                .ThenInclude(problem => problem!.TestCases.Where(testCase => !testCase.IsDeleted))
                 .Include(submission => submission.ChallengeTask)
                 .Include(submission => submission.CaseResults)
                 .FirstOrDefaultAsync(submission => submission.Id == submissionId, cancellationToken);
@@ -115,6 +115,7 @@ public class Worker(
             }
 
             var judgeRequest = ToJudgeRequest(submission, compileAssets);
+            var judgedCases = judgeRequest.TestCases.ToDictionary(testCase => testCase.TestCaseId);
             var runner = runnerFactory.GetRunner(submission.Language);
 
             logger.LogInformation("Running judge runner. SubmissionId={SubmissionId}, Stage={Stage}, Language={Language}", submissionId, "RunJudge", submission.Language);
@@ -139,7 +140,11 @@ public class Worker(
                     TimeUsedMs = caseResult.TimeUsedMs,
                     MemoryUsedKb = caseResult.MemoryUsedKb,
                     ActualOutput = caseResult.ActualOutput,
-                    ErrorMessage = caseResult.ErrorMessage
+                    ErrorMessage = caseResult.ErrorMessage,
+                    ExpectedOutputSnapshot = judgedCases[caseResult.TestCaseId].ExpectedOutput,
+                    ExpectedJsonSnapshot = judgedCases[caseResult.TestCaseId].ExpectedJson,
+                    VisibilitySnapshot = judgedCases[caseResult.TestCaseId].Visibility,
+                    ScoreSnapshot = judgedCases[caseResult.TestCaseId].Score
                 });
 
                 dbContext.SubmissionCaseResults.AddRange(caseResults);
@@ -147,7 +152,7 @@ public class Worker(
 
             if (submission.ChallengeTaskId.HasValue)
             {
-                await UpsertChallengeTaskProgressAsync(dbContext, submission, judgeResult, cancellationToken);
+                await UpsertChallengeTaskProgressAsync(dbContext, submission, judgeResult, judgedCases, cancellationToken);
             }
 
             logger.LogInformation(
@@ -171,6 +176,7 @@ public class Worker(
         OnlineJudgeDbContext dbContext,
         Submission submission,
         JudgeResult judgeResult,
+        IReadOnlyDictionary<Guid, JudgeCaseRequest> judgedCases,
         CancellationToken cancellationToken)
     {
         var task = submission.ChallengeTask ?? await dbContext.ChallengeTasks
@@ -178,7 +184,7 @@ public class Worker(
 
         if (task is null || task.TaskType != ChallengeTaskType.Algorithm || submission.Problem is null) return;
 
-        var scoreByTestCaseId = submission.Problem.TestCases.ToDictionary(testCase => testCase.Id, testCase => Math.Max(0, testCase.Score));
+        var scoreByTestCaseId = judgedCases.ToDictionary(pair => pair.Key, pair => Math.Max(0, pair.Value.Score));
         var totalTestCaseScore = scoreByTestCaseId.Values.Sum();
         var passedTestCaseScore = judgeResult.CaseResults
             .Where(caseResult => caseResult.Status == JudgeStatus.Accepted)
@@ -235,6 +241,7 @@ public class Worker(
             CollectAllCaseResults = submission.ChallengeTaskId.HasValue,
             CompileAssets = compileAssets,
             TestCases = problem.TestCases
+                .Where(testCase => !testCase.IsDeleted)
                 .OrderBy(testCase => testCase.CreatedAt)
                 .Select(testCase => new JudgeCaseRequest
                 {
@@ -242,7 +249,9 @@ public class Worker(
                     Input = testCase.Input,
                     ExpectedOutput = testCase.ExpectedOutput,
                     ArgumentsJson = testCase.ArgumentsJson,
-                    ExpectedJson = testCase.ExpectedJson
+                    ExpectedJson = testCase.ExpectedJson,
+                    Visibility = testCase.Visibility,
+                    Score = testCase.Score
                 })
                 .ToList()
         };
