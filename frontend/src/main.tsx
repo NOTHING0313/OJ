@@ -13,6 +13,7 @@ import { AdminProblemEditorPage } from "./pages/AdminProblemEditorPage";
 import { AdminProblemListPage } from "./pages/AdminProblemListPage";
 import { AdminTestCaseEditorPage } from "./pages/AdminTestCaseEditorPage";
 import { AdminUserListPage } from "./pages/AdminUserListPage";
+import { AdminTeamListPage } from "./pages/AdminTeamListPage";
 import { AccountSettingsPage } from "./pages/AccountSettingsPage";
 import { ChallengeAdminSummaryPage } from "./pages/ChallengeAdminSummaryPage";
 import { ChallengeAdminTaskDetailPage } from "./pages/ChallengeAdminTaskDetailPage";
@@ -34,6 +35,7 @@ import { ProblemListPage } from "./pages/ProblemListPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { SubmissionDetailPage } from "./pages/SubmissionDetailPage";
 import { ThemeProvider } from "./theme/ThemeContext";
+import { TeamPage } from "./pages/TeamPage";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -55,6 +57,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/leaderboards" element={<LeaderboardHomePage />} />
             <Route path="/leaderboards/users" element={<GlobalUserLeaderboardPage />} />
             <Route path="/leaderboards/challenges" element={<ChallengeLeaderboardIndexPage />} />
+            <Route path="/teams" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
             <Route
               path="/challenges/:challengeId/admin"
               element={(
@@ -183,6 +186,22 @@ createRoot(document.getElementById("root")!).render(
               element={(
                 <ProtectedRoute allowedRoles={[2, 3]}>
                   <AdminChallengeTaskEditorPage />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/admin/teams"
+              element={(
+                <ProtectedRoute allowedRoles={[2, 3]}>
+                  <AdminTeamListPage />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/admin/teams/:teamId"
+              element={(
+                <ProtectedRoute allowedRoles={[2, 3]}>
+                  <TeamPage />
                 </ProtectedRoute>
               )}
             />

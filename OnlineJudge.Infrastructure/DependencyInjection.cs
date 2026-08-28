@@ -31,6 +31,8 @@ using StackExchange.Redis;
 using OnlineJudge.Infrastructure.Challenges;
 using OnlineJudge.Infrastructure.Email;
 using OnlineJudge.Infrastructure.ContentVisibility;
+using OnlineJudge.Application.Teams.Services;
+using OnlineJudge.Infrastructure.Teams;
 
 namespace OnlineJudge.Infrastructure;
 
@@ -46,6 +48,19 @@ public static class DependencyInjection
 
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ContentVisibilityPolicy>();
+        var configuredGitHosts = configuration.GetSection($"{TeamProjectOptions.SectionName}:AllowedGitHosts")
+            .GetChildren()
+            .Select(item => item.Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Cast<string>()
+            .ToArray();
+        var teamProjectOptions = new TeamProjectOptions();
+        if (configuredGitHosts.Length > 0)
+        {
+            teamProjectOptions.AllowedGitHosts = configuredGitHosts;
+        }
+        services.AddSingleton(teamProjectOptions);
+        services.AddSingleton<TeamRepositoryUrlValidator>();
 
         var redisConnectionString = configuration["Redis:ConnectionString"] ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
@@ -60,6 +75,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<ITeamService, TeamService>();
         services.AddScoped<ISmsVerificationService, SmsVerificationService>();
         services.AddScoped<ISmsSender, DevSmsSender>();
         services.AddScoped<IEmailVerificationService, EmailVerificationService>();

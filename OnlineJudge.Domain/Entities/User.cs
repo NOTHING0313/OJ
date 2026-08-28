@@ -42,4 +42,14 @@ public class User
     public List<Challenge> CreatedChallenges { get; set; } = [];
 
     public List<ChallengeParticipant> ChallengeParticipants { get; set; } = [];
+
+    public List<Team> OwnedTeams { get; set; } = [];
+
+    public List<TeamMember> TeamMemberships { get; set; } = [];
+
+    public List<TeamInvitation> TeamInvitations { get; set; } = [];
+
+    public List<TeamInvitation> SentTeamInvitations { get; set; } = [];
+
+    public List<TeamProject> CreatedTeamProjects { get; set; } = [];
 }

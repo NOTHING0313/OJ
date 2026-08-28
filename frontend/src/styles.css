@@ -9781,3 +9781,77 @@ h2 {
   min-height: 30px;
   padding: 5px 9px;
 }
+.team-page {
+  max-width: 1160px;
+  margin-inline: auto;
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.team-panel {
+  border: 1px solid var(--oj-panel-border);
+  background: var(--oj-panel-bg);
+  border-radius: 14px;
+}
+
+.team-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--oj-panel-border);
+}
+
+.team-list-row:last-child {
+  border-bottom: 0;
+}
+
+.team-badge {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--oj-text-secondary);
+  background: color-mix(in srgb, var(--oj-accent) 15%, transparent);
+  font-size: 0.78rem;
+}
+
+.team-project-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--oj-panel-border);
+  overflow-wrap: anywhere;
+}
+
+.team-project-card .button-row {
+  justify-content: flex-start;
+}
+
+.team-project-form {
+  margin-top: 18px;
+}
+
+.team-project-form h3 {
+  margin: 0;
+}
+
+.team-dissolve {
+  margin-top: 22px;
+}
+
+@media (max-width: 760px) {
+  .team-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .team-list-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
