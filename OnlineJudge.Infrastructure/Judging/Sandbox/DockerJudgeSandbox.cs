@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Judging.Services;
 using OnlineJudge.Domain.Enums;
@@ -9,7 +9,21 @@ namespace OnlineJudge.Infrastructure.Judging.Sandbox;
 
 public class DockerJudgeSandbox : IJudgeSandbox
 {
-    private const string ContainerWorkspace = "/workspace";
+    internal const string ContainerWorkspace = "/workspace";
+
+    private readonly IDockerCommandClient dockerCommandClient;
+    private readonly ILogger<DockerJudgeSandbox> logger;
+
+    public DockerJudgeSandbox(ILogger<DockerJudgeSandbox> logger)
+        : this(new DockerCommandClient(), logger)
+    {
+    }
+
+    internal DockerJudgeSandbox(IDockerCommandClient dockerCommandClient, ILogger<DockerJudgeSandbox> logger)
+    {
+        this.dockerCommandClient = dockerCommandClient;
+        this.logger = logger;
+    }
 
     private const UnixFileMode WorkspaceDirectoryMode =
         UnixFileMode.UserRead |
@@ -78,10 +92,11 @@ public class DockerJudgeSandbox : IJudgeSandbox
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "Docker judge execution failed.");
             return new JudgeResult
             {
                 Status = JudgeStatus.SystemError,
-                ErrorMessage = request.CompileAssets.Count > 0 ? "Judge execution failed." : ex.Message
+                ErrorMessage = "Judge execution failed."
             };
         }
         finally
@@ -109,51 +124,7 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 cancellationToken: cancellationToken);
 
             totalTimeUsedMs += runResult.ElapsedMs;
-            var actualOutput = NormalizeOutput(runResult.StandardOutput);
-            JudgeCaseResult caseResult;
-
-            if (runResult.TimedOut)
-            {
-                caseResult = new JudgeCaseResult
-                {
-                    TestCaseId = testCase.TestCaseId,
-                    Status = JudgeStatus.TimeLimitExceeded,
-                    TimeUsedMs = runResult.ElapsedMs
-                };
-            }
-            else if (runResult.ExitCode != 0)
-            {
-                var errorMessage = GetErrorMessage(runResult, $"Process exited with code {runResult.ExitCode}.");
-                caseResult = new JudgeCaseResult
-                {
-                    TestCaseId = testCase.TestCaseId,
-                    Status = JudgeStatus.RuntimeError,
-                    TimeUsedMs = runResult.ElapsedMs,
-                    ActualOutput = actualOutput,
-                    ErrorMessage = errorMessage
-                };
-            }
-            else if (actualOutput != NormalizeOutput(testCase.ExpectedOutput))
-            {
-                caseResult = new JudgeCaseResult
-                {
-                    TestCaseId = testCase.TestCaseId,
-                    Status = JudgeStatus.WrongAnswer,
-                    TimeUsedMs = runResult.ElapsedMs,
-                    ActualOutput = actualOutput,
-                    ErrorMessage = "Output does not match expected output."
-                };
-            }
-            else
-            {
-                caseResult = new JudgeCaseResult
-                {
-                    TestCaseId = testCase.TestCaseId,
-                    Status = JudgeStatus.Accepted,
-                    TimeUsedMs = runResult.ElapsedMs,
-                    ActualOutput = actualOutput
-                };
-            }
+            var caseResult = CreateCaseResult(testCase, runResult);
 
             caseResults.Add(caseResult);
 
@@ -169,6 +140,7 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 {
                     Status = caseResult.Status,
                     TimeUsedMs = totalTimeUsedMs,
+                    MemoryUsedKb = GetPeakMemoryUsedKb(caseResults),
                     ErrorMessage = caseResult.ErrorMessage,
                     CaseResults = caseResults
                 };
@@ -179,12 +151,13 @@ public class DockerJudgeSandbox : IJudgeSandbox
         {
             Status = overallStatus,
             TimeUsedMs = totalTimeUsedMs,
+            MemoryUsedKb = GetPeakMemoryUsedKb(caseResults),
             ErrorMessage = firstErrorMessage,
             CaseResults = caseResults
         };
     }
 
-    private async Task<DockerCommandResult> RunDockerCommandAsync(
+    internal async Task<DockerCommandResult> RunDockerCommandAsync(
         string workspaceDirectory,
         int memoryLimitMb,
         string dockerImageName,
@@ -192,81 +165,132 @@ public class DockerJudgeSandbox : IJudgeSandbox
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var stopwatch = Stopwatch.StartNew();
-        using var process = new Process();
+        var containerName = CreateContainerName();
+        var request = new DockerContainerRequest(workspaceDirectory, memoryLimitMb, dockerImageName, command);
 
-        process.StartInfo.FileName = "docker";
-        process.StartInfo.RedirectStandardOutput = true;
-        process.StartInfo.RedirectStandardError = true;
-        process.StartInfo.UseShellExecute = false;
-        process.StartInfo.CreateNoWindow = true;
-        process.StartInfo.ArgumentList.Add("run");
-        process.StartInfo.ArgumentList.Add("--rm");
-        process.StartInfo.ArgumentList.Add("--network");
-        process.StartInfo.ArgumentList.Add("none");
-        process.StartInfo.ArgumentList.Add("--memory");
-        process.StartInfo.ArgumentList.Add($"{Math.Max(memoryLimitMb, 16)}m");
-        process.StartInfo.ArgumentList.Add("--cpus");
-        process.StartInfo.ArgumentList.Add("1");
-        process.StartInfo.ArgumentList.Add("--pids-limit");
-        process.StartInfo.ArgumentList.Add("64");
-        process.StartInfo.ArgumentList.Add("-v");
-        process.StartInfo.ArgumentList.Add($"{workspaceDirectory}:{ContainerWorkspace}");
-        process.StartInfo.ArgumentList.Add("-w");
-        process.StartInfo.ArgumentList.Add(ContainerWorkspace);
-        process.StartInfo.ArgumentList.Add(dockerImageName);
-        process.StartInfo.ArgumentList.Add("bash");
-        process.StartInfo.ArgumentList.Add("-lc");
-        process.StartInfo.ArgumentList.Add($"umask 000; {command}");
-
-        var standardOutputBuilder = new StringBuilder();
-        var standardErrorBuilder = new StringBuilder();
-
-        process.OutputDataReceived += (_, args) =>
+        try
         {
-            if (args.Data is not null)
+            var containerId = await dockerCommandClient.CreateAsync(containerName, request, cancellationToken);
+            var result = await dockerCommandClient.StartAsync(containerName, containerId, timeout, cancellationToken);
+
+            if (result.TelemetryWarning is not null)
             {
-                standardOutputBuilder.AppendLine(args.Data);
+                logger.LogWarning("Docker judge telemetry was partially unavailable. Detail={Detail}", result.TelemetryWarning);
             }
-        };
 
-        process.ErrorDataReceived += (_, args) =>
+            return result;
+        }
+        finally
         {
-            if (args.Data is not null)
+            await TryRemoveContainerAsync(containerName);
+        }
+    }
+
+    internal static JudgeCaseResult CreateCaseResult(JudgeCaseRequest testCase, DockerCommandResult runResult)
+    {
+        var actualOutput = NormalizeOutput(runResult.StandardOutput);
+        var memoryUsedKb = ConvertPeakMemoryBytesToKb(runResult.PeakMemoryBytes);
+
+        if (runResult.TimedOut)
+        {
+            return new JudgeCaseResult
             {
-                standardErrorBuilder.AppendLine(args.Data);
-            }
-        };
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        var waitTask = process.WaitForExitAsync(cancellationToken);
-        var timeoutTask = Task.Delay(timeout, cancellationToken);
-
-        if (await Task.WhenAny(waitTask, timeoutTask) == timeoutTask)
-        {
-            TryKill(process);
-            stopwatch.Stop();
-
-            return new DockerCommandResult(
-                ExitCode: null,
-                StandardOutput: standardOutputBuilder.ToString(),
-                StandardError: standardErrorBuilder.ToString(),
-                ElapsedMs: (int)stopwatch.ElapsedMilliseconds,
-                TimedOut: true);
+                TestCaseId = testCase.TestCaseId,
+                Status = JudgeStatus.TimeLimitExceeded,
+                TimeUsedMs = runResult.ElapsedMs,
+                MemoryUsedKb = memoryUsedKb
+            };
         }
 
-        await waitTask;
-        stopwatch.Stop();
+        if (runResult.OomKilled)
+        {
+            return new JudgeCaseResult
+            {
+                TestCaseId = testCase.TestCaseId,
+                Status = JudgeStatus.MemoryLimitExceeded,
+                TimeUsedMs = runResult.ElapsedMs,
+                MemoryUsedKb = memoryUsedKb,
+                ErrorMessage = "Memory limit exceeded."
+            };
+        }
 
-        return new DockerCommandResult(
-            ExitCode: process.ExitCode,
-            StandardOutput: standardOutputBuilder.ToString(),
-            StandardError: standardErrorBuilder.ToString(),
-            ElapsedMs: (int)stopwatch.ElapsedMilliseconds,
-            TimedOut: false);
+        if (runResult.ExitCode != 0)
+        {
+            return new JudgeCaseResult
+            {
+                TestCaseId = testCase.TestCaseId,
+                Status = JudgeStatus.RuntimeError,
+                TimeUsedMs = runResult.ElapsedMs,
+                MemoryUsedKb = memoryUsedKb,
+                ActualOutput = actualOutput,
+                ErrorMessage = GetErrorMessage(runResult, $"Process exited with code {runResult.ExitCode}.")
+            };
+        }
+
+        if (actualOutput != NormalizeOutput(testCase.ExpectedOutput))
+        {
+            return new JudgeCaseResult
+            {
+                TestCaseId = testCase.TestCaseId,
+                Status = JudgeStatus.WrongAnswer,
+                TimeUsedMs = runResult.ElapsedMs,
+                MemoryUsedKb = memoryUsedKb,
+                ActualOutput = actualOutput,
+                ErrorMessage = "Output does not match expected output."
+            };
+        }
+
+        return new JudgeCaseResult
+        {
+            TestCaseId = testCase.TestCaseId,
+            Status = JudgeStatus.Accepted,
+            TimeUsedMs = runResult.ElapsedMs,
+            MemoryUsedKb = memoryUsedKb,
+            ActualOutput = actualOutput
+        };
+    }
+
+    internal static int? ConvertPeakMemoryBytesToKb(long? peakMemoryBytes)
+    {
+        if (peakMemoryBytes is null || peakMemoryBytes < 0)
+        {
+            return null;
+        }
+
+        var kilobytes = peakMemoryBytes.Value / 1024;
+        if (peakMemoryBytes.Value % 1024 != 0)
+        {
+            kilobytes++;
+        }
+
+        return (int)Math.Min(kilobytes, int.MaxValue);
+    }
+
+    internal static int? GetPeakMemoryUsedKb(IEnumerable<JudgeCaseResult> caseResults)
+    {
+        var knownMemoryValues = caseResults
+            .Where(caseResult => caseResult.MemoryUsedKb.HasValue)
+            .Select(caseResult => caseResult.MemoryUsedKb!.Value)
+            .ToList();
+
+        return knownMemoryValues.Count == 0 ? null : knownMemoryValues.Max();
+    }
+
+    internal static string CreateContainerName()
+    {
+        return $"oj-{Guid.NewGuid():N}";
+    }
+
+    private async Task TryRemoveContainerAsync(string containerName)
+    {
+        try
+        {
+            await dockerCommandClient.RemoveAsync(containerName, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Docker judge container cleanup failed.");
+        }
     }
 
     private static async Task WriteTestCaseInputsAsync(string tempDirectory, IReadOnlyList<JudgeCaseRequest> testCases, CancellationToken cancellationToken)
@@ -495,20 +519,6 @@ public class DockerJudgeSandbox : IJudgeSandbox
         return fallback;
     }
 
-    private static void TryKill(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch
-        {
-        }
-    }
-
     private static void TryDeleteDirectory(string directory)
     {
         try
@@ -523,10 +533,4 @@ public class DockerJudgeSandbox : IJudgeSandbox
         }
     }
 
-    internal sealed record DockerCommandResult(
-        int? ExitCode,
-        string StandardOutput,
-        string StandardError,
-        int ElapsedMs,
-        bool TimedOut);
 }

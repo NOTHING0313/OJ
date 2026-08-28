@@ -120,7 +120,7 @@ public class JudgeCompileAssetTests : IDisposable
     [Fact]
     public void CompileError_ThatReferencesHiddenAsset_IsSanitized()
     {
-        var result = new DockerJudgeSandbox.DockerCommandResult(
+        var result = new DockerCommandResult(
             ExitCode: 1,
             StandardOutput: string.Empty,
             StandardError: "/workspace/Geometry.cs(1,1): error CS1002: ; expected",
@@ -137,7 +137,7 @@ public class JudgeCompileAssetTests : IDisposable
     [Fact]
     public void CompileError_FromUserSource_PreservesUsefulDiagnostic()
     {
-        var result = new DockerJudgeSandbox.DockerCommandResult(
+        var result = new DockerCommandResult(
             ExitCode: 1,
             StandardOutput: string.Empty,
             StandardError: "/workspace/main.cpp:12:5: error: expected ';'",
@@ -156,7 +156,7 @@ public class JudgeCompileAssetTests : IDisposable
     {
         const string storedFileName = "4e1f9d43f1414f499203f904006ad397.cs";
         const string secretLine = "SECRET_SOURCE_LINE";
-        var result = new DockerJudgeSandbox.DockerCommandResult(
+        var result = new DockerCommandResult(
             ExitCode: 1,
             StandardOutput: string.Empty,
             StandardError: $"/var/lib/onlinejudge/judge-assets/problem/csharp/{storedFileName}: GeometrySecret.cs: {secretLine}",
