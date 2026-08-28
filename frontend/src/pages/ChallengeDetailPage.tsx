@@ -336,6 +336,11 @@ export function ChallengeDetailPage() {
                     <span>{difficultyNames[selectedTask.difficulty]} · {selectedTask.taskType === 1 ? "算法题" : "文件题"}</span>
                   </div>
                 </div>
+                {selectedTask.description.trim() && (
+                  <div className="selected-task-description-v8">
+                    <MarkdownRenderer value={selectedTask.description} />
+                  </div>
+                )}
                 <div className="selected-task-facts selected-task-facts-v8">
                   <div><span>得分</span><strong>{selectedTask.earnedScore} / {selectedTask.score}</strong></div>
                   <div>

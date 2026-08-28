@@ -165,24 +165,18 @@ export function ProblemDetailPage() {
   return (
     <section className="page-section two-column problem-detail-layout ui-v2-page problem-detail-v2-page">
       <article className="problem-content problem-content-v2">
-        <div className="page-header compact ui-v2-page-header">
-          <div>
+        <div className="page-header compact ui-v2-page-header problem-detail-header-v3">
+          <div className="problem-title-block-v3">
             <p className="eyebrow">PROBLEM</p>
             <h1>{problem.title}</h1>
-            <div className="button-row">
-              <span>{problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {problem.totalScore} 分</span>
+            <div className="problem-meta-row-v3">
+              <span className="problem-meta-summary-v3">{problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {problem.totalScore} 分</span>
               {explicitLanguageTags.map((tagLanguage) => (
                 <span className="context-chip" key={tagLanguage}>{getProblemLanguageTag(tagLanguage)}</span>
               ))}
             </div>
           </div>
-          <div className="button-row">
-            {challengeId && (
-              <Link className="button" to={`/challenges/${challengeId}`}>
-                返回挑战棋盘
-              </Link>
-            )}
-            {taskId && <span className="context-chip">Challenge Task</span>}
+          <div className="problem-header-actions-v3">
             {isAuthenticated && (
               <Link className="button" to={`/submissions/my?problemId=${problem.id}`}>
                 我的提交
@@ -283,7 +277,14 @@ export function ProblemDetailPage() {
       </article>
 
       <aside className="submit-panel submit-panel-v2">
-        <h2>提交代码</h2>
+        <div className="submit-panel-heading-v3">
+          <h2>提交代码</h2>
+          {challengeId && (
+            <Link className="button" to={`/challenges/${challengeId}`}>
+              返回挑战棋盘
+            </Link>
+          )}
+        </div>
         <form onSubmit={handleSubmit} className="form-stack">
           <label>
             语言
