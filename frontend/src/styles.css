@@ -1,13 +1,30 @@
 :root {
+  --oj-page-bg: #050608;
   --oj-panel-bg: #11141a;
+  --oj-elevated-bg: color-mix(in srgb, var(--oj-panel-bg) 88%, white 12%);
   --oj-panel-border: rgba(255, 255, 255, 0.08);
+  --oj-border-soft: color-mix(in srgb, var(--oj-panel-border) 72%, transparent);
   --oj-nav-bg: rgba(5, 6, 8, 0.88);
   --oj-input-bg: #0b0d12;
+  --oj-code-bg: color-mix(in srgb, var(--oj-input-bg) 90%, black 10%);
+  --oj-code-text: #dce2ef;
   --oj-panel-backdrop-filter: none;
   --oj-text-primary: #f2f4f8;
   --oj-text-secondary: #aeb6ca;
   --oj-text-muted: #7f8798;
   --oj-accent: #6e7bff;
+  --oj-accent-hover: color-mix(in srgb, var(--oj-accent) 72%, white 28%);
+  --oj-accent-soft: color-mix(in srgb, var(--oj-accent) 14%, transparent);
+  --oj-hover-bg: color-mix(in srgb, var(--oj-accent) 6%, transparent);
+  --oj-success: #86efac;
+  --oj-success-soft: rgba(34, 197, 94, 0.11);
+  --oj-warning: #f1bd75;
+  --oj-warning-soft: rgba(245, 158, 11, 0.1);
+  --oj-danger: #f3a8a8;
+  --oj-danger-soft: rgba(239, 68, 68, 0.1);
+  --oj-overlay-bg: rgba(2, 6, 18, 0.76);
+  --oj-table-header-bg: color-mix(in srgb, var(--oj-elevated-bg) 82%, transparent);
+  --oj-rank-accent: var(--oj-accent);
   --oj-nav-blur: 18px;
   --oj-nav-text: #d9dee9;
   --oj-nav-active: #f2f4f8;
@@ -53,6 +70,13 @@ body {
 }
 
 .site-theme-content {
+  --oj-elevated-bg: color-mix(in srgb, var(--oj-panel-bg) 88%, white 12%);
+  --oj-border-soft: color-mix(in srgb, var(--oj-panel-border) 72%, transparent);
+  --oj-accent-hover: color-mix(in srgb, var(--oj-accent) 72%, white 28%);
+  --oj-accent-soft: color-mix(in srgb, var(--oj-accent) 14%, transparent);
+  --oj-hover-bg: color-mix(in srgb, var(--oj-accent) 6%, transparent);
+  --oj-table-header-bg: color-mix(in srgb, var(--oj-elevated-bg) 82%, transparent);
+  --oj-rank-accent: var(--oj-accent);
   position: relative;
   z-index: 1;
   min-height: 100vh;
@@ -11651,5 +11675,540 @@ h2 {
   .team-list-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+/* Global appearance semantic coverage */
+.site-theme-content :is(
+  .auth-card,
+  .auth-v2-card,
+  .auth-studio-card,
+  .admin-panel,
+  .content-block,
+  .detail-card,
+  .form-stack,
+  .problem-content,
+  .submit-panel,
+  .table-wrap,
+  .challenge-card,
+  .challenge-side-panel,
+  .task-meta-panel,
+  .task-statement,
+  .submission-status-card,
+  .leaderboard-overview-card,
+  .leaderboard-v2-feature-card,
+  .leaderboard-v2-table-wrap,
+  .leaderboard-v2-challenge-card,
+  .rank-history-card,
+  .challenge-progress-card,
+  .workspace-section,
+  .team-chat-workspace,
+  .team-workspace-sidebar,
+  .help-center-layout,
+  .help-editor-pane,
+  .account-overview-card-v3,
+  .account-card
+) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-panel-bg);
+  color: var(--oj-text-primary);
+  backdrop-filter: var(--oj-panel-backdrop-filter);
+}
+
+.site-theme-content :is(input, select, textarea) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-input-bg);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content :is(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+  accent-color: var(--oj-accent);
+}
+
+.site-theme-content :is(input, select, textarea):focus {
+  border-color: var(--oj-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--oj-accent-soft);
+}
+
+.site-theme-content :is(input, textarea)::placeholder {
+  color: var(--oj-text-muted);
+}
+
+.site-theme-content .button {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-elevated-bg);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--oj-accent) 42%, var(--oj-panel-border));
+  background: var(--oj-hover-bg);
+}
+
+.site-theme-content .button.primary {
+  border-color: var(--oj-accent);
+  background: var(--oj-accent);
+  color: white;
+}
+
+.site-theme-content .button.primary:hover:not(:disabled) {
+  border-color: var(--oj-accent-hover);
+  background: var(--oj-accent-hover);
+}
+
+.site-theme-content .button.danger {
+  border-color: color-mix(in srgb, var(--oj-danger) 32%, transparent);
+  background: var(--oj-danger-soft);
+  color: var(--oj-danger);
+}
+
+.site-theme-content .button.danger:hover:not(:disabled) {
+  border-color: var(--oj-danger);
+  background: color-mix(in srgb, var(--oj-danger) 16%, transparent);
+}
+
+.site-theme-content :is(.table-link, .text-action, .table-actions a, .table-actions button) {
+  color: var(--oj-accent-hover);
+}
+
+.site-theme-content :is(.table-link, .text-action, .table-actions a, .table-actions button):hover {
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content table th {
+  border-bottom-color: var(--oj-panel-border);
+  background: var(--oj-table-header-bg);
+  color: var(--oj-text-muted);
+}
+
+.site-theme-content table td {
+  border-bottom-color: var(--oj-border-soft);
+  color: var(--oj-text-secondary);
+}
+
+.site-theme-content table tbody tr:hover {
+  background: var(--oj-hover-bg);
+}
+
+.site-theme-content :is(.state-line, .empty-state, .compact-empty) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-panel-bg);
+  color: var(--oj-text-secondary);
+}
+
+.site-theme-content :is(.alert.error, .team-create-error) {
+  border-color: color-mix(in srgb, var(--oj-danger) 34%, transparent);
+  background: var(--oj-danger-soft);
+  color: var(--oj-danger);
+}
+
+.site-theme-content :is(.quiet-note.success, .leaderboard-privacy-saved) {
+  color: var(--oj-success);
+}
+
+.site-theme-content :is(.nav-links a, .topbar-user-name) {
+  color: var(--oj-nav-text);
+}
+
+.site-theme-content .nav-links a:hover,
+.site-theme-content .nav-links a.active {
+  background: var(--oj-accent-soft);
+  color: var(--oj-nav-active);
+}
+
+.site-theme-content :is(.eyebrow, .problem-list-title, .submission-problem-link, .submission-view-link) {
+  color: var(--oj-accent-hover);
+}
+
+.site-theme-content :is(.problem-list-title, .submission-problem-link, .submission-view-link):hover {
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content :is(.problem-list-table, .submission-table, .management-table, .leaderboard-v2-table) th {
+  background: var(--oj-table-header-bg);
+  color: var(--oj-text-muted);
+}
+
+.site-theme-content :is(.problem-list-table, .submission-table, .management-table, .leaderboard-v2-table) td {
+  color: var(--oj-text-secondary);
+}
+
+.site-theme-content :is(.problem-meta-badge.time, .problem-meta-badge.published, .submission-status-accepted, .season-row-status.enabled, .help-status.published, .team-sync-status.status-2) {
+  border-color: color-mix(in srgb, var(--oj-success) 28%, transparent);
+  background: var(--oj-success-soft);
+  color: var(--oj-success);
+}
+
+.site-theme-content :is(.submission-status-limit, .submission-status-compile-error, .problem-meta-badge.unpublished) {
+  border-color: color-mix(in srgb, var(--oj-warning) 28%, transparent);
+  background: var(--oj-warning-soft);
+  color: var(--oj-warning);
+}
+
+.site-theme-content :is(.submission-status-wrong-answer, .submission-status-runtime-error, .submission-status-system-error, .team-sync-status.status-3, .leaderboard-privacy-error, .team-field-error) {
+  border-color: color-mix(in srgb, var(--oj-danger) 28%, transparent);
+  background: var(--oj-danger-soft);
+  color: var(--oj-danger);
+}
+
+.site-theme-content :is(.problem-meta-badge.memory, .submission-status-judging, .leaderboard-live-badge, .challenge-admin-badge-v8, .challenge-admin-status-v8) {
+  border-color: color-mix(in srgb, var(--oj-accent) 28%, transparent);
+  background: var(--oj-accent-soft);
+  color: var(--oj-accent-hover);
+}
+
+.site-theme-content :is(.submission-status-pending, .season-row-status, .help-status.draft, .team-sync-status) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-elevated-bg);
+  color: var(--oj-text-secondary);
+}
+
+/* Team workspace and Git surfaces */
+.site-theme-content .team-workspace-tabs button:hover,
+.site-theme-content .team-workspace-tabs button.active {
+  border-bottom-color: var(--oj-accent);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .team-announcements > button {
+  border-color: color-mix(in srgb, var(--oj-accent) 24%, var(--oj-panel-border));
+  background: var(--oj-accent-soft);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .team-announcements b {
+  color: var(--oj-success);
+}
+
+.site-theme-content :is(.team-load-history, .team-new-message-indicator) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-elevated-bg);
+  color: var(--oj-text-secondary);
+}
+
+.site-theme-content .team-chat-message.other .team-chat-message-row p {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-elevated-bg);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .team-chat-message.mine .team-chat-message-row p {
+  border-color: color-mix(in srgb, var(--oj-accent) 28%, var(--oj-panel-border));
+  background: var(--oj-accent-soft);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .team-system-message {
+  color: var(--oj-text-muted);
+}
+
+.site-theme-content .team-system-message button,
+.site-theme-content .team-commit-history code {
+  color: var(--oj-accent-hover);
+}
+
+.site-theme-content :is(.team-chat-avatar.fallback, .team-member-avatar, .team-invitation-avatar) {
+  background: var(--oj-accent-soft);
+  color: var(--oj-accent-hover);
+}
+
+.site-theme-content .team-chat-composer {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-panel-bg);
+}
+
+.site-theme-content .team-chat-composer span.near-limit {
+  color: var(--oj-warning);
+}
+
+.site-theme-content :is(.team-danger-zone summary, .team-danger-zone p) {
+  color: var(--oj-danger);
+}
+
+/* Leaderboard and season surfaces */
+.site-theme-content :is(
+  .leaderboard-overview-card,
+  .leaderboard-v2-feature-card,
+  .leaderboard-mini-metrics,
+  .leaderboard-v2-table-wrap,
+  .leaderboard-v2-challenge-card,
+  .leaderboard-benchmark-card,
+  .season-overview,
+  .team-audit-summary
+) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-panel-bg);
+}
+
+.site-theme-content :is(.leaderboard-overview-card, .leaderboard-preview-row, .leaderboard-challenge-preview-row, .leaderboard-v2-table tbody tr):hover {
+  background: var(--oj-hover-bg);
+}
+
+.site-theme-content :is(.leaderboard-score, .leaderboard-preview-score strong, .leaderboard-challenge-preview-meta strong, .leaderboard-user-link small, .season-score-breakdown summary) {
+  color: var(--oj-rank-accent);
+}
+
+.site-theme-content :is(.leaderboard-rank.top-one, .leaderboard-rank.top-two, .leaderboard-rank.top-three) {
+  border-color: color-mix(in srgb, var(--oj-rank-accent) 36%, var(--oj-panel-border));
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .season-status {
+  border-color: color-mix(in srgb, var(--oj-accent) 36%, var(--oj-panel-border));
+  background: var(--oj-accent-soft);
+  color: var(--oj-accent-hover);
+}
+
+.site-theme-content :is(.season-status.status-2, .season-status.status-4) {
+  border-color: color-mix(in srgb, var(--oj-success) 32%, transparent);
+  background: var(--oj-success-soft);
+  color: var(--oj-success);
+}
+
+.site-theme-content .season-rank-chart svg {
+  background: var(--oj-code-bg);
+}
+
+.site-theme-content .season-rank-chart polyline {
+  stroke: var(--oj-rank-accent);
+}
+
+.site-theme-content :is(.season-editor-modal, .benchmark-editor-modal) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-elevated-bg);
+  color: var(--oj-text-primary);
+}
+
+.season-editor-backdrop {
+  background: var(--oj-overlay-bg);
+}
+
+.site-theme-content :is(.leaderboard-season-problem-list > div, .season-problem-links, .segmented-control) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-panel-bg);
+}
+
+.site-theme-content .segmented-control button.active {
+  background: var(--oj-accent-soft);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .season-setting-row input[role="switch"],
+.site-theme-content .leaderboard-privacy-toggle input[role="switch"] {
+  accent-color: var(--oj-accent);
+}
+
+/* Account, Help and Markdown surfaces */
+.site-theme-content :is(.account-overview-card-v3, .account-settings-v3-page .account-card, .leaderboard-privacy-setting) {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-panel-bg);
+}
+
+.site-theme-content .site-settings-switch.active {
+  border-color: var(--oj-accent);
+  background: var(--oj-accent-soft);
+}
+
+.site-theme-content .site-settings-switch.active > span {
+  background: var(--oj-accent);
+}
+
+.site-theme-content .theme-choice-card.active {
+  border-color: color-mix(in srgb, var(--oj-accent) 48%, var(--oj-panel-border));
+  background: var(--oj-accent-soft);
+  box-shadow: inset 3px 0 0 var(--oj-accent);
+}
+
+.site-theme-content .theme-choice-card input {
+  accent-color: var(--oj-accent);
+}
+
+.site-theme-content .help-center-layout {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-panel-bg);
+}
+
+.site-theme-content .help-directory {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-elevated-bg);
+}
+
+.site-theme-content .help-directory a:hover,
+.site-theme-content .help-directory a.active {
+  border-color: color-mix(in srgb, var(--oj-accent) 28%, var(--oj-panel-border));
+  background: var(--oj-accent-soft);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .help-markdown {
+  color: var(--oj-text-secondary);
+}
+
+.site-theme-content .help-markdown :is(h1, h2, h3) {
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content .help-markdown a {
+  color: var(--oj-accent-hover);
+}
+
+.site-theme-content .help-markdown blockquote {
+  border-left-color: var(--oj-accent);
+  background: var(--oj-accent-soft);
+  color: var(--oj-text-muted);
+}
+
+.site-theme-content .help-markdown :not(pre) > code {
+  background: var(--oj-elevated-bg);
+  color: var(--oj-code-text);
+}
+
+.site-theme-content .help-markdown pre {
+  border-color: var(--oj-panel-border);
+  background: var(--oj-code-bg);
+  color: var(--oj-code-text);
+}
+
+.site-theme-content .help-markdown :is(th, td),
+.site-theme-content .help-markdown hr {
+  border-color: var(--oj-panel-border);
+}
+
+.site-theme-content .help-markdown th,
+.site-theme-content .help-document-table th {
+  background: var(--oj-table-header-bg);
+  color: var(--oj-text-primary);
+}
+
+.site-theme-content :is(.help-document-table-wrap, .help-editor-split, .help-editor-pane + .help-editor-pane) {
+  border-color: var(--oj-panel-border);
+}
+
+.site-theme-content .help-editor-pane {
+  background: var(--oj-panel-bg);
+}
+
+/* Appearance settings component gallery */
+.appearance-token-preview {
+  --oj-elevated-bg: color-mix(in srgb, var(--oj-panel-bg) 88%, white 12%);
+  --oj-border-soft: color-mix(in srgb, var(--oj-panel-border) 72%, transparent);
+  --oj-accent-hover: color-mix(in srgb, var(--oj-accent) 72%, white 28%);
+  --oj-accent-soft: color-mix(in srgb, var(--oj-accent) 14%, transparent);
+  --oj-table-header-bg: color-mix(in srgb, var(--oj-elevated-bg) 82%, transparent);
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 12px;
+  background: var(--oj-panel-bg);
+  color: var(--oj-text-primary);
+}
+
+.appearance-token-preview > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.appearance-token-preview > header span,
+.appearance-token-preview label {
+  color: var(--oj-text-muted);
+  font-size: 0.76rem;
+}
+
+.appearance-token-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.appearance-token-preview-card,
+.appearance-token-preview-table,
+.appearance-token-preview-code {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 9px;
+  background: var(--oj-elevated-bg);
+}
+
+.appearance-token-preview-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.appearance-token-preview input {
+  margin-top: 5px;
+}
+
+.appearance-token-preview a {
+  color: var(--oj-accent-hover);
+  text-decoration: underline;
+}
+
+.appearance-token-preview-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--oj-success-soft);
+  color: var(--oj-success);
+  font-size: 0.72rem;
+}
+
+.appearance-token-preview-toggle {
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid var(--oj-accent);
+  border-radius: 999px;
+  background: var(--oj-accent-soft);
+}
+
+.appearance-token-preview-toggle > span {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--oj-accent);
+}
+
+.appearance-token-preview-table {
+  display: grid;
+  gap: 0;
+}
+
+.appearance-token-preview-table > span {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--oj-border-soft);
+  color: var(--oj-text-secondary);
+  font-size: 0.76rem;
+}
+
+.appearance-token-preview-table > span:first-child {
+  background: var(--oj-table-header-bg);
+  color: var(--oj-text-muted);
+}
+
+.appearance-token-preview-code {
+  overflow-x: auto;
+  background: var(--oj-code-bg);
+  color: var(--oj-code-text);
+  font: 0.76rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.appearance-contrast-note {
+  margin: 0;
+  color: var(--oj-warning);
+  font-size: 0.76rem;
+}
+
+@media (max-width: 760px) {
+  .appearance-token-preview-grid {
+    grid-template-columns: 1fr;
   }
 }

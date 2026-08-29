@@ -445,6 +445,16 @@ function BackgroundPreview({
     borderColor: `rgba(255, 255, 255, ${theme.panelBorderOpacity})`,
     backdropFilter: `blur(${theme.panelBlur}px)`
   };
+  const tokenPreviewStyle = {
+    "--oj-panel-bg": hexToRgba(theme.panelColor, theme.panelOpacity),
+    "--oj-input-bg": hexToRgba(theme.panelColor, Math.min(theme.panelOpacity + 0.08, 0.98)),
+    "--oj-panel-border": `rgba(255, 255, 255, ${theme.panelBorderOpacity})`,
+    "--oj-text-primary": theme.textPrimaryColor,
+    "--oj-text-secondary": theme.textSecondaryColor,
+    "--oj-text-muted": theme.textMutedColor,
+    "--oj-accent": theme.accentColor,
+    "--oj-font-family": resolvePreviewFont(theme.fontPreset)
+  } as CSSProperties;
   const pageLabel = sitePageOptions.find((option) => option.key === pageKey)?.label ?? "页面";
 
   return (
@@ -466,6 +476,42 @@ function BackgroundPreview({
           </main>
         </div>
       </div>
+
+      <AppearanceTokenPreview theme={theme} style={tokenPreviewStyle} />
+    </section>
+  );
+}
+
+function AppearanceTokenPreview({ theme, style }: { theme: SiteAppearanceTheme; style: CSSProperties }) {
+  const warnings = getContrastWarnings(theme);
+
+  return (
+    <section className="appearance-token-preview" style={style} aria-label="通用组件主题预览">
+      <header>
+        <strong>通用组件</strong>
+        <span>颜色草稿即时传播</span>
+      </header>
+      <div className="appearance-token-preview-grid">
+        <div className="appearance-token-preview-card">
+          <div className="appearance-token-preview-controls">
+            <button className="button primary" type="button">Button</button>
+            <span className="appearance-token-preview-badge">Badge</span>
+            <button className="appearance-token-preview-toggle" type="button" role="switch" aria-checked="true" aria-label="Toggle preview"><span /></button>
+            <a href="#appearance-preview" onClick={(event) => event.preventDefault()}>Link</a>
+          </div>
+          <label>Input<input value="Input" readOnly aria-label="Input preview" /></label>
+        </div>
+        <div className="appearance-token-preview-card">
+          <strong>Card</strong>
+          <p style={{ color: "var(--oj-text-secondary)" }}>Surface / Border / Text</p>
+        </div>
+        <div className="appearance-token-preview-table" role="table" aria-label="Table preview">
+          <span role="columnheader">Table</span>
+          <span role="cell">Row content</span>
+        </div>
+        <pre className="appearance-token-preview-code"><code>const themed = true;</code></pre>
+      </div>
+      {warnings.length > 0 && <p className="appearance-contrast-note" role="status">对比度提示：{warnings.join("；")}</p>}
     </section>
   );
 }
@@ -675,6 +721,27 @@ function hexToRgba(hex: string, opacity: number) {
   const green = Number.parseInt(normalized.slice(2, 4), 16);
   const blue = Number.parseInt(normalized.slice(4, 6), 16);
   return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+function getContrastWarnings(theme: SiteAppearanceTheme) {
+  const warnings: string[] = [];
+  if (contrastRatio(theme.textPrimaryColor, theme.panelColor) < 4.5) warnings.push("主文字与面板建议至少 4.5:1");
+  if (contrastRatio(theme.textSecondaryColor, theme.panelColor) < 3) warnings.push("次级文字与面板建议至少 3:1");
+  if (contrastRatio("#FFFFFF", theme.accentColor) < 3) warnings.push("强调色按钮与白字建议至少 3:1");
+  return warnings;
+}
+
+function contrastRatio(first: string, second: string) {
+  const firstLuminance = relativeLuminance(first);
+  const secondLuminance = relativeLuminance(second);
+  return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05);
+}
+
+function relativeLuminance(hex: string) {
+  const normalized = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.slice(1) : "000000";
+  const channels = [0, 2, 4].map((offset) => Number.parseInt(normalized.slice(offset, offset + 2), 16) / 255);
+  const [red, green, blue] = channels.map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
 }
 
 function resolvePreviewFont(preset: SiteAppearanceTheme["fontPreset"]) {
