@@ -43,6 +43,8 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
 
+    public DbSet<HelpDocument> HelpDocuments => Set<HelpDocument>();
+
     public DbSet<UserAppearanceSetting> UserAppearanceSettings => Set<UserAppearanceSetting>();
 
     public DbSet<Team> Teams => Set<Team>();

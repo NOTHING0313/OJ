@@ -39,6 +39,7 @@ export function AppLayout() {
           {(canManageContent(role) || hasPublicLeaderboard) && <NavLink to="/leaderboards">榜单</NavLink>}
           {isAuthenticated && <NavLink to="/teams">战队</NavLink>}
           {isAuthenticated && <NavLink to="/submissions/my">我的提交</NavLink>}
+          {isAuthenticated && <NavLink to="/help">帮助</NavLink>}
           {isAuthenticated && <NavLink to="/profile/me">个人中心</NavLink>}
           {canManageContent(role) && (
             <details className="management-menu">

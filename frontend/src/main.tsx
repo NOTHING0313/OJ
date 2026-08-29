@@ -44,6 +44,9 @@ import { SubmissionDetailPage } from "./pages/SubmissionDetailPage";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { TeamPage } from "./pages/TeamPage";
 import { TeamProjectHistoryPage } from "./pages/TeamProjectHistoryPage";
+import { HelpCenterPage } from "./pages/HelpCenterPage";
+import { HelpDocumentManagePage } from "./pages/HelpDocumentManagePage";
+import { HelpDocumentEditorPage } from "./pages/HelpDocumentEditorPage";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -72,6 +75,11 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/leaderboards/history/:seasonId" element={<ProtectedRoute allowedRoles={[2, 3]}><LeaderboardSeasonHistoryDetailPage /></ProtectedRoute>} />
             <Route path="/teams" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
             <Route path="/teams/:teamId/projects/:projectId/history" element={<ProtectedRoute><TeamProjectHistoryPage /></ProtectedRoute>} />
+            <Route path="/help" element={<ProtectedRoute><HelpCenterPage /></ProtectedRoute>} />
+            <Route path="/help/:slug" element={<ProtectedRoute><HelpCenterPage /></ProtectedRoute>} />
+            <Route path="/help/manage" element={<ProtectedRoute allowedRoles={[2, 3]}><HelpDocumentManagePage /></ProtectedRoute>} />
+            <Route path="/help/manage/new" element={<ProtectedRoute allowedRoles={[2, 3]}><HelpDocumentEditorPage /></ProtectedRoute>} />
+            <Route path="/help/manage/:id" element={<ProtectedRoute allowedRoles={[2, 3]}><HelpDocumentEditorPage /></ProtectedRoute>} />
             <Route
               path="/challenges/:challengeId/admin"
               element={(

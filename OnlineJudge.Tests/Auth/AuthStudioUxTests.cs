@@ -17,33 +17,30 @@ public class AuthStudioUxTests
     }
 
     [Fact]
-    public void SharedLayoutOwnsStudioIdentityAndSafeSeasonSummary()
+    public void SharedLayoutOwnsStudioIdentityWithoutBusinessStatusRequests()
     {
         var login = Read("frontend", "src", "pages", "LoginPage.tsx");
         var register = Read("frontend", "src", "pages", "RegisterPage.tsx");
         var layout = Read("frontend", "src", "components", "auth", "AuthStudioLayout.tsx");
-        var api = Read("frontend", "src", "api", "leaderboardsApi.ts");
 
         Assert.Contains("<AuthStudioLayout", login, StringComparison.Ordinal);
         Assert.Contains("<AuthStudioLayout", register, StringComparison.Ordinal);
-        Assert.Contains("getCurrentSeasonPublicSummary", layout, StringComparison.Ordinal);
         Assert.Contains("<AuthParticleField />", layout, StringComparison.Ordinal);
-        Assert.Contains("SeasonRefreshIntervalMs = 45_000", layout, StringComparison.Ordinal);
-        Assert.Contains("/api/leaderboard-seasons/current/summary", api, StringComparison.Ordinal);
+        Assert.DoesNotContain("getCurrentSeasonPublicSummary", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("SeasonRefreshIntervalMs", layout, StringComparison.Ordinal);
         Assert.DoesNotContain("getProblems", layout, StringComparison.Ordinal);
         Assert.DoesNotContain("getChallenges", layout, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void AllPublicSeasonStatesHaveExplicitPresentation()
+    public void AuthLayoutDoesNotRenderSeasonPresentation()
     {
         var layout = Read("frontend", "src", "components", "auth", "AuthStudioLayout.tsx");
 
-        Assert.Contains("STARTS IN", layout, StringComparison.Ordinal);
-        Assert.Contains("ACTIVE", layout, StringComparison.Ordinal);
-        Assert.Contains("RESULTS PUBLIC", layout, StringComparison.Ordinal);
-        Assert.DoesNotContain("SYSTEM STANDBY", layout, StringComparison.Ordinal);
-        Assert.Contains("season && presentation", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("STARTS IN", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("ACTIVE", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("RESULTS PUBLIC", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("auth-studio-season", layout, StringComparison.Ordinal);
     }
 
     [Fact]

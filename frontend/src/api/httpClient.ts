@@ -1,5 +1,14 @@
 export const baseUrl = "";
 
+const apiBusinessMessages: Record<string, string> = {
+  "Slug already exists.": "Slug 已被使用。"
+};
+
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  return apiBusinessMessages[error.message.trim()] ?? fallback;
+}
+
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem("accessToken");
   const headers = new Headers(options.headers);

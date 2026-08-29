@@ -6409,33 +6409,6 @@ h2 {
   opacity: 0.58;
 }
 
-.auth-studio-season {
-  display: grid;
-  gap: 3px;
-  margin-top: 22px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(148, 163, 184, 0.09);
-}
-
-.auth-studio-season span {
-  overflow: hidden;
-  color: var(--oj-text-secondary);
-  font-size: 11px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.auth-studio-season strong {
-  color: var(--oj-text-muted);
-  font: 600 10px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
-  letter-spacing: 0.08em;
-}
-
-.auth-studio-season--active strong {
-  color: color-mix(in srgb, var(--oj-accent) 72%, var(--oj-text-secondary));
-}
-
 .auth-studio-particle-field {
   position: absolute;
   inset: 0;
@@ -7053,6 +7026,291 @@ h2 {
   .workspace-section-header > div { display: grid; gap: 3px; }
   .season-setting-divider { display: grid; }
   .management-menu-panel { left: auto; right: 0; transform: none; }
+}
+
+/* Help center */
+.help-center-page,
+.help-manage-page,
+.help-editor-page {
+  width: min(1180px, 100%);
+  margin-inline: auto;
+}
+
+.help-center-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.help-center-header h1,
+.help-center-header p {
+  margin-bottom: 0;
+}
+
+.help-header-actions,
+.help-editor-actions,
+.help-editor-toolbar,
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.help-center-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 560px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  background: rgba(8, 13, 26, 0.72);
+}
+
+.help-directory {
+  padding: 22px 14px;
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(20, 29, 47, 0.54);
+}
+
+.help-directory > strong {
+  display: block;
+  padding: 0 10px 12px;
+  color: var(--oj-text-primary);
+  font-size: 0.84rem;
+}
+
+.help-directory nav {
+  display: grid;
+  gap: 5px;
+}
+
+.help-directory a {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--oj-text-secondary);
+  text-decoration: none;
+}
+
+.help-directory a:hover,
+.help-directory a.active {
+  border-color: rgba(110, 123, 255, 0.2);
+  background: rgba(110, 123, 255, 0.11);
+  color: var(--oj-text-primary);
+}
+
+.help-directory small {
+  overflow: hidden;
+  color: var(--oj-text-muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.help-document-panel {
+  min-width: 0;
+  padding: 34px clamp(24px, 5vw, 60px) 56px;
+}
+
+.help-document-panel > header,
+.help-markdown {
+  width: min(900px, 100%);
+  margin-inline: auto;
+}
+
+.help-document-panel > header {
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.help-document-panel > header h1 {
+  margin: 0 0 8px;
+}
+
+.help-document-panel > header p {
+  margin: 0;
+  color: var(--oj-text-secondary);
+}
+
+.help-markdown {
+  color: var(--oj-text-secondary);
+  line-height: 1.78;
+}
+
+.help-markdown h1,
+.help-markdown h2,
+.help-markdown h3 {
+  scroll-margin-top: 90px;
+  color: var(--oj-text-primary);
+}
+
+.help-markdown h1 { margin-top: 1.6em; font-size: 1.8rem; }
+.help-markdown h2 { margin-top: 1.6em; font-size: 1.35rem; }
+.help-markdown h3 { margin-top: 1.45em; font-size: 1.08rem; }
+.help-markdown a { color: #aeb8ff; }
+.help-markdown blockquote { margin-inline: 0; padding: 2px 16px; border-left: 3px solid rgba(110, 123, 255, 0.58); color: var(--oj-text-muted); }
+.help-markdown code { border-radius: 5px; background: rgba(30, 41, 59, 0.72); color: #d8ddff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.help-markdown :not(pre) > code { padding: 2px 5px; }
+.help-markdown pre { max-width: 100%; overflow-x: auto; padding: 16px; border: 1px solid rgba(148, 163, 184, 0.12); border-radius: 10px; background: #090d16; }
+.help-markdown pre code { background: transparent; }
+.help-markdown table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; }
+.help-markdown th,
+.help-markdown td { padding: 9px 12px; border: 1px solid rgba(148, 163, 184, 0.16); text-align: left; white-space: nowrap; }
+.help-markdown th { background: rgba(30, 41, 59, 0.58); color: var(--oj-text-primary); }
+.help-markdown img { max-width: 100%; height: auto; }
+.help-markdown hr { border: 0; border-top: 1px solid rgba(148, 163, 184, 0.16); }
+
+.help-empty-state {
+  min-height: 340px;
+}
+
+.help-document-table-wrap {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+}
+
+.help-document-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.help-document-table th,
+.help-document-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  color: var(--oj-text-secondary);
+  text-align: left;
+}
+
+.help-document-table th {
+  background: rgba(30, 41, 59, 0.58);
+  color: var(--oj-text-muted);
+  font-size: 0.74rem;
+}
+
+.help-document-table td:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.help-document-table td strong { color: var(--oj-text-primary); }
+.help-document-table td small { color: var(--oj-text-muted); }
+.table-actions button { padding: 0; border: 0; background: none; color: #aeb8ff; }
+.table-actions .danger-link { color: #f3a8a8; }
+
+.help-status {
+  display: inline-flex;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+
+.help-status.published { background: rgba(34, 197, 94, 0.12); color: #86efac; }
+.help-status.draft { background: rgba(100, 116, 139, 0.18); color: #cbd5e1; }
+
+.help-editor-page form {
+  display: grid;
+  gap: 16px;
+}
+
+.help-editor-meta {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1.4fr 130px;
+  gap: 12px;
+}
+
+.help-editor-meta label,
+.help-editor-pane {
+  display: grid;
+  gap: 7px;
+  color: var(--oj-text-secondary);
+  font-size: 0.78rem;
+}
+
+.help-editor-toolbar {
+  justify-content: flex-end;
+}
+
+.help-editor-tabs {
+  display: none;
+}
+
+.help-import-button {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.help-import-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.help-editor-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 600px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+}
+
+.help-editor-pane {
+  min-width: 0;
+  padding: 14px;
+  background: rgba(8, 13, 26, 0.72);
+}
+
+.help-editor-pane + .help-editor-pane {
+  border-left: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.help-editor-pane textarea {
+  width: 100%;
+  min-height: 540px;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  color: var(--oj-text-primary);
+  font: 0.88rem/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+  outline: none;
+}
+
+.preview-pane {
+  overflow: auto;
+}
+
+.help-editor-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .help-editor-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .help-center-header { align-items: flex-start; flex-direction: column; }
+  .help-center-layout { grid-template-columns: 1fr; }
+  .help-directory { overflow-x: auto; border-right: 0; border-bottom: 1px solid rgba(148, 163, 184, 0.12); }
+  .help-directory nav { display: flex; }
+  .help-directory a { min-width: 150px; }
+  .help-document-panel { padding: 24px 18px 40px; }
+  .help-editor-meta { grid-template-columns: 1fr; }
+  .help-editor-tabs { display: flex; margin-right: auto; }
+  .help-editor-tabs button { border: 0; border-bottom: 2px solid transparent; background: none; color: var(--oj-text-muted); }
+  .help-editor-tabs button.active { border-color: var(--oj-accent); color: var(--oj-text-primary); }
+  .help-editor-split { display: block; min-height: 520px; }
+  .help-editor-split .help-editor-pane { min-height: 520px; }
+  .help-editor-split.mode-edit .preview-pane,
+  .help-editor-split.mode-preview .edit-pane { display: none; }
+  .help-editor-pane + .help-editor-pane { border-left: 0; }
 }
 
 @media (max-width: 900px) {
