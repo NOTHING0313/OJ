@@ -101,13 +101,16 @@ public class AuthService(
         return result;
     }
 
-    public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default) =>
+        (await LoginWithOutcomeAsync(request, cancellationToken)).Result;
+
+    public async Task<LoginAttemptResult> LoginWithOutcomeAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         var account = request.Account.Trim();
 
         if (string.IsNullOrWhiteSpace(account) || string.IsNullOrWhiteSpace(request.Password))
         {
-            return Result<LoginResponse>.Failure("Account and Password are required.");
+            return new LoginAttemptResult(Result<LoginResponse>.Failure("Account and Password are required."), LoginFailureKind.Other);
         }
 
         var user = await dbContext.Users
@@ -115,22 +118,22 @@ public class AuthService(
 
         if (user is null)
         {
-            return Result<LoginResponse>.Failure("Invalid account or password.");
+            return new LoginAttemptResult(Result<LoginResponse>.Failure("Invalid account or password."), LoginFailureKind.Other);
         }
 
         if (user.IsDeleted)
         {
-            return Result<LoginResponse>.Failure("Account has been deleted.");
+            return new LoginAttemptResult(Result<LoginResponse>.Failure("Account has been deleted."), LoginFailureKind.Other);
         }
 
         if (user.IsBlacklisted)
         {
-            return Result<LoginResponse>.Failure("Account is blacklisted.");
+            return new LoginAttemptResult(Result<LoginResponse>.Failure("Account is blacklisted."), LoginFailureKind.Other);
         }
 
         if (!passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
         {
-            return Result<LoginResponse>.Failure("Invalid account or password.");
+            return new LoginAttemptResult(Result<LoginResponse>.Failure("Invalid account or password."), LoginFailureKind.InvalidPassword);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -139,11 +142,13 @@ public class AuthService(
         user.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return Result<LoginResponse>.Success(new LoginResponse
-        {
-            AccessToken = jwtTokenGenerator.Generate(user),
-            User = ToDto(user)
-        });
+        return new LoginAttemptResult(
+            Result<LoginResponse>.Success(new LoginResponse
+            {
+                AccessToken = jwtTokenGenerator.Generate(user),
+                User = ToDto(user)
+            }),
+            LoginFailureKind.None);
     }
 
     public async Task<Result> LogoutAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)

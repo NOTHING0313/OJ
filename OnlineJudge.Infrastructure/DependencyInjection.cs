@@ -80,6 +80,8 @@ public static class DependencyInjection
 
         var redisConnectionString = configuration["Redis:ConnectionString"] ?? "localhost:6379";
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+        services.AddSingleton<ILoginAbuseStore, RedisLoginAbuseStore>();
+        services.AddScoped<ILoginAbuseProtection, LoginAbuseProtection>();
 
         services.AddScoped<IProblemService, ProblemService>();
         services.AddScoped<IProblemJudgeAssetService, ProblemJudgeAssetService>();

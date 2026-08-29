@@ -14,6 +14,17 @@ public class SingleActiveSessionFrontendContractTests
     }
 
     [Fact]
+    public void ApiClient_HandlesRateLimitsWithoutTriggeringAuthenticationLogout()
+    {
+        var client = Read("frontend", "src", "api", "httpClient.ts");
+
+        Assert.Contains("retryAfterSeconds?: number", client, StringComparison.Ordinal);
+        Assert.Contains("error.status === 429", client, StringComparison.Ordinal);
+        Assert.Contains("请在 ${retryAfterSeconds} 秒后重试。", client, StringComparison.Ordinal);
+        Assert.DoesNotContain("response.status === 429 && error.errorCode?.startsWith(\"AUTH_\")", client, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AuthContext_ClearsOnceRedirectsOnceAndSynchronizesTabs()
     {
         var context = Read("frontend", "src", "auth", "AuthContext.tsx");

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Api.RateLimiting;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using OnlineJudge.Application.Challenges.Requests;
 using OnlineJudge.Application.Challenges.Services;
@@ -146,6 +147,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPut("{challengeId:guid}/file-submissions/{fileSubmissionId:guid}/review")]
     public async Task<IActionResult> ReviewFileSubmission(
         Guid challengeId,
@@ -222,6 +224,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost]
     public async Task<IActionResult> CreateChallenge(CreateChallengeRequest request, CancellationToken cancellationToken)
     {
@@ -236,6 +239,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateChallenge(Guid id, UpdateChallengeRequest request, CancellationToken cancellationToken)
     {
@@ -250,6 +254,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteChallenge(Guid id, CancellationToken cancellationToken)
     {
@@ -264,6 +269,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{id:guid}/tasks")]
     public async Task<IActionResult> AddTask(Guid id, CreateChallengeTaskRequest request, CancellationToken cancellationToken)
     {
@@ -278,6 +284,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPut("{challengeId:guid}/tasks/{taskId:guid}")]
     public async Task<IActionResult> UpdateTask(Guid challengeId, Guid taskId, UpdateChallengeTaskRequest request, CancellationToken cancellationToken)
     {
@@ -292,6 +299,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpDelete("{challengeId:guid}/tasks/{taskId:guid}")]
     public async Task<IActionResult> DeleteTask(Guid challengeId, Guid taskId, CancellationToken cancellationToken)
     {
@@ -306,6 +314,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.Upload)]
     [HttpPost("{challengeId:guid}/tasks/{taskId:guid}/file-answer")]
     [RequestSizeLimit(55L * 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = 55L * 1024 * 1024)]

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Leaderboards.Requests;
 using OnlineJudge.Application.Leaderboards.Services;
 using OnlineJudge.Domain.Enums;
@@ -28,25 +29,30 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
         ToActionResult(await seasonService.GetHistoryAsync(seasonId, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost]
     public async Task<IActionResult> Create(CreateLeaderboardSeasonRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.CreateSeasonAsync(request, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPut("{seasonId:guid}")]
     public async Task<IActionResult> Update(Guid seasonId, UpdateLeaderboardSeasonRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.UpdateSeasonAsync(seasonId, request, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{seasonId:guid}/problems")]
     public async Task<IActionResult> AddProblem(Guid seasonId, AddLeaderboardSeasonProblemRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.AddProblemAsync(seasonId, request, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{seasonId:guid}/problems/batch")]
     public async Task<IActionResult> AddProblems(Guid seasonId, AddLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.AddProblemsAsync(seasonId, request, cancellationToken));
 
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPut("{seasonId:guid}/problems/{problemId:guid}/benchmarks/{language}")]
     public async Task<IActionResult> UpdateProblemBenchmark(
         Guid seasonId,
@@ -57,6 +63,7 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
         ToActionResult(await seasonService.UpdateProblemBenchmarkAsync(seasonId, problemId, language, request, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpDelete("{seasonId:guid}/problems/{problemId:guid}")]
     public async Task<IActionResult> RemoveProblem(Guid seasonId, Guid problemId, CancellationToken cancellationToken)
     {
@@ -65,6 +72,7 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
     }
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{seasonId:guid}/problems/batch-remove")]
     public async Task<IActionResult> RemoveProblems(Guid seasonId, RemoveLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken)
     {
@@ -73,16 +81,19 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
     }
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{seasonId:guid}/freeze")]
     public async Task<IActionResult> Freeze(Guid seasonId, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.FreezeSeasonAsync(seasonId, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{seasonId:guid}/finalize")]
     public async Task<IActionResult> FinalizeSeason(Guid seasonId, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.FinalizeSeasonAsync(seasonId, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{seasonId:guid}/archive")]
     public async Task<IActionResult> Archive(Guid seasonId, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.ArchiveSeasonAsync(seasonId, cancellationToken));

@@ -7,6 +7,7 @@ using OnlineJudge.Api.Authentication;
 using OnlineJudge.Api.Authorization;
 using OnlineJudge.Api.Common;
 using OnlineJudge.Api.Services;
+using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Infrastructure;
 using OnlineJudge.Infrastructure.Auth;
@@ -35,6 +36,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     options.ForwardLimit = 1;
+    options.KnownProxies.Clear();
+    options.KnownProxies.Add(System.Net.IPAddress.Loopback);
+    options.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
 });
 
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -68,6 +72,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddCurrentRoleAuthorization();
+builder.Services.AddRiskBasedRateLimiting();
 
 builder.Services.AddOpenApi();
 
@@ -102,6 +107,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 

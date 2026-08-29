@@ -1,7 +1,12 @@
 export const baseUrl = "";
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number, public readonly errorCode?: string) {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly errorCode?: string,
+    public readonly retryAfterSeconds?: number
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -22,6 +27,7 @@ const apiBusinessMessages: Record<string, string> = {
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (!(error instanceof Error)) return fallback;
+  if (error instanceof ApiError && error.status === 429) return error.message;
   return apiBusinessMessages[error.message.trim()] ?? fallback;
 }
 
@@ -88,12 +94,19 @@ async function readApiError(response: Response): Promise<ApiError> {
     }
 
     if (parsed && typeof parsed === "object") {
-      const payload = parsed as { errorCode?: unknown; message?: unknown; title?: unknown };
+      const payload = parsed as { errorCode?: unknown; message?: unknown; retryAfterSeconds?: unknown; title?: unknown };
       const message = payload.message ?? payload.title;
+      const retryAfterSeconds = typeof payload.retryAfterSeconds === "number" && Number.isFinite(payload.retryAfterSeconds)
+        ? Math.max(0, Math.ceil(payload.retryAfterSeconds))
+        : undefined;
+      const displayMessage = typeof message === "string" ? message : `Request failed with status ${response.status}`;
       return new ApiError(
-        typeof message === "string" ? message : `Request failed with status ${response.status}`,
+        response.status === 429 && retryAfterSeconds
+          ? `${displayMessage} 请在 ${retryAfterSeconds} 秒后重试。`
+          : displayMessage,
         response.status,
-        typeof payload.errorCode === "string" ? payload.errorCode : undefined
+        typeof payload.errorCode === "string" ? payload.errorCode : undefined,
+        retryAfterSeconds
       );
     }
   }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Submissions.Requests;
 using OnlineJudge.Application.Submissions.Services;
 
@@ -9,6 +10,7 @@ namespace OnlineJudge.Api.Controllers;
 public class SubmissionsController(ISubmissionService submissionService) : ControllerBase
 {
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.Submission)]
     [HttpPost("api/submissions")]
     public async Task<IActionResult> CreateSubmission(CreateSubmissionRequest request, CancellationToken cancellationToken)
     {

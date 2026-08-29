@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Problems.Requests;
 using OnlineJudge.Application.Problems.Services;
 using OnlineJudge.Domain.Enums;
@@ -44,6 +45,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost]
     public async Task<IActionResult> CreateProblem(CreateProblemRequest request, CancellationToken cancellationToken)
     {
@@ -58,6 +60,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateProblem(Guid id, UpdateProblemRequest request, CancellationToken cancellationToken)
     {
@@ -72,6 +75,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteProblem(Guid id, CancellationToken cancellationToken)
     {
@@ -86,6 +90,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{id:guid}/test-cases")]
     public async Task<IActionResult> AddTestCase(Guid id, CreateTestCaseRequest request, CancellationToken cancellationToken)
     {
@@ -100,6 +105,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPut("{id:guid}/test-cases/{testCaseId:guid}")]
     public async Task<IActionResult> UpdateTestCase(Guid id, Guid testCaseId, UpdateTestCaseRequest request, CancellationToken cancellationToken)
     {
@@ -108,6 +114,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpDelete("{id:guid}/test-cases/{testCaseId:guid}")]
     public async Task<IActionResult> DeleteTestCase(Guid id, Guid testCaseId, CancellationToken cancellationToken)
     {
@@ -116,6 +123,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{id:guid}/test-cases/import")]
     public async Task<IActionResult> ImportTestCases(Guid id, ImportTestCasesRequest request, CancellationToken cancellationToken)
     {
@@ -159,6 +167,8 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.Upload)]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{id:guid}/judge-assets")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxJudgeAssetRequestSize)]
@@ -182,6 +192,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpDelete("{id:guid}/judge-assets/{assetId:guid}")]
     public async Task<IActionResult> DeleteJudgeAsset(Guid id, Guid assetId, CancellationToken cancellationToken)
     {
@@ -204,6 +215,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPost("{id:guid}/collaborators")]
     public async Task<IActionResult> GrantCollaborator(Guid id, GrantProblemCollaboratorRequest request, CancellationToken cancellationToken)
     {
@@ -218,6 +230,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpDelete("{id:guid}/collaborators/{userId:guid}")]
     public async Task<IActionResult> RemoveCollaborator(Guid id, Guid userId, CancellationToken cancellationToken)
     {

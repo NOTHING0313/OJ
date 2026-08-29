@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.HelpDocuments.Requests;
 using OnlineJudge.Application.HelpDocuments.Services;
 
@@ -24,6 +25,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
         return result.IsSuccess ? Ok(result.Value) : ToFailure(result.ErrorMessage);
     }
 
+    [RiskRateLimit(RateLimitPolicies.HelpMutation)]
     [HttpPost]
     public async Task<IActionResult> Create(UpsertHelpDocumentRequest request, CancellationToken cancellationToken)
     {
@@ -31,6 +33,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
         return result.IsSuccess ? CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, result.Value) : ToFailure(result.ErrorMessage);
     }
 
+    [RiskRateLimit(RateLimitPolicies.HelpMutation)]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, UpsertHelpDocumentRequest request, CancellationToken cancellationToken)
     {
@@ -38,6 +41,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
         return result.IsSuccess ? Ok(result.Value) : ToFailure(result.ErrorMessage);
     }
 
+    [RiskRateLimit(RateLimitPolicies.HelpMutation)]
     [HttpPost("{id:guid}/publish")]
     public async Task<IActionResult> Publish(Guid id, CancellationToken cancellationToken)
     {
@@ -45,6 +49,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
         return result.IsSuccess ? Ok(result.Value) : ToFailure(result.ErrorMessage);
     }
 
+    [RiskRateLimit(RateLimitPolicies.HelpMutation)]
     [HttpPost("{id:guid}/unpublish")]
     public async Task<IActionResult> Unpublish(Guid id, CancellationToken cancellationToken)
     {
@@ -52,6 +57,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
         return result.IsSuccess ? Ok(result.Value) : ToFailure(result.ErrorMessage);
     }
 
+    [RiskRateLimit(RateLimitPolicies.HelpMutation)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {

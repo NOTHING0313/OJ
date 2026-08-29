@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.SiteSettings.Requests;
 using OnlineJudge.Application.SiteSettings.Services;
@@ -19,6 +20,7 @@ public class SiteSettingsController(ISiteSettingsService siteSettingsService, IC
     }
 
     [Authorize(Policy = "RequireRoot")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [HttpPut("appearance")]
     public async Task<IActionResult> UpdateAppearance(UpdateSiteAppearanceRequest request, CancellationToken cancellationToken)
     {

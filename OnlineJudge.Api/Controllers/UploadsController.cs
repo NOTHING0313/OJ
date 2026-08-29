@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Infrastructure.Storage;
 
 namespace OnlineJudge.Api.Controllers;
@@ -29,6 +30,7 @@ public class UploadsController(IRuntimeStoragePathProvider storagePaths) : Contr
         "image/gif"
     };
 
+    [RiskRateLimit(RateLimitPolicies.Upload)]
     [HttpPost("images")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxRequestSize)]

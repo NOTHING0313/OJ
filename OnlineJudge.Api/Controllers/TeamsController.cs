@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Teams.Requests;
 using OnlineJudge.Application.Teams.Services;
 
@@ -160,6 +161,7 @@ public class TeamsController(
         return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
     }
 
+    [RiskRateLimit(RateLimitPolicies.TeamChat)]
     [HttpPost("{teamId:guid}/chat")]
     public async Task<IActionResult> SendChat(Guid teamId, SendTeamChatMessageRequest request, CancellationToken cancellationToken)
     {
@@ -186,6 +188,7 @@ public class TeamsController(
         return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
     }
 
+    [RiskRateLimit(RateLimitPolicies.TeamGitSync)]
     [HttpPost("{teamId:guid}/projects/{projectId:guid}/sync")]
     public async Task<IActionResult> SyncMemberProject(Guid teamId, Guid projectId, CancellationToken cancellationToken)
     {
@@ -202,6 +205,7 @@ public class TeamsController(
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.TeamGitSync)]
     [HttpPost("/api/admin/teams/{teamId:guid}/projects/{projectId:guid}/sync")]
     public async Task<IActionResult> SyncProject(Guid teamId, Guid projectId, CancellationToken cancellationToken)
     {

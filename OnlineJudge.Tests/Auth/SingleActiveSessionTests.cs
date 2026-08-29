@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
 using OnlineJudge.Api.Authentication;
 using OnlineJudge.Application.Auth.Requests;
+using OnlineJudge.Application.Auth.Responses;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Email.Dtos;
@@ -93,13 +94,15 @@ public class SingleActiveSessionTests
         var user = AddUser(dbContext, activeSessionId: existingSessionId, activeSessionIssuedAt: issuedAt);
         await dbContext.SaveChangesAsync();
 
-        var result = await CreateAuthService(dbContext).LoginAsync(new LoginRequest
+        var attempt = await CreateAuthService(dbContext).LoginWithOutcomeAsync(new LoginRequest
         {
             Account = user.UserName,
             Password = "wrong-password"
         });
+        var result = attempt.Result;
 
         Assert.True(result.IsFailure);
+        Assert.Equal(LoginFailureKind.InvalidPassword, attempt.FailureKind);
         Assert.Equal(existingSessionId, user.ActiveSessionId);
         Assert.Equal(issuedAt, user.ActiveSessionIssuedAt);
     }
@@ -112,13 +115,15 @@ public class SingleActiveSessionTests
         var user = AddUser(dbContext, activeSessionId: existingSessionId);
         await dbContext.SaveChangesAsync();
 
-        var result = await CreateAuthService(dbContext).LoginAsync(new LoginRequest
+        var attempt = await CreateAuthService(dbContext).LoginWithOutcomeAsync(new LoginRequest
         {
             Account = "missing-user",
             Password = "password"
         });
+        var result = attempt.Result;
 
         Assert.True(result.IsFailure);
+        Assert.Equal(LoginFailureKind.Other, attempt.FailureKind);
         Assert.Equal(existingSessionId, user.ActiveSessionId);
     }
 
