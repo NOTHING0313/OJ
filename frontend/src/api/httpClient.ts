@@ -1,5 +1,21 @@
 export const baseUrl = "";
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly errorCode?: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export interface ApiRequestOptions extends RequestInit {
+  suppressAuthenticationHandler?: boolean;
+}
+
+type AuthenticationErrorHandler = (error: ApiError) => void;
+
+let authenticationErrorHandler: AuthenticationErrorHandler | null = null;
+let authenticationErrorHandled = false;
+
 const apiBusinessMessages: Record<string, string> = {
   "Slug already exists.": "Slug 已被使用。"
 };
@@ -9,9 +25,18 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
   return apiBusinessMessages[error.message.trim()] ?? fallback;
 }
 
-export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export function setAuthenticationErrorHandler(handler: AuthenticationErrorHandler | null) {
+  authenticationErrorHandler = handler;
+}
+
+export function resetAuthenticationErrorGuard() {
+  authenticationErrorHandled = false;
+}
+
+export async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const token = localStorage.getItem("accessToken");
   const headers = new Headers(options.headers);
+  const { suppressAuthenticationHandler = false, ...fetchOptions } = options;
 
   if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -22,13 +47,17 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   }
 
   const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers
   });
 
   if (!response.ok) {
-    const message = await readErrorMessage(response);
-    throw new Error(message || `Request failed with status ${response.status}`);
+    const error = await readApiError(response);
+    if (response.status === 401 && error.errorCode?.startsWith("AUTH_") && !suppressAuthenticationHandler && !authenticationErrorHandled && authenticationErrorHandler) {
+      authenticationErrorHandled = true;
+      authenticationErrorHandler(error);
+    }
+    throw error;
   }
 
   if (response.status === 204) {
@@ -44,27 +73,33 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   return JSON.parse(text) as T;
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
+async function readApiError(response: Response): Promise<ApiError> {
   const text = await response.text();
 
   if (!text) {
-    return response.statusText;
+    return new ApiError(response.statusText || `Request failed with status ${response.status}`, response.status);
   }
 
   try {
     const parsed = JSON.parse(text) as unknown;
 
     if (typeof parsed === "string") {
-      return parsed;
+      return new ApiError(parsed, response.status);
     }
 
-    if (parsed && typeof parsed === "object" && "title" in parsed) {
-      return String((parsed as { title?: unknown }).title);
+    if (parsed && typeof parsed === "object") {
+      const payload = parsed as { errorCode?: unknown; message?: unknown; title?: unknown };
+      const message = payload.message ?? payload.title;
+      return new ApiError(
+        typeof message === "string" ? message : `Request failed with status ${response.status}`,
+        response.status,
+        typeof payload.errorCode === "string" ? payload.errorCode : undefined
+      );
     }
   }
   catch {
-    return text;
+    return new ApiError(text, response.status);
   }
 
-  return text;
+  return new ApiError(text, response.status);
 }

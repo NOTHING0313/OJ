@@ -11,6 +11,8 @@ public class JwtTokenGenerator(IConfiguration configuration)
 {
     public string Generate(User user)
     {
+        var sessionId = user.ActiveSessionId
+            ?? throw new InvalidOperationException("An active session is required before issuing a JWT.");
         var secret = configuration["Jwt:Secret"]
             ?? throw new InvalidOperationException("Jwt:Secret is not configured.");
         var issuer = configuration["Jwt:Issuer"]
@@ -27,7 +29,8 @@ public class JwtTokenGenerator(IConfiguration configuration)
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.UserName),
             new(ClaimTypes.Email, user.Email),
-            new(ClaimTypes.Role, user.Role.ToString())
+            new(ClaimTypes.Role, user.Role.ToString()),
+            new("sid", sessionId.ToString())
         };
 
         var credentials = new SigningCredentials(

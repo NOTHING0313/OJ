@@ -19,8 +19,8 @@ export function AppLayout() {
     return () => { ignore = true; };
   }, []);
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await logout();
     navigate("/login");
   }
 
@@ -71,7 +71,7 @@ export function AppLayout() {
                 )}
               </NavLink>
               <NavLink className="topbar-user-name" to="/account/settings">{currentUser.userName}</NavLink>
-              <button type="button" onClick={handleLogout}>
+              <button type="button" onClick={() => void handleLogout()}>
                 退出登录
               </button>
             </>

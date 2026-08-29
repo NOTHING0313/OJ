@@ -31,6 +31,10 @@ public class User
 
     public DateTimeOffset? DeletedAt { get; set; }
 
+    public Guid? ActiveSessionId { get; set; }
+
+    public DateTimeOffset? ActiveSessionIssuedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

@@ -1,29 +1,20 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
-using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Api.Authentication;
+using OnlineJudge.Domain.Enums;
 
 namespace OnlineJudge.Api.Authorization;
 
-internal sealed class CurrentRoleAuthorizationHandler(OnlineJudgeDbContext dbContext) : AuthorizationHandler<CurrentRoleRequirement>
+internal sealed class CurrentRoleAuthorizationHandler : AuthorizationHandler<CurrentRoleRequirement>
 {
-    protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, CurrentRoleRequirement requirement)
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, CurrentRoleRequirement requirement)
     {
-        var userIdValue = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(userIdValue, out var userId))
-        {
-            return;
-        }
-
-        var user = await dbContext.Users
-            .AsNoTracking()
-            .Where(user => user.Id == userId && !user.IsDeleted && !user.IsBlacklisted)
-            .Select(user => new { user.Role })
-            .FirstOrDefaultAsync();
-
-        if (user is not null && requirement.Allows(user.Role))
+        var roleValue = context.User.FindFirstValue(AuthSessionConstants.AuthoritativeRoleClaim);
+        if (Enum.TryParse<UserRole>(roleValue, out var role) && requirement.Allows(role))
         {
             context.Succeed(requirement);
         }
+
+        return Task.CompletedTask;
     }
 }

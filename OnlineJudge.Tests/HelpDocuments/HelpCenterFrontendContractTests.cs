@@ -129,7 +129,7 @@ public class HelpCenterFrontendContractTests
     }
 
     [Fact]
-    public void AddHelpDocuments_IsTheCurrentMigration()
+    public void AddHelpDocuments_RemainsInChainBeforeCurrentMigration()
     {
         var migrationDirectory = Path.Combine(ProjectRoot(), "OnlineJudge.Infrastructure", "Persistence", "Migrations");
         var migrations = Directory.GetFiles(migrationDirectory, "*_*.cs")
@@ -137,8 +137,9 @@ public class HelpCenterFrontendContractTests
             .OrderBy(path => Path.GetFileName(path), StringComparer.Ordinal)
             .ToArray();
 
-        Assert.EndsWith("20260829132321_AddHelpDocuments.cs", migrations[^1], StringComparison.Ordinal);
-        var migration = File.ReadAllText(migrations[^1]);
+        var helpMigrationPath = Assert.Single(migrations, path => path.EndsWith("20260829132321_AddHelpDocuments.cs", StringComparison.Ordinal));
+        Assert.EndsWith("AddSingleActiveUserSession.cs", migrations[^1], StringComparison.Ordinal);
+        var migration = File.ReadAllText(helpMigrationPath);
         Assert.Contains("migrationBuilder.CreateTable(", migration, StringComparison.Ordinal);
         Assert.Contains("name: \"HelpDocuments\"", migration, StringComparison.Ordinal);
     }

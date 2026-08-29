@@ -202,6 +202,8 @@ public class UserService(OnlineJudgeDbContext dbContext, ICurrentUser currentUse
         }
 
         targetUser.IsBlacklisted = true;
+        targetUser.ActiveSessionId = null;
+        targetUser.ActiveSessionIssuedAt = null;
         targetUser.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 

@@ -113,7 +113,7 @@ public class AuthService(
         var user = await dbContext.Users
             .FirstOrDefaultAsync(user => user.UserName == account || user.Email == account, cancellationToken);
 
-        if (user is null || !passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+        if (user is null)
         {
             return Result<LoginResponse>.Failure("Invalid account or password.");
         }
@@ -128,11 +128,33 @@ public class AuthService(
             return Result<LoginResponse>.Failure("Account is blacklisted.");
         }
 
+        if (!passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+        {
+            return Result<LoginResponse>.Failure("Invalid account or password.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        user.ActiveSessionId = Guid.NewGuid();
+        user.ActiveSessionIssuedAt = now;
+        user.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
         return Result<LoginResponse>.Success(new LoginResponse
         {
             AccessToken = jwtTokenGenerator.Generate(user),
             User = ToDto(user)
         });
+    }
+
+    public async Task<Result> LogoutAsync(Guid userId, Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        await dbContext.Users
+            .Where(user => user.Id == userId && user.ActiveSessionId == sessionId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(user => user.ActiveSessionId, (Guid?)null)
+                .SetProperty(user => user.ActiveSessionIssuedAt, (DateTimeOffset?)null), cancellationToken);
+
+        return Result.Success();
     }
 
     public async Task<Result<AuthUserDto>> GetCurrentUserAsync(Guid userId, CancellationToken cancellationToken = default)

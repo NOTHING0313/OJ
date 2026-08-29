@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using OnlineJudge.Api.Authentication;
 using OnlineJudge.Application.Account.Requests;
 using OnlineJudge.Application.Account.Services;
 using OnlineJudge.Application.Auth.Requests;
@@ -50,6 +52,22 @@ public class AuthController(IAuthService authService, IAccountService accountSer
         }
 
         return Ok(result.Value);
+    }
+
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sessionIdValue = User.FindFirstValue(AuthSessionConstants.SessionIdClaim)
+            ?? User.FindFirstValue(ClaimTypes.Sid);
+        if (!Guid.TryParse(userIdValue, out var userId) || !Guid.TryParse(sessionIdValue, out var sessionId))
+        {
+            return Unauthorized();
+        }
+
+        await authService.LogoutAsync(userId, sessionId, cancellationToken);
+        return NoContent();
     }
 
     [HttpPost("password-reset/send-code")]

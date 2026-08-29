@@ -257,6 +257,10 @@ public class AccountServiceTests
         await using var dbContext = CreateDbContext();
         var hasher = new PasswordHasher();
         var userId = SeedUser(dbContext, "answerer", UserRole.Answerer, "13800138000", hasher.HashPassword("old-password"));
+        var activeSessionId = Guid.NewGuid();
+        (await dbContext.Users.FindAsync(userId))!.ActiveSessionId = activeSessionId;
+        (await dbContext.Users.FindAsync(userId))!.ActiveSessionIssuedAt = BaseTime;
+        await dbContext.SaveChangesAsync();
         var service = CreateService(dbContext, userId, new FakeSmsVerificationService(), hasher);
 
         var result = await service.ConfirmPasswordResetAsync(new ConfirmPasswordResetRequest
@@ -270,6 +274,8 @@ public class AccountServiceTests
         Assert.True(result.IsSuccess);
         Assert.False(hasher.VerifyPassword("old-password", user!.PasswordHash));
         Assert.True(hasher.VerifyPassword("new-password", user.PasswordHash));
+        Assert.Null(user.ActiveSessionId);
+        Assert.Null(user.ActiveSessionIssuedAt);
     }
 
     [Fact]

@@ -64,6 +64,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(user => user.DeletedAt);
 
+        builder.Property(user => user.ActiveSessionId);
+
+        builder.Property(user => user.ActiveSessionIssuedAt);
+
         builder.Property(user => user.CreatedAt)
             .IsRequired();
 

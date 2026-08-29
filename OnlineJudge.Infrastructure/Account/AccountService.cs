@@ -288,6 +288,8 @@ public partial class AccountService(
         }
 
         user.PasswordHash = passwordHasher.HashPassword(request.NewPassword);
+        user.ActiveSessionId = null;
+        user.ActiveSessionIssuedAt = null;
         user.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -349,6 +351,8 @@ public partial class AccountService(
         }
 
         user.PasswordHash = passwordHasher.HashPassword(request.NewPassword);
+        user.ActiveSessionId = null;
+        user.ActiveSessionIssuedAt = null;
         user.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -416,6 +420,8 @@ public partial class AccountService(
         user.PhoneNumberConfirmed = false;
         user.AvatarUrl = null;
         user.PasswordHash = passwordHasher.HashPassword(Guid.NewGuid().ToString("N"));
+        user.ActiveSessionId = null;
+        user.ActiveSessionIssuedAt = null;
         user.UpdatedAt = now;
 
         await dbContext.SaveChangesAsync(cancellationToken);

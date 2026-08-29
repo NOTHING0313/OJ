@@ -49,6 +49,13 @@ export function login(account: string, password: string) {
   });
 }
 
+export function logout() {
+  return request<void>("/api/auth/logout", {
+    method: "POST",
+    suppressAuthenticationHandler: true
+  });
+}
+
 export function me() {
   return request<AuthUserDto>("/api/auth/me");
 }

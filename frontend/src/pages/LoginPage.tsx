@@ -13,6 +13,7 @@ export function LoginPage() {
   const [rememberAccount, setRememberAccount] = useState(() => Boolean(localStorage.getItem("rememberedAccount")));
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const authMessage = authMessageForReason(searchParams.get("reason"));
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -65,7 +66,7 @@ export function LoginPage() {
             <input type="checkbox" checked={rememberAccount} onChange={(event) => setRememberAccount(event.target.checked)} />
             记住账号
           </label>
-          {error && <div className="alert error" role="alert">{error}</div>}
+          {(error || authMessage) && <div className="alert error" role="alert">{error ?? authMessage}</div>}
           <button className="button primary" type="submit" disabled={isSubmitting}>
             {isSubmitting ? "正在进入…" : "进入工作室"}
           </button>
@@ -77,4 +78,12 @@ export function LoginPage() {
         </div>
     </AuthStudioLayout>
   );
+}
+
+function authMessageForReason(reason: string | null) {
+  if (reason === "session-replaced") return "账号已在其他设备登录，请重新登录。";
+  if (reason === "session-invalid") return "登录状态已失效，请重新登录。";
+  if (reason === "expired") return "登录已过期，请重新登录。";
+  if (reason === "password-changed") return "密码已修改，请重新登录。";
+  return null;
 }

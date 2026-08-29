@@ -45,6 +45,10 @@ public class EmailPasswordResetAndDeletionTests
         await using var dbContext = CreateDbContext();
         var hasher = new PasswordHasher();
         var userId = SeedUser(dbContext, "answerer", "answerer@example.test", hasher.HashPassword("old-password"));
+        var activeSessionId = Guid.NewGuid();
+        (await dbContext.Users.FindAsync(userId))!.ActiveSessionId = activeSessionId;
+        (await dbContext.Users.FindAsync(userId))!.ActiveSessionIssuedAt = BaseTime;
+        await dbContext.SaveChangesAsync();
         var service = CreateAccountService(dbContext, userId, new FakeEmailVerificationService(), hasher);
 
         var result = await service.ConfirmEmailPasswordResetAsync(new ConfirmEmailPasswordResetRequest
@@ -58,6 +62,8 @@ public class EmailPasswordResetAndDeletionTests
         Assert.True(result.IsSuccess);
         Assert.False(hasher.VerifyPassword("old-password", user!.PasswordHash));
         Assert.True(hasher.VerifyPassword("new-password", user.PasswordHash));
+        Assert.Null(user.ActiveSessionId);
+        Assert.Null(user.ActiveSessionIssuedAt);
     }
 
     [Fact]
@@ -87,6 +93,8 @@ public class EmailPasswordResetAndDeletionTests
         await using var dbContext = CreateDbContext();
         var hasher = new PasswordHasher();
         var userId = SeedUser(dbContext, "answerer", "answerer@example.test", hasher.HashPassword("old-password"), "13800138000");
+        (await dbContext.Users.FindAsync(userId))!.ActiveSessionId = Guid.NewGuid();
+        (await dbContext.Users.FindAsync(userId))!.ActiveSessionIssuedAt = BaseTime;
         dbContext.Submissions.Add(new Submission
         {
             Id = Guid.NewGuid(),
@@ -117,6 +125,8 @@ public class EmailPasswordResetAndDeletionTests
         Assert.False(user.PhoneNumberConfirmed);
         Assert.Null(user.AvatarUrl);
         Assert.False(hasher.VerifyPassword("old-password", user.PasswordHash));
+        Assert.Null(user.ActiveSessionId);
+        Assert.Null(user.ActiveSessionIssuedAt);
         Assert.Equal(1, await dbContext.Submissions.CountAsync(submission => submission.UserId == userId));
     }
 

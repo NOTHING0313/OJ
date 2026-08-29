@@ -285,7 +285,7 @@ export function AccountSettingsPage() {
 
     try {
       await confirmAccountDelete(deleteCode.trim(), deletePassword);
-      logout();
+      await logout();
       navigate("/login", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "账号注销失败");

@@ -1,9 +1,11 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { confirmEmailPasswordReset, sendEmailPasswordResetCode } from "../api/accountApi";
+import { useAuth } from "../auth/AuthContext";
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [debugCode, setDebugCode] = useState<string | null>(null);
@@ -55,8 +57,8 @@ export function ForgotPasswordPage() {
 
     try {
       await confirmEmailPasswordReset(email.trim(), code.trim(), newPassword);
-      setNotice("密码已重置，请使用新密码登录。");
-      window.setTimeout(() => navigate("/login"), 800);
+      await logout();
+      navigate("/login?reason=password-changed", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "密码重置失败");
     } finally {

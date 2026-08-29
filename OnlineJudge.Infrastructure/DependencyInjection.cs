@@ -117,6 +117,7 @@ public static class DependencyInjection
         });
         services.AddScoped<PasswordHasher>();
         services.AddScoped<JwtTokenGenerator>();
+        services.AddScoped<UserSessionValidator>();
         services.AddScoped<IJudgeQueue, RedisJudgeQueue>();
         services.AddSingleton<IProblemJudgeAssetStorage, ProblemJudgeAssetStorage>();
         services.AddScoped<IJudgeCompileAssetLoader, JudgeCompileAssetLoader>();

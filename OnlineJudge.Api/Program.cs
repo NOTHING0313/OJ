@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
+using OnlineJudge.Api.Authentication;
 using OnlineJudge.Api.Authorization;
 using OnlineJudge.Api.Common;
 using OnlineJudge.Api.Services;
@@ -37,6 +38,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddScoped<ActiveSessionJwtBearerEvents>();
 builder.Services.AddHostedService<LeaderboardSeasonLifecycleWorker>();
 builder.Services.AddHostedService<ChallengePeerReviewAssignmentWorker>();
 builder.Services.AddHostedService<TeamChatSystemEventWorker>();
@@ -62,6 +64,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+        options.EventsType = typeof(ActiveSessionJwtBearerEvents);
     });
 
 builder.Services.AddCurrentRoleAuthorization();
