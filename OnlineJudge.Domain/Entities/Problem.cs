@@ -66,4 +66,9 @@ public class Problem
     public List<ProblemJudgeAsset> JudgeAssets { get; set; } = [];
 
     public List<ChallengeTask> ChallengeTasks { get; set; } = [];
+
+    /// <summary>
+    /// Calculates the current problem score from active test cases.
+    /// </summary>
+    public int CalculateTotalScore() => ProblemScoreCalculator.Calculate(TestCases);
 }

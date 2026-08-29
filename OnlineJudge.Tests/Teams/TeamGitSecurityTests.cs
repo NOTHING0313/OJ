@@ -170,6 +170,11 @@ public class TeamGitSecurityTests
         Assert.Equal(TeamProjectSyncStatus.Failed, project.LastSyncStatus);
         Assert.NotNull(project.LastSyncedAt);
         Assert.DoesNotContain(environment.Root, project.LastSyncError ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        var history = await service.GetHistoryAsync(seed.Team.Id, seed.Project.Id);
+        Assert.True(history.IsSuccess);
+        Assert.Equal(TeamProjectSyncStatus.Failed, history.Value!.LastSyncStatus);
+        Assert.Equal("Repository synchronization failed.", history.Value.LastSyncError);
+        Assert.Equal(2, history.Value.Commits.Count);
     }
 
     [Fact]
@@ -185,22 +190,126 @@ public class TeamGitSecurityTests
         Assert.Equal("Repository exceeds synchronization size limit.", result.ErrorMessage);
         Assert.False(environment.Storage.Exists(seed.Project.Id));
         Assert.Equal(TeamProjectSyncStatus.Failed, (await db.TeamProjects.SingleAsync()).LastSyncStatus);
+        Assert.Equal(1, await db.TeamProjects.CountAsync());
+        var history = await environment.CreateService(db, seed.Owner, runner).GetHistoryAsync(seed.Team.Id, seed.Project.Id);
+        Assert.True(history.IsSuccess);
+        Assert.Empty(history.Value!.Commits);
+        Assert.Equal(TeamProjectSyncStatus.Failed, history.Value.LastSyncStatus);
     }
 
     [Fact]
-    public async Task HistoryRequiresAuditRoleAndEnforcesBoundsAndSyncedCache()
+    public async Task HistoryAllowsActiveTeamMemberAndEnforcesBoundsAndSyncedCache()
     {
         using var environment = new GitTestEnvironment();
         await using var db = environment.CreateDb();
         var seed = await SeedAsync(db);
         var runner = new RecordingGitRunner();
         var answererService = environment.CreateService(db, seed.Owner, runner);
-        Assert.Equal("Forbidden.", (await answererService.GetCommitHistoryAsync(seed.Team.Id, seed.Project.Id)).ErrorMessage);
+        var ownerHistory = await answererService.GetHistoryAsync(seed.Team.Id, seed.Project.Id);
+        Assert.True(ownerHistory.IsSuccess);
+        Assert.Equal(TeamProjectSyncStatus.NeverSynced, ownerHistory.Value!.LastSyncStatus);
+        Assert.Empty(ownerHistory.Value.Commits);
 
         var auditService = environment.CreateService(db, seed.Auditor, runner);
         Assert.Equal("Limit must be between 1 and 100.", (await auditService.GetCommitHistoryAsync(seed.Team.Id, seed.Project.Id, limit: 101)).ErrorMessage);
         Assert.Equal("Skip must be between 0 and 300.", (await auditService.GetCommitHistoryAsync(seed.Team.Id, seed.Project.Id, skip: 301)).ErrorMessage);
-        Assert.Equal("Repository has not been synchronized.", (await auditService.GetCommitHistoryAsync(seed.Team.Id, seed.Project.Id)).ErrorMessage);
+        Assert.Empty((await auditService.GetCommitHistoryAsync(seed.Team.Id, seed.Project.Id)).Value!);
+    }
+
+    [Fact]
+    public async Task ActiveMemberCanReadNeverSyncedHistoryButFormerMemberAndOutsiderCannot()
+    {
+        using var environment = new GitTestEnvironment();
+        await using var db = environment.CreateDb();
+        var seed = await SeedAsync(db);
+        var member = User("member", UserRole.Answerer, DateTimeOffset.UtcNow);
+        var former = User("former", UserRole.Answerer, DateTimeOffset.UtcNow);
+        var outsider = User("outsider", UserRole.Answerer, DateTimeOffset.UtcNow);
+        db.AddRange(member, former, outsider,
+            Membership(seed.Team, member, TeamMemberRole.Member, active: true),
+            Membership(seed.Team, former, TeamMemberRole.Member, active: false));
+        await db.SaveChangesAsync();
+
+        var memberHistory = await environment.CreateService(db, member, new RecordingGitRunner()).GetHistoryAsync(seed.Team.Id, seed.Project.Id);
+        Assert.True(memberHistory.IsSuccess);
+        Assert.Empty(memberHistory.Value!.Commits);
+        Assert.Equal("Forbidden.", (await environment.CreateService(db, former, new RecordingGitRunner()).GetHistoryAsync(seed.Team.Id, seed.Project.Id)).ErrorMessage);
+        Assert.Equal("Forbidden.", (await environment.CreateService(db, outsider, new RecordingGitRunner()).GetHistoryAsync(seed.Team.Id, seed.Project.Id)).ErrorMessage);
+    }
+
+    [Fact]
+    public async Task OwnerCanSyncOwnProjectButMemberAndOutsiderCannot()
+    {
+        using var environment = new GitTestEnvironment();
+        await using var db = environment.CreateDb();
+        var seed = await SeedAsync(db);
+        var member = User("member", UserRole.Answerer, DateTimeOffset.UtcNow);
+        var outsider = User("outsider", UserRole.Answerer, DateTimeOffset.UtcNow);
+        db.AddRange(member, outsider, Membership(seed.Team, member, TeamMemberRole.Member, active: true));
+        await db.SaveChangesAsync();
+
+        Assert.Equal("Forbidden.", (await environment.CreateService(db, member, new RecordingGitRunner()).SyncAsync(seed.Team.Id, seed.Project.Id)).ErrorMessage);
+        Assert.Equal("Forbidden.", (await environment.CreateService(db, outsider, new RecordingGitRunner()).SyncAsync(seed.Team.Id, seed.Project.Id)).ErrorMessage);
+        Assert.True((await environment.CreateService(db, seed.Owner, new RecordingGitRunner()).SyncAsync(seed.Team.Id, seed.Project.Id)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task OwnerCannotSyncAnotherTeamsProject()
+    {
+        using var environment = new GitTestEnvironment();
+        await using var db = environment.CreateDb();
+        var seed = await SeedAsync(db);
+        var otherOwner = User("other-owner", UserRole.Answerer, DateTimeOffset.UtcNow);
+        var otherTeam = new Team
+        {
+            Id = Guid.NewGuid(), Name = "Other", NormalizedName = "OTHER", OwnerUserId = otherOwner.Id,
+            OwnerUser = otherOwner, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var otherProject = new TeamProject
+        {
+            Id = Guid.NewGuid(), TeamId = otherTeam.Id, Team = otherTeam, Name = "Other Repo", NormalizedName = "OTHER REPO",
+            RepositoryUrl = "https://github.com/octocat/Hello-World.git", NormalizedRepositoryUrl = "https://github.com/octocat/Hello-World.git",
+            CreatedByUserId = otherOwner.Id, CreatedByUser = otherOwner, LastSyncStatus = TeamProjectSyncStatus.NeverSynced,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.AddRange(otherOwner, otherTeam, otherProject, Membership(otherTeam, otherOwner, TeamMemberRole.Owner, active: true));
+        await db.SaveChangesAsync();
+
+        var result = await environment.CreateService(db, seed.Owner, new RecordingGitRunner()).SyncAsync(otherTeam.Id, otherProject.Id);
+
+        Assert.Equal("Forbidden.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ProblemSetterAndRootCanSyncAndReadNeverSyncedProjectsForAudit()
+    {
+        using var environment = new GitTestEnvironment();
+        await using var db = environment.CreateDb();
+        var seed = await SeedAsync(db);
+        var root = User("root-audit", UserRole.Root, DateTimeOffset.UtcNow);
+        db.Users.Add(root);
+        await db.SaveChangesAsync();
+
+        Assert.True((await environment.CreateService(db, seed.Auditor, new RecordingGitRunner()).GetHistoryAsync(seed.Team.Id, seed.Project.Id)).IsSuccess);
+        Assert.True((await environment.CreateService(db, root, new RecordingGitRunner()).GetHistoryAsync(seed.Team.Id, seed.Project.Id)).IsSuccess);
+        Assert.True((await environment.CreateService(db, seed.Auditor, new RecordingGitRunner()).SyncAsync(seed.Team.Id, seed.Project.Id)).IsSuccess);
+        environment.Time.Advance(TimeSpan.FromSeconds(11));
+        Assert.True((await environment.CreateService(db, root, new RecordingGitRunner()).SyncAsync(seed.Team.Id, seed.Project.Id)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task OwnerSyncStillUsesRuntimeSsrfValidation()
+    {
+        using var environment = new GitTestEnvironment();
+        await using var db = environment.CreateDb();
+        var seed = await SeedAsync(db);
+        var runner = new RecordingGitRunner();
+        var service = environment.CreateService(db, seed.Owner, runner, [IPAddress.Loopback, IPAddress.Parse("140.82.112.4")]);
+
+        var result = await service.SyncAsync(seed.Team.Id, seed.Project.Id);
+
+        Assert.Equal("Repository host did not resolve exclusively to public addresses.", result.ErrorMessage);
+        Assert.DoesNotContain(runner.Requests, request => request.Arguments.Contains("clone"));
     }
 
     [Fact]
@@ -303,9 +412,46 @@ public class TeamGitSecurityTests
         Assert.Null(seed.Project.LastSyncedAt);
         Assert.Null(seed.Project.DefaultBranch);
         Assert.Contains(seed.Project.Id, cache.Deleted);
+        var history = await environment.CreateService(db, seed.Owner, new RecordingGitRunner()).GetHistoryAsync(seed.Team.Id, seed.Project.Id);
+        Assert.True(history.IsSuccess);
+        Assert.Empty(history.Value!.Commits);
         cache.Deleted.Clear();
         Assert.True((await service.DeleteProjectAsync(seed.Team.Id, seed.Project.Id)).IsSuccess);
         Assert.Contains(seed.Project.Id, cache.Deleted);
+    }
+
+    [Fact]
+    public async Task ProjectNameOnlyChangePreservesCacheHistoryAndChallengeSnapshot()
+    {
+        using var environment = new GitTestEnvironment();
+        await using var db = environment.CreateDb();
+        var seed = await SeedAsync(db);
+        Assert.True((await environment.CreateService(db, seed.Owner, new RecordingGitRunner()).SyncAsync(seed.Team.Id, seed.Project.Id)).IsSuccess);
+        var participant = new ChallengeTeamParticipant
+        {
+            Id = Guid.NewGuid(), ChallengeId = Guid.NewGuid(), TeamId = seed.Team.Id, Team = seed.Team,
+            SelectedTeamProjectId = seed.Project.Id, SelectedTeamProject = seed.Project,
+            TeamNameSnapshot = seed.Team.Name, ProjectNameSnapshot = seed.Project.Name,
+            RepositoryUrlSnapshot = seed.Project.RepositoryUrl, RegisteredByUserId = seed.Owner.Id,
+            RegisteredByUser = seed.Owner, RegisteredAt = DateTimeOffset.UtcNow
+        };
+        db.ChallengeTeamParticipants.Add(participant);
+        await db.SaveChangesAsync();
+        var cache = new RecordingCache();
+        var service = new TeamService(db, new TestCurrentUser(seed.Owner.Id), environment.Time, new TeamRepositoryUrlValidator(environment.Options), cache);
+
+        var updated = await service.UpdateProjectAsync(seed.Team.Id, seed.Project.Id, new UpdateTeamProjectRequest
+        {
+            Name = "Renamed Repo",
+            RepositoryUrl = seed.Project.RepositoryUrl
+        });
+
+        Assert.True(updated.IsSuccess);
+        Assert.Empty(cache.Deleted);
+        Assert.Equal(TeamProjectSyncStatus.Success, seed.Project.LastSyncStatus);
+        Assert.Equal("Repo", participant.ProjectNameSnapshot);
+        Assert.Equal("https://github.com/octocat/Hello-World.git", participant.RepositoryUrlSnapshot);
+        Assert.Equal(2, (await environment.CreateService(db, seed.Owner, new RecordingGitRunner()).GetHistoryAsync(seed.Team.Id, seed.Project.Id)).Value!.Commits.Count);
     }
 
     [Fact]
@@ -355,7 +501,12 @@ public class TeamGitSecurityTests
             RepositoryUrl = "https://github.com/octocat/Hello-World.git", NormalizedRepositoryUrl = "https://github.com/octocat/Hello-World.git",
             CreatedByUserId = owner.Id, CreatedByUser = owner, LastSyncStatus = TeamProjectSyncStatus.NeverSynced, CreatedAt = now, UpdatedAt = now
         };
-        db.AddRange(owner, auditor, team, project);
+        var membership = new TeamMember
+        {
+            Id = Guid.NewGuid(), TeamId = team.Id, Team = team, UserId = owner.Id, User = owner,
+            Role = TeamMemberRole.Owner, IsActive = true, JoinedAt = now
+        };
+        db.AddRange(owner, auditor, team, project, membership);
         await db.SaveChangesAsync();
         return (owner, auditor, team, project);
     }
@@ -395,11 +546,11 @@ public class TeamGitSecurityTests
 
         public OnlineJudgeDbContext CreateDb() => new(new DbContextOptionsBuilder<OnlineJudgeDbContext>().UseInMemoryDatabase(databaseName).Options);
 
-        public TeamGitRepositoryService CreateService(OnlineJudgeDbContext db, User user, IGitProcessRunner runner)
+        public TeamGitRepositoryService CreateService(OnlineJudgeDbContext db, User user, IGitProcessRunner runner, IPAddress[]? addresses = null)
         {
             return new TeamGitRepositoryService(
                 db, new TestCurrentUser(user.Id),
-                new TeamGitRemoteSecurityValidator(new TeamRepositoryUrlValidator(Options), new FixedResolver([IPAddress.Parse("140.82.112.4")]), Options),
+                new TeamGitRemoteSecurityValidator(new TeamRepositoryUrlValidator(Options), new FixedResolver(addresses ?? [IPAddress.Parse("140.82.112.4")]), Options),
                 runner, Storage, new TeamGitSyncLockProvider(), Options, Time);
         }
 
@@ -469,6 +620,13 @@ public class TeamGitSecurityTests
         public string? UserName => null;
         public UserRole? Role => null;
     }
+
+    private static TeamMember Membership(Team team, User user, TeamMemberRole role, bool active) => new()
+    {
+        Id = Guid.NewGuid(), TeamId = team.Id, Team = team, UserId = user.Id, User = user,
+        Role = role, IsActive = active, JoinedAt = DateTimeOffset.UtcNow,
+        LeftAt = active ? null : DateTimeOffset.UtcNow
+    };
 
     public sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
     {

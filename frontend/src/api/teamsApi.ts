@@ -20,12 +20,12 @@ export interface TeamProjectDto {
   createdByUserId: string;
   createdAt: string;
   updatedAt: string;
+  lastSyncedAt: string | null;
+  lastSyncStatus: number;
 }
 
 export interface TeamProjectAuditDto extends TeamProjectDto {
-  lastSyncedAt: string | null;
   lastSyncAttemptAt: string | null;
-  lastSyncStatus: number;
   lastSyncError: string | null;
   defaultBranch: string | null;
 }
@@ -40,6 +40,13 @@ export interface TeamGitCommitDto {
   committerEmail: string;
   committedAt: string;
   subject: string;
+}
+
+export interface TeamProjectGitHistoryDto {
+  lastSyncStatus: number;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+  commits: TeamGitCommitDto[];
 }
 
 export interface TeamInvitationDto {
@@ -70,6 +77,29 @@ export interface TeamListItemDto {
   memberCount: number;
   projectCount: number;
   createdAt: string;
+}
+
+export interface TeamChatMessageDto {
+  id: string;
+  type: number;
+  content: string | null;
+  sender: TeamUserDto | null;
+  relatedChallengeId: string | null;
+  relatedPeerReviewAssignmentId: string | null;
+  createdAt: string;
+}
+
+export interface TeamChatPageDto {
+  messages: TeamChatMessageDto[];
+  hasMore: boolean;
+}
+
+export interface TeamChallengeAnnouncementDto {
+  challengeId: string;
+  title: string;
+  status: "scheduled" | "active" | "peerReview" | "ended";
+  startAt: string;
+  endAt: string;
 }
 
 export const getMyTeam = () => request<TeamDto | null>("/api/teams/my");
@@ -107,3 +137,19 @@ export function updateProject(teamId: string, projectId: string, name: string, r
 }
 
 export const deleteProject = (teamId: string, projectId: string) => request<void>(`/api/teams/${teamId}/projects/${projectId}`, { method: "DELETE" });
+
+export function getTeamChat(teamId: string, beforeCreatedAt?: string, beforeId?: string) {
+  const cursor = beforeCreatedAt && beforeId
+    ? `?beforeCreatedAt=${encodeURIComponent(beforeCreatedAt)}&beforeId=${encodeURIComponent(beforeId)}`
+    : "";
+  return request<TeamChatPageDto>(`/api/teams/${teamId}/chat${cursor}`);
+}
+
+export const sendTeamChat = (teamId: string, content: string) => request<TeamChatMessageDto>(`/api/teams/${teamId}/chat`, {
+  method: "POST",
+  body: JSON.stringify({ content })
+});
+
+export const getTeamChallengeAnnouncements = (teamId: string) => request<TeamChallengeAnnouncementDto[]>(`/api/teams/${teamId}/challenge-announcements`);
+export const getTeamProjectHistory = (teamId: string, projectId: string, skip = 0, limit = 50) => request<TeamProjectGitHistoryDto>(`/api/teams/${teamId}/projects/${projectId}/commits?skip=${skip}&limit=${limit}`);
+export const syncTeamProject = (teamId: string, projectId: string) => request<TeamProjectAuditDto>(`/api/teams/${teamId}/projects/${projectId}/sync`, { method: "POST" });

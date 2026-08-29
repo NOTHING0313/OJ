@@ -20,6 +20,8 @@ public class ChallengeListItemDto
 
     public int TeamCount { get; set; }
 
+    public int ParticipantCount { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public int TotalTaskCount { get; set; }

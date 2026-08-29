@@ -11,6 +11,8 @@ export interface ProblemListItemDto {
   memoryLimitMb: number;
   isPublished: boolean;
   judgeMode: JudgeMode;
+  allowedLanguagesMask: number;
+  totalScore: number;
   createdAt: string;
 }
 

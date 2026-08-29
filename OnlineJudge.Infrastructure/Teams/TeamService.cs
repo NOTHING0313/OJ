@@ -794,7 +794,9 @@ public class TeamService(
         RepositoryUrl = project.RepositoryUrl,
         CreatedByUserId = project.CreatedByUserId,
         CreatedAt = project.CreatedAt,
-        UpdatedAt = project.UpdatedAt
+        UpdatedAt = project.UpdatedAt,
+        LastSyncedAt = project.LastSyncedAt,
+        LastSyncStatus = project.LastSyncStatus
     };
 
     private static TeamUserDto ToUserDto(User user) => new()

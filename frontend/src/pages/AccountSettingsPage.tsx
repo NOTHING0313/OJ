@@ -23,6 +23,7 @@ export function AccountSettingsPage() {
   const { currentUser, logout, updateCurrentUser } = useAuth();
   const { currentTheme, setTheme, reloadUserAppearance, updateUserAppearanceLocal } = useTheme();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const privacySavedTimerRef = useRef<number | null>(null);
   const [account, setAccount] = useState<AccountUserDto | null>(null);
   const [appearance, setAppearance] = useState<UserAppearance>(() => createDefaultUserAppearance());
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -37,6 +38,8 @@ export function AccountSettingsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingWallpaper, setIsSavingWallpaper] = useState(false);
   const [isSavingLeaderboardPrivacy, setIsSavingLeaderboardPrivacy] = useState(false);
+  const [leaderboardPrivacyError, setLeaderboardPrivacyError] = useState<string | null>(null);
+  const [leaderboardPrivacySaved, setLeaderboardPrivacySaved] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isSendingDeleteCode, setIsSendingDeleteCode] = useState(false);
@@ -74,6 +77,12 @@ export function AccountSettingsPage() {
     return () => {
       ignore = true;
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (privacySavedTimerRef.current !== null) {
+      window.clearTimeout(privacySavedTimerRef.current);
+    }
   }, []);
 
   async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
@@ -122,17 +131,28 @@ export function AccountSettingsPage() {
   }
 
   async function handleLeaderboardAnonymityChange(enabled: boolean) {
+    if (isSavingLeaderboardPrivacy) {
+      return;
+    }
+
+    const previousValue = account?.isLeaderboardAnonymous ?? false;
     setIsSavingLeaderboardPrivacy(true);
-    setError(null);
-    setNotice(null);
+    setLeaderboardPrivacyError(null);
+    setLeaderboardPrivacySaved(false);
+    setAccount((current) => current ? { ...current, isLeaderboardAnonymous: enabled } : current);
 
     try {
       const updated = await updateLeaderboardAnonymity(enabled);
       setAccount(updated);
       updateCurrentUser(updated);
-      setNotice(enabled ? "排行榜匿名已开启" : "排行榜匿名已关闭");
+      setLeaderboardPrivacySaved(true);
+      if (privacySavedTimerRef.current !== null) {
+        window.clearTimeout(privacySavedTimerRef.current);
+      }
+      privacySavedTimerRef.current = window.setTimeout(() => setLeaderboardPrivacySaved(false), 1800);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "排行榜匿名设置保存失败");
+      setAccount((current) => current ? { ...current, isLeaderboardAnonymous: previousValue } : current);
+      setLeaderboardPrivacyError(err instanceof Error ? err.message : "排行榜匿名设置保存失败");
     } finally {
       setIsSavingLeaderboardPrivacy(false);
     }
@@ -341,21 +361,26 @@ export function AccountSettingsPage() {
       </section>
 
       {account.role === 1 && (
-        <section className="admin-panel account-card leaderboard-privacy-card">
-          <div>
-            <p className="eyebrow">LEADERBOARD PRIVACY</p>
-            <h2>排行榜匿名</h2>
-            <p>开启后，其他答题人只能在排行榜等公开竞争页面看到随机代号；出题人和根账号仍可查看真实身份。</p>
+        <section className="leaderboard-privacy-setting" aria-labelledby="leaderboard-privacy-title">
+          <div className="leaderboard-privacy-copy">
+            <div className="leaderboard-privacy-title-row">
+              <h2 id="leaderboard-privacy-title">排行榜匿名</h2>
+              <button
+                className={`site-settings-switch ${account.isLeaderboardAnonymous ? "active" : ""}`}
+                type="button"
+                role="switch"
+                aria-checked={account.isLeaderboardAnonymous}
+                aria-label="排行榜匿名"
+                disabled={isSavingLeaderboardPrivacy}
+                onClick={() => void handleLeaderboardAnonymityChange(!account.isLeaderboardAnonymous)}
+              >
+                <span aria-hidden="true" />
+              </button>
+            </div>
+            <p>公开榜单将显示匿名代号，管理账号仍可查看真实身份。</p>
+            {leaderboardPrivacySaved && <span className="leaderboard-privacy-saved" role="status">已保存</span>}
+            {leaderboardPrivacyError && <span className="leaderboard-privacy-error" role="alert">{leaderboardPrivacyError}</span>}
           </div>
-          <label className="leaderboard-privacy-toggle">
-            <input
-              type="checkbox"
-              checked={account.isLeaderboardAnonymous}
-              disabled={isSavingLeaderboardPrivacy}
-              onChange={(event) => void handleLeaderboardAnonymityChange(event.target.checked)}
-            />
-            <span>{account.isLeaderboardAnonymous ? "已开启" : "未开启"}</span>
-          </label>
         </section>
       )}
 

@@ -26,6 +26,26 @@ public class LeaderboardSeasonFrontendSourceTests
     }
 
     [Fact]
+    public void LeaderboardPrivacy_UsesAccessibleCompactSwitchAndTransientFeedback()
+    {
+        var account = Read("frontend", "src", "pages", "AccountSettingsPage.tsx");
+        var api = Read("frontend", "src", "api", "accountApi.ts");
+        var styles = Read("frontend", "src", "styles.css");
+
+        Assert.Contains("role=\"switch\"", account, StringComparison.Ordinal);
+        Assert.Contains("aria-checked={account.isLeaderboardAnonymous}", account, StringComparison.Ordinal);
+        Assert.Contains("updateLeaderboardAnonymity(enabled)", account, StringComparison.Ordinal);
+        Assert.Contains("公开榜单将显示匿名代号，管理账号仍可查看真实身份。", account, StringComparison.Ordinal);
+        Assert.Contains("role=\"status\">已保存", account, StringComparison.Ordinal);
+        Assert.Contains("role=\"alert\"", account, StringComparison.Ordinal);
+        Assert.DoesNotContain("排行榜匿名已开启", account, StringComparison.Ordinal);
+        Assert.Contains("/api/account/leaderboard-anonymity", api, StringComparison.Ordinal);
+        Assert.Contains("site-settings-switch", account, StringComparison.Ordinal);
+        Assert.Contains(".site-settings-switch.active", styles, StringComparison.Ordinal);
+        Assert.Contains("@media (max-width: 640px)", styles, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PublicSeasonUi_DoesNotRenderRealUserNameField()
     {
         var page = Read("frontend", "src", "pages", "SeasonLeaderboardPage.tsx");

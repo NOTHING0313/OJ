@@ -356,13 +356,6 @@ export function addLeaderboardSeasonProblems(seasonId: string, problemIds: strin
   });
 }
 
-export function updateLeaderboardSeasonProblem(seasonId: string, problemId: string, baseScore: number) {
-  return request<LeaderboardSeason>(`/api/admin/leaderboard-seasons/${seasonId}/problems/${problemId}`, {
-    method: "PUT",
-    body: JSON.stringify({ baseScore })
-  });
-}
-
 export function removeLeaderboardSeasonProblems(seasonId: string, problemIds: string[]) {
   return request<void>(`/api/admin/leaderboard-seasons/${seasonId}/problems/batch-remove`, {
     method: "POST",

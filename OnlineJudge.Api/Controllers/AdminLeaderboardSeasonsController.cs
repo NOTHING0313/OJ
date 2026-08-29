@@ -47,11 +47,6 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
     public async Task<IActionResult> AddProblems(Guid seasonId, AddLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.AddProblemsAsync(seasonId, request, cancellationToken));
 
-    [Authorize(Policy = "RequireRoot")]
-    [HttpPut("{seasonId:guid}/problems/{problemId:guid}")]
-    public async Task<IActionResult> UpdateProblem(Guid seasonId, Guid problemId, UpdateLeaderboardSeasonProblemRequest request, CancellationToken cancellationToken) =>
-        ToActionResult(await seasonService.UpdateProblemAsync(seasonId, problemId, request, cancellationToken));
-
     [HttpPut("{seasonId:guid}/problems/{problemId:guid}/benchmarks/{language}")]
     public async Task<IActionResult> UpdateProblemBenchmark(
         Guid seasonId,

@@ -38,6 +38,29 @@ public class ProblemMetadataUxTests
     }
 
     [Fact]
+    public async Task ProblemList_UsesActiveTestCaseScoreSum()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedProblem(dbContext, JudgeMode.StandardInputOutput, allowedLanguagesMask: 0b101);
+        dbContext.TestCases.AddRange(
+            TestCase(ids.ProblemId, TestCaseVisibility.Sample, 40, "sample"),
+            TestCase(ids.ProblemId, TestCaseVisibility.Hidden, 60, "hidden"),
+            new TestCase
+            {
+                Id = Guid.NewGuid(), ProblemId = ids.ProblemId, Input = "deleted", ExpectedOutput = "deleted",
+                Visibility = TestCaseVisibility.Hidden, Score = 900, IsDeleted = true, DeletedAt = BaseTime,
+                CreatedAt = BaseTime, UpdatedAt = BaseTime
+            });
+        await dbContext.SaveChangesAsync();
+
+        var result = await new ProblemService(dbContext, new TestCurrentUser(null, null, false)).GetProblemsAsync();
+
+        var problem = Assert.Single(result.Value!);
+        Assert.Equal(100, problem.TotalScore);
+        Assert.Equal(0b101, problem.AllowedLanguagesMask);
+    }
+
+    [Fact]
     public async Task Submission_RestrictedProblem_RejectsDisallowedLanguage()
     {
         await using var dbContext = CreateDbContext();

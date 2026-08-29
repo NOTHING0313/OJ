@@ -44,7 +44,7 @@ public sealed class TeamGitRepositoryService(
 
     public async Task<Result<TeamProjectAuditDto>> SyncAsync(Guid teamId, Guid projectId, CancellationToken cancellationToken = default)
     {
-        var access = await GetAuditProjectAsync(teamId, projectId, tracking: true, cancellationToken);
+        var access = await GetSyncableProjectAsync(teamId, projectId, cancellationToken);
         if (access.IsFailure || access.Value is null)
         {
             return Result<TeamProjectAuditDto>.Failure(access.ErrorMessage ?? "Project not found.");
@@ -163,35 +163,48 @@ public sealed class TeamGitRepositoryService(
 
     public async Task<Result<IReadOnlyList<TeamGitCommitDto>>> GetCommitHistoryAsync(Guid teamId, Guid projectId, int skip = 0, int limit = 50, CancellationToken cancellationToken = default)
     {
-        if (limit is < 1 or > 100) return Result<IReadOnlyList<TeamGitCommitDto>>.Failure("Limit must be between 1 and 100.");
-        if (skip < 0 || skip > HistoryDepth) return Result<IReadOnlyList<TeamGitCommitDto>>.Failure($"Skip must be between 0 and {HistoryDepth}.");
+        var history = await GetHistoryAsync(teamId, projectId, skip, limit, cancellationToken);
+        return history.IsFailure || history.Value is null
+            ? Result<IReadOnlyList<TeamGitCommitDto>>.Failure(history.ErrorMessage ?? "Project not found.")
+            : Result<IReadOnlyList<TeamGitCommitDto>>.Success(history.Value.Commits);
+    }
 
-        var access = await GetAuditProjectAsync(teamId, projectId, tracking: false, cancellationToken);
+    public async Task<Result<TeamProjectGitHistoryDto>> GetHistoryAsync(Guid teamId, Guid projectId, int skip = 0, int limit = 50, CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 100) return Result<TeamProjectGitHistoryDto>.Failure("Limit must be between 1 and 100.");
+        if (skip < 0 || skip > HistoryDepth) return Result<TeamProjectGitHistoryDto>.Failure($"Skip must be between 0 and {HistoryDepth}.");
+
+        var access = await GetReadableProjectAsync(teamId, projectId, cancellationToken);
         if (access.IsFailure || access.Value is null)
         {
-            return Result<IReadOnlyList<TeamGitCommitDto>>.Failure(access.ErrorMessage ?? "Project not found.");
+            return Result<TeamProjectGitHistoryDto>.Failure(access.ErrorMessage ?? "Project not found.");
         }
 
         var project = access.Value;
         if (project.LastSyncedAt is null)
         {
-            return Result<IReadOnlyList<TeamGitCommitDto>>.Failure("Repository has not been synchronized.");
+            return Result<TeamProjectGitHistoryDto>.Success(ToHistoryDto(project, []));
         }
 
         if (!storage.Exists(project.Id))
         {
-            return Result<IReadOnlyList<TeamGitCommitDto>>.Failure("Repository cache is unavailable.");
+            return project.LastSyncStatus == TeamProjectSyncStatus.Failed
+                ? Result<TeamProjectGitHistoryDto>.Success(ToHistoryDto(project, []))
+                : Result<TeamProjectGitHistoryDto>.Failure("Repository cache is unavailable.");
         }
 
         var result = await RunGitAsync([
             "-C", storage.GetRepositoryPath(project.Id), "log", "HEAD", $"--skip={skip}", $"-n{limit}",
             "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00"
         ], cancellationToken);
-        if (result.TimedOut) return Result<IReadOnlyList<TeamGitCommitDto>>.Failure("Repository history request timed out.");
-        if (!result.Succeeded) return Result<IReadOnlyList<TeamGitCommitDto>>.Failure(UnavailableMessage);
-        if (result.OutputTruncated) return Result<IReadOnlyList<TeamGitCommitDto>>.Failure("Repository history output exceeded the safe limit.");
+        if (result.TimedOut) return Result<TeamProjectGitHistoryDto>.Failure("Repository history request timed out.");
+        if (!result.Succeeded) return Result<TeamProjectGitHistoryDto>.Failure(UnavailableMessage);
+        if (result.OutputTruncated) return Result<TeamProjectGitHistoryDto>.Failure("Repository history output exceeded the safe limit.");
 
-        return ParseHistory(result.StandardOutput);
+        var history = ParseHistory(result.StandardOutput);
+        return history.IsFailure || history.Value is null
+            ? Result<TeamProjectGitHistoryDto>.Failure(history.ErrorMessage ?? "Repository history data is invalid.")
+            : Result<TeamProjectGitHistoryDto>.Success(ToHistoryDto(project, history.Value));
     }
 
     public static Result<IReadOnlyList<TeamGitCommitDto>> ParseHistory(string output)
@@ -250,6 +263,53 @@ public sealed class TeamGitRepositoryService(
         return project is null ? Result<TeamProject>.Failure("Project not found.") : Result<TeamProject>.Success(project);
     }
 
+    private async Task<Result<TeamProject>> GetSyncableProjectAsync(Guid teamId, Guid projectId, CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated || currentUser.UserId is not { } userId)
+        {
+            return Result<TeamProject>.Failure("Unauthorized.");
+        }
+
+        var user = await dbContext.Users.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == userId && !item.IsDeleted, cancellationToken);
+        if (user is null) return Result<TeamProject>.Failure("Unauthorized.");
+        if (user.IsBlacklisted) return Result<TeamProject>.Failure("Account is blacklisted.");
+
+        var isAuditRole = user.Role is UserRole.ProblemSetter or UserRole.Root;
+        if (!isAuditRole)
+        {
+            var isActiveOwner = await dbContext.TeamMembers.AsNoTracking().AnyAsync(member => member.TeamId == teamId
+                && member.UserId == userId && member.Role == TeamMemberRole.Owner && member.IsActive
+                && member.Team!.OwnerUserId == userId && !member.Team.IsDeleted, cancellationToken);
+            if (!isActiveOwner) return Result<TeamProject>.Failure("Forbidden.");
+        }
+
+        var project = await dbContext.TeamProjects
+            .FirstOrDefaultAsync(item => item.Id == projectId && item.TeamId == teamId && !item.Team!.IsDeleted, cancellationToken);
+        return project is null ? Result<TeamProject>.Failure("Project not found.") : Result<TeamProject>.Success(project);
+    }
+
+    private async Task<Result<TeamProject>> GetReadableProjectAsync(Guid teamId, Guid projectId, CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated || currentUser.UserId is not { } userId)
+        {
+            return Result<TeamProject>.Failure("Unauthorized.");
+        }
+
+        var user = await dbContext.Users.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == userId && !item.IsDeleted, cancellationToken);
+        if (user is null) return Result<TeamProject>.Failure("Unauthorized.");
+        if (user.IsBlacklisted) return Result<TeamProject>.Failure("Account is blacklisted.");
+        var hasAccess = user.Role is UserRole.ProblemSetter or UserRole.Root
+            || await dbContext.TeamMembers.AsNoTracking().AnyAsync(member => member.TeamId == teamId
+                && member.UserId == userId && member.IsActive && !member.Team!.IsDeleted, cancellationToken);
+        if (!hasAccess) return Result<TeamProject>.Failure("Forbidden.");
+
+        var project = await dbContext.TeamProjects.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == projectId && item.TeamId == teamId && !item.Team!.IsDeleted, cancellationToken);
+        return project is null ? Result<TeamProject>.Failure("Project not found.") : Result<TeamProject>.Success(project);
+    }
+
     private async Task<Result> RequireAuditRoleAsync(CancellationToken cancellationToken)
     {
         if (!currentUser.IsAuthenticated || currentUser.UserId is not Guid userId) return Result.Failure("Unauthorized.");
@@ -303,5 +363,13 @@ public sealed class TeamGitRepositoryService(
         LastSyncStatus = project.LastSyncStatus,
         LastSyncError = project.LastSyncError,
         DefaultBranch = project.DefaultBranch
+    };
+
+    private static TeamProjectGitHistoryDto ToHistoryDto(TeamProject project, IReadOnlyList<TeamGitCommitDto> commits) => new()
+    {
+        LastSyncStatus = project.LastSyncStatus,
+        LastSyncedAt = project.LastSyncedAt,
+        LastSyncError = project.LastSyncStatus == TeamProjectSyncStatus.Failed ? project.LastSyncError : null,
+        Commits = commits
     };
 }

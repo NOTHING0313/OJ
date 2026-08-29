@@ -6992,30 +6992,66 @@ h2 {
   font-size: 0.72rem;
 }
 
-.leaderboard-management-v2 { width: min(1180px, 100%); margin-inline: auto; }
+.season-workspace { width: min(1240px, 100%); margin-inline: auto; }
 .season-editor-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(2, 6, 18, 0.76); backdrop-filter: blur(8px); }
-.season-editor-modal { display: grid; gap: 18px; width: min(860px, 100%); max-height: calc(100vh - 48px); overflow: auto; }
-.season-editor-fields, .season-reward-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.season-editor-fields label, .leaderboard-benchmark-table label { display: grid; gap: 6px; color: var(--oj-text-secondary); font-size: 0.8rem; }
-.season-editor-modal fieldset { display: grid; gap: 10px; margin: 0; padding: 14px; border: 1px solid var(--oj-panel-border); border-radius: 10px; }
-.season-board-options, .season-problem-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-height: 180px; overflow: auto; }
-.season-summary-card { display: grid; grid-template-columns: 1fr auto; gap: 12px 20px; }
-.season-summary-card h2 { margin: 8px 0 4px; }
-.season-summary-card p { margin: 0; color: var(--oj-text-secondary); }
-.season-summary-actions, .season-problem-toolbar, .season-board-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.season-board-chips { grid-column: 1 / -1; }
-.season-board-chips span { padding: 5px 9px; border: 1px solid rgba(129, 140, 248, 0.26); border-radius: 999px; background: rgba(79, 70, 229, 0.1); color: #c7d2fe; font-size: 0.76rem; }
-.season-problem-manager, .season-history-compact { display: grid; gap: 14px; }
-.season-problem-toolbar input { flex: 1 1 260px; }
-.season-problem-picker { padding: 12px; border: 1px solid var(--oj-panel-border); border-radius: 10px; background: rgba(7, 12, 24, 0.42); }
-.season-base-score { width: 92px; margin-left: auto; }
-.leaderboard-benchmark-table { display: grid; gap: 7px; }
-.leaderboard-benchmark-table > div { display: grid; grid-template-columns: 90px repeat(2, minmax(150px, 1fr)) auto; align-items: end; gap: 9px; padding-top: 7px; border-top: 1px solid rgba(148, 163, 184, 0.12); }
+.season-editor-modal { display: grid; gap: 15px; width: min(680px, 100%); max-height: calc(100vh - 48px); overflow: auto; }
+.season-editor-modal > label, .benchmark-editor-modal > label { display: grid; gap: 6px; color: var(--oj-text-secondary); font-size: 0.8rem; }
+.season-editor-time-row, .season-reward-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.season-editor-time-row label { display: grid; gap: 6px; color: var(--oj-text-secondary); font-size: 0.8rem; }
+.season-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.season-overview { display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; align-items: center; gap: 24px; padding: 18px 20px; border-block: 1px solid rgba(148, 163, 184, 0.14); background: rgba(15, 23, 42, 0.36); }
+.season-overview-title { display: flex; align-items: center; gap: 10px; }
+.season-overview-title h2 { margin: 3px 0 0; font-size: 1.35rem; }
+.season-overview dl { display: grid; grid-template-columns: repeat(3, auto); gap: 20px; margin: 0; }
+.season-overview dl > div { display: grid; gap: 3px; }
+.season-overview dt { color: var(--oj-text-secondary); font-size: 0.72rem; }
+.season-overview dd { margin: 0; color: var(--oj-text-primary); font-size: 0.82rem; }
+.workspace-section { margin-top: 12px; border-block: 1px solid rgba(148, 163, 184, 0.13); background: rgba(10, 17, 32, 0.36); }
+.workspace-section-header { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 18px; border: 0; background: rgba(30, 41, 59, 0.34); color: inherit; text-align: left; }
+.workspace-section-header:not(.static) { cursor: pointer; }
+.workspace-section-header > div { display: flex; align-items: baseline; gap: 12px; }
+.workspace-section-header h2 { margin: 0; color: var(--oj-text-primary); font-size: 1rem; }
+.workspace-section-header span { color: var(--oj-text-secondary); font-size: 0.76rem; }
+.workspace-section-header b { color: #a5b4fc; font-size: 1.15rem; font-weight: 500; }
+.workspace-section-body { padding: 14px 18px 18px; }
+.season-setting-list { display: grid; max-width: 760px; }
+.season-setting-row { display: flex !important; min-height: 46px; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 2px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); color: var(--oj-text-primary) !important; }
+.season-setting-row > span { display: grid; gap: 2px; }
+.season-setting-row small { color: var(--oj-text-secondary); }
+.season-setting-row input[role="switch"] { width: 38px; height: 20px; accent-color: var(--oj-accent); }
+.season-setting-divider { display: flex; justify-content: space-between; gap: 16px; padding: 16px 2px 7px; color: var(--oj-text-secondary); font-size: 0.76rem; }
+.season-setting-divider strong { color: var(--oj-text-primary); font-size: 0.82rem; }
+.season-problem-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 12px; }
+.season-problem-toolbar > input { flex: 1 1 250px; min-width: 210px; }
+.segmented-control { display: inline-flex; padding: 3px; border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 8px; background: rgba(2, 6, 18, 0.42); }
+.segmented-control button { padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--oj-text-secondary); cursor: pointer; }
+.segmented-control button.active { background: rgba(99, 102, 241, 0.2); color: #e0e7ff; }
+.season-compact-table { width: 100%; border-collapse: collapse; }
+.season-compact-table th, .season-compact-table td { height: 50px; padding: 9px 11px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); text-align: left; white-space: nowrap; }
+.season-compact-table th { height: 42px; background: rgba(30, 41, 59, 0.44); color: var(--oj-text-secondary); font-size: 0.72rem; font-weight: 600; }
+.season-compact-table td { color: var(--oj-text-secondary); font-size: 0.8rem; }
+.season-compact-table td strong { color: var(--oj-text-primary); }
+.season-row-status { display: inline-flex; padding: 3px 7px; border-radius: 999px; background: rgba(100, 116, 139, 0.16); color: #cbd5e1; font-size: 0.7rem; }
+.season-row-status.enabled { background: rgba(34, 197, 94, 0.11); color: #86efac; }
+.table-actions { display: flex; align-items: center; gap: 10px; }
+.table-actions a, .table-actions button, .text-action { padding: 0; border: 0; background: transparent; color: #a5b4fc; font: inherit; text-decoration: none; cursor: pointer; }
+.table-actions a:hover, .table-actions button:hover, .text-action:hover { color: #c7d2fe; text-decoration: underline; }
+.table-actions button:disabled { color: var(--oj-text-secondary); cursor: not-allowed; text-decoration: none; }
+.compact-empty { padding: 18px; color: var(--oj-text-secondary); font-size: 0.8rem; text-align: center; }
+.benchmark-editor-modal { display: grid; gap: 14px; width: min(440px, 100%); }
+.audit-section { margin-top: 18px; }
 .season-history-compact a { display: flex; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--oj-panel-border); border-radius: 10px; color: var(--oj-text-primary); text-decoration: none; }
 .season-history-compact span { color: var(--oj-text-secondary); }
+.team-audit-page { max-width: 1240px; }
+.team-audit-summary { display: flex; gap: 28px; padding: 13px 18px; border-block: 1px solid rgba(148, 163, 184, 0.14); background: rgba(15, 23, 42, 0.38); color: var(--oj-text-secondary); font-size: 0.8rem; }
+.team-audit-summary strong { margin-left: 5px; color: var(--oj-text-primary); }
+.leaderboard-preview-empty.compact { min-height: 88px; }
 
 @media (max-width: 760px) {
-  .season-editor-fields, .season-reward-toggles, .season-board-options, .season-problem-picker, .season-summary-card, .leaderboard-benchmark-table > div { grid-template-columns: 1fr; }
+  .season-editor-time-row, .season-reward-toggles, .season-overview, .season-overview dl { grid-template-columns: 1fr; }
+  .season-overview { align-items: stretch; }
+  .workspace-section-header > div { display: grid; gap: 3px; }
+  .season-setting-divider { display: grid; }
   .management-menu-panel { left: auto; right: 0; transform: none; }
 }
 
@@ -7038,6 +7074,508 @@ h2 {
   .problem-season-score-card dl {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+.team-workspace-page {
+  max-width: 1180px;
+}
+
+.team-workspace-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.team-workspace-header h1,
+.team-workspace-header p {
+  margin-bottom: 0;
+}
+
+.team-header-metrics,
+.team-sidebar-counts {
+  display: flex;
+  gap: 10px;
+  color: var(--oj-text-secondary);
+  font-size: 0.84rem;
+}
+
+.team-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.team-mobile-info-toggle {
+  display: none;
+}
+
+.team-header-metrics span,
+.team-sidebar-counts span {
+  padding: 6px 10px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--oj-panel-bg) 86%, transparent);
+}
+
+.team-workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(250px, 1fr);
+  gap: 16px;
+  min-height: min(720px, calc(100vh - 190px));
+}
+
+.team-chat-workspace,
+.team-workspace-sidebar {
+  min-width: 0;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 16px;
+  background: var(--oj-panel-bg);
+}
+
+.team-chat-workspace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.team-workspace-tabs {
+  display: flex;
+  min-height: 48px;
+  padding: 0 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--oj-panel-border);
+}
+
+.team-workspace-tabs button {
+  flex: 0 0 auto;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--oj-text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.team-workspace-tabs button:hover,
+.team-workspace-tabs button.active {
+  border-bottom-color: var(--oj-accent);
+  color: var(--oj-text-primary);
+}
+
+.team-announcements {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+
+.team-announcements > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--oj-accent) 24%, var(--oj-panel-border));
+  border-radius: 10px;
+  color: var(--oj-text-primary);
+  text-align: left;
+  background: color-mix(in srgb, var(--oj-accent) 7%, var(--oj-panel-bg));
+  cursor: pointer;
+}
+
+.team-announcements > button > span {
+  display: grid;
+  gap: 2px;
+}
+
+.team-announcements small,
+.team-announcements em {
+  color: var(--oj-text-secondary);
+  font-size: 0.76rem;
+  font-style: normal;
+}
+
+.team-announcements b {
+  color: #8bd9aa;
+  font-size: 0.78rem;
+}
+
+.team-chat-viewport {
+  flex: 1;
+  min-height: 360px;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.team-load-history,
+.team-new-message-indicator {
+  display: block;
+  margin: 0 auto 14px;
+  padding: 5px 11px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 999px;
+  color: var(--oj-text-secondary);
+  background: color-mix(in srgb, var(--oj-panel-bg) 84%, #334155);
+  cursor: pointer;
+}
+
+.team-chat-empty {
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  min-height: 240px;
+  color: var(--oj-text-secondary);
+  text-align: center;
+}
+
+.team-chat-message {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 0;
+}
+
+.team-chat-message.mine {
+  align-items: flex-end;
+}
+
+.team-chat-message time,
+.team-system-message time {
+  align-self: center;
+  margin: 4px auto 8px;
+  color: color-mix(in srgb, var(--oj-text-secondary) 75%, transparent);
+  font-size: 0.7rem;
+}
+
+.team-chat-message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  max-width: min(76%, 620px);
+}
+
+.team-chat-message.mine .team-chat-message-row {
+  justify-content: flex-end;
+}
+
+.team-chat-message-row > div {
+  display: grid;
+  gap: 4px;
+}
+
+.team-chat-message-row small {
+  color: var(--oj-text-secondary);
+  font-size: 0.74rem;
+}
+
+.team-chat-message-row p {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 5px 13px 13px 13px;
+  color: var(--oj-text-primary);
+  background: color-mix(in srgb, var(--oj-panel-bg) 78%, #334155);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.team-chat-message.mine p {
+  border-color: color-mix(in srgb, var(--oj-accent) 28%, var(--oj-panel-border));
+  border-radius: 13px 5px 13px 13px;
+  background: color-mix(in srgb, var(--oj-accent) 18%, var(--oj-panel-bg));
+}
+
+.team-chat-avatar,
+.team-member-avatar,
+.team-compact-list img {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.team-chat-avatar.fallback,
+.team-member-avatar {
+  display: grid;
+  place-items: center;
+  color: #dce3ff;
+  background: color-mix(in srgb, var(--oj-accent) 24%, #1e293b);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.team-system-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px auto;
+  color: var(--oj-text-secondary);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.team-system-message time {
+  margin: 0;
+}
+
+.team-system-message button {
+  padding: 2px 7px;
+  border: 0;
+  color: #aeb8ff;
+  background: transparent;
+  cursor: pointer;
+}
+
+.team-new-message-indicator {
+  position: absolute;
+  right: 18px;
+  bottom: 91px;
+  z-index: 2;
+  margin: 0;
+  color: #dce3ff;
+  border-color: color-mix(in srgb, var(--oj-accent) 35%, var(--oj-panel-border));
+}
+
+.team-chat-composer {
+  padding: 12px;
+  border-top: 1px solid var(--oj-panel-border);
+  background: color-mix(in srgb, var(--oj-panel-bg) 92%, #020617);
+}
+
+.team-chat-composer textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: none;
+}
+
+.team-chat-composer > div {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.team-chat-composer span {
+  color: var(--oj-text-secondary);
+  font-size: 0.72rem;
+}
+
+.team-chat-composer span.near-limit {
+  color: #f1bd75;
+}
+
+.team-workspace-sidebar {
+  align-self: start;
+  padding: 12px;
+}
+
+.team-workspace-sidebar > section,
+.team-workspace-sidebar > details {
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--oj-panel-border);
+}
+
+.team-workspace-sidebar > :last-child {
+  border-bottom: 0;
+}
+
+.team-workspace-sidebar h2 {
+  margin: 0 0 7px;
+  font-size: 0.96rem;
+}
+
+.team-workspace-sidebar p {
+  margin: 0 0 10px;
+  color: var(--oj-text-secondary);
+  font-size: 0.8rem;
+}
+
+.team-workspace-sidebar summary {
+  display: flex;
+  justify-content: space-between;
+  color: var(--oj-text-primary);
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
+}
+
+.team-workspace-sidebar summary span {
+  color: var(--oj-text-secondary);
+  font-weight: 400;
+}
+
+.team-workspace-sidebar details[open] summary {
+  margin-bottom: 10px;
+}
+
+.team-compact-list,
+.team-compact-projects {
+  display: grid;
+  gap: 7px;
+}
+
+.team-compact-list > div {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-compact-list strong,
+.team-compact-list small {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+}
+
+.team-compact-list small {
+  color: var(--oj-text-secondary);
+}
+
+.team-member-actions {
+  grid-column: 2 / -1;
+  display: flex;
+  gap: 8px;
+}
+
+.team-member-actions button,
+.team-compact-projects > div > div button,
+.team-pending-invite button {
+  padding: 0;
+  border: 0;
+  color: var(--oj-text-secondary);
+  background: transparent;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.team-compact-projects > div {
+  padding: 8px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 9px;
+}
+
+.team-compact-projects > div > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--oj-text-primary);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.team-compact-projects small {
+  grid-column: 1;
+  color: var(--oj-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-compact-projects .team-sync-status {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-size: 0.65rem;
+}
+
+.team-compact-projects > div > div {
+  display: flex;
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.team-workspace-sidebar .button.compact {
+  min-height: 30px;
+  margin-top: 10px;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+}
+
+.compact-editor {
+  margin-top: 10px;
+}
+
+.compact-editor label,
+.compact-editor input,
+.compact-editor textarea,
+.compact-editor .button {
+  font-size: 0.78rem;
+}
+
+.team-pending-invite {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--oj-text-secondary);
+  font-size: 0.76rem;
+}
+
+.team-danger-zone summary,
+.team-danger-zone p {
+  color: #dba29d;
+}
+
+.team-history-page .team-panel {
+  margin-top: 18px;
+}
+
+@media (max-width: 980px) {
+  .team-workspace-layout {
+    grid-template-columns: minmax(0, 7fr) minmax(230px, 3fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .team-workspace-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .team-workspace-layout {
+    display: block;
+    min-height: 0;
+  }
+
+  .team-chat-workspace {
+    min-height: calc(100vh - 190px);
+  }
+
+  .team-workspace-sidebar {
+    display: none;
+    margin-top: 14px;
+  }
+
+  .team-workspace-sidebar.mobile-open {
+    display: block;
+  }
+
+  .team-mobile-info-toggle {
+    display: inline-flex;
+  }
+
+  .team-chat-message-row {
+    max-width: 88%;
+  }
+
+  .team-announcements > button {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .team-announcements em {
+    display: none;
   }
 }
 
@@ -10537,6 +11075,223 @@ h2 {
   border-radius: 14px;
 }
 
+/* Account privacy and no-team onboarding closeout */
+.leaderboard-privacy-setting {
+  display: grid;
+  min-height: 92px;
+  padding: 18px 20px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--oj-panel-bg) 88%, transparent);
+}
+
+.leaderboard-privacy-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.leaderboard-privacy-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.leaderboard-privacy-title-row h2,
+.leaderboard-privacy-copy p {
+  margin: 0;
+}
+
+.leaderboard-privacy-title-row h2 {
+  color: var(--oj-text-primary);
+  font-size: 1rem;
+}
+
+.leaderboard-privacy-copy p {
+  color: var(--oj-text-secondary);
+  font-size: 0.84rem;
+}
+
+.leaderboard-privacy-saved,
+.leaderboard-privacy-error {
+  font-size: 0.76rem;
+}
+
+.leaderboard-privacy-saved {
+  color: #8bd9aa;
+}
+
+.leaderboard-privacy-error,
+.team-field-error,
+.team-create-error {
+  color: #ffaaa2;
+}
+
+.team-onboarding-page {
+  display: grid;
+  gap: 28px;
+  max-width: 980px;
+}
+
+.team-onboarding-hero {
+  padding: 18px 4px 2px;
+}
+
+.team-onboarding-hero h1 {
+  margin: 5px 0 8px;
+}
+
+.team-onboarding-hero > p:last-child {
+  margin: 0;
+  color: var(--oj-text-secondary);
+}
+
+.team-create-card,
+.team-pending-invitations {
+  width: min(100%, 680px);
+  margin-inline: auto;
+}
+
+.team-create-card {
+  padding: 24px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 16px;
+  background: var(--oj-panel-bg);
+  box-shadow: 0 18px 45px rgba(2, 6, 23, 0.18);
+}
+
+.team-create-heading {
+  margin-bottom: 20px;
+}
+
+.team-create-heading h2,
+.team-create-heading p,
+.team-pending-invitations h2 {
+  margin: 0;
+}
+
+.team-create-heading h2,
+.team-pending-invitations h2 {
+  font-size: 1rem;
+}
+
+.team-create-heading p {
+  margin-top: 6px;
+  color: var(--oj-text-secondary);
+  font-size: 0.84rem;
+}
+
+.team-create-form textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.team-field-error,
+.team-create-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+}
+
+.team-create-error {
+  padding: 9px 11px;
+  border: 1px solid rgba(214, 72, 66, 0.24);
+  border-radius: 9px;
+  background: rgba(214, 72, 66, 0.08);
+}
+
+.team-create-submit {
+  width: 100%;
+  justify-content: center;
+}
+
+.team-pending-invitations {
+  display: grid;
+  gap: 12px;
+}
+
+.team-invitation-list {
+  overflow: hidden;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--oj-panel-bg) 84%, transparent);
+}
+
+.team-invitation-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--oj-panel-border);
+}
+
+.team-invitation-row:last-child {
+  border-bottom: 0;
+}
+
+.team-invitation-avatar {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  color: #d8dcff;
+  background: color-mix(in srgb, var(--oj-accent) 18%, transparent);
+  font-weight: 700;
+}
+
+.team-invitation-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.team-invitation-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-invitation-copy small {
+  color: var(--oj-text-secondary);
+}
+
+@media (max-width: 640px) {
+  .leaderboard-privacy-setting {
+    min-height: 88px;
+    padding: 16px;
+  }
+
+  .team-onboarding-page {
+    gap: 20px;
+    overflow-x: clip;
+  }
+
+  .team-onboarding-hero {
+    padding-inline: 0;
+  }
+
+  .team-create-card {
+    padding: 18px;
+    border-radius: 13px;
+  }
+
+  .team-invitation-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .team-invitation-row .button-row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .team-invitation-row .button {
+    justify-content: center;
+  }
+}
+
 .team-list-row {
   display: flex;
   align-items: center;
@@ -10613,6 +11368,17 @@ h2 {
 
 .team-commit-history code {
   color: #aeb8ff;
+}
+
+.team-history-state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.team-history-state p {
+  margin: 0;
 }
 
 .team-dissolve {

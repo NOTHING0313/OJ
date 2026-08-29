@@ -16,5 +16,9 @@ public class ProblemListItemDto
 
     public JudgeMode JudgeMode { get; set; }
 
+    public int AllowedLanguagesMask { get; set; }
+
+    public int TotalScore { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 }

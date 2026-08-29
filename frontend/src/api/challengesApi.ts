@@ -14,6 +14,7 @@ export interface ChallengeListItemDto {
   isPublished: boolean;
   participationMode: ChallengeParticipationMode;
   teamCount: number;
+  participantCount: number;
   createdAt: string;
   totalTaskCount: number;
   completedTaskCount: number;

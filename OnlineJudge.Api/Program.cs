@@ -39,6 +39,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<LeaderboardSeasonLifecycleWorker>();
 builder.Services.AddHostedService<ChallengePeerReviewAssignmentWorker>();
+builder.Services.AddHostedService<TeamChatSystemEventWorker>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

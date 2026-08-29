@@ -40,9 +40,16 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
                 MemoryLimitMb = problem.MemoryLimitMb,
                 IsPublished = problem.IsPublished,
                 JudgeMode = problem.JudgeMode,
+                AllowedLanguagesMask = problem.AllowedLanguagesMask,
                 CreatedAt = problem.CreatedAt
             })
             .ToListAsync(cancellationToken);
+
+        var totalScores = await ProblemScoreQuery.GetTotalsAsync(dbContext, problems.Select(problem => problem.Id), cancellationToken);
+        foreach (var problem in problems)
+        {
+            problem.TotalScore = totalScores.GetValueOrDefault(problem.Id);
+        }
 
         return Result<IReadOnlyList<ProblemListItemDto>>.Success(problems);
     }
@@ -881,7 +888,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             IsPublished = problem.IsPublished,
             JudgeMode = problem.JudgeMode,
             AllowedLanguagesMask = problem.AllowedLanguagesMask,
-            TotalScore = problem.TestCases.Where(testCase => !testCase.IsDeleted).Sum(testCase => testCase.Score),
+            TotalScore = problem.CalculateTotalScore(),
             FunctionSpecJson = problem.FunctionSpecJson,
             StarterCodeJson = problem.StarterCodeJson,
             CreatedAt = problem.CreatedAt,

@@ -8,7 +8,10 @@ namespace OnlineJudge.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/teams")]
-public class TeamsController(ITeamService teamService, ITeamGitRepositoryService teamGitRepositoryService) : ControllerBase
+public class TeamsController(
+    ITeamService teamService,
+    ITeamGitRepositoryService teamGitRepositoryService,
+    ITeamChatService teamChatService) : ControllerBase
 {
     [HttpGet("my")]
     public async Task<IActionResult> GetMyTeam(CancellationToken cancellationToken)
@@ -144,6 +147,50 @@ public class TeamsController(ITeamService teamService, ITeamGitRepositoryService
     {
         var result = await teamService.DeleteProjectAsync(teamId, projectId, cancellationToken);
         return result.IsFailure ? ToFailureResult(result.ErrorMessage) : NoContent();
+    }
+
+    [HttpGet("{teamId:guid}/chat")]
+    public async Task<IActionResult> GetChat(
+        Guid teamId,
+        [FromQuery] DateTimeOffset? beforeCreatedAt,
+        [FromQuery] Guid? beforeId,
+        CancellationToken cancellationToken)
+    {
+        var result = await teamChatService.GetMessagesAsync(teamId, beforeCreatedAt, beforeId, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [HttpPost("{teamId:guid}/chat")]
+    public async Task<IActionResult> SendChat(Guid teamId, SendTeamChatMessageRequest request, CancellationToken cancellationToken)
+    {
+        var result = await teamChatService.SendAsync(teamId, request, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [HttpGet("{teamId:guid}/challenge-announcements")]
+    public async Task<IActionResult> GetChallengeAnnouncements(Guid teamId, CancellationToken cancellationToken)
+    {
+        var result = await teamChatService.GetChallengeAnnouncementsAsync(teamId, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [HttpGet("{teamId:guid}/projects/{projectId:guid}/commits")]
+    public async Task<IActionResult> GetMemberProjectCommits(
+        Guid teamId,
+        Guid projectId,
+        [FromQuery] int skip = 0,
+        [FromQuery] int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await teamGitRepositoryService.GetHistoryAsync(teamId, projectId, skip, limit, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [HttpPost("{teamId:guid}/projects/{projectId:guid}/sync")]
+    public async Task<IActionResult> SyncMemberProject(Guid teamId, Guid projectId, CancellationToken cancellationToken)
+    {
+        var result = await teamGitRepositoryService.SyncAsync(teamId, projectId, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
     }
 
     [Authorize(Policy = "RequireProblemSetter")]

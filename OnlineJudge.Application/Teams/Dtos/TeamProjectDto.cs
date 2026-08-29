@@ -1,3 +1,5 @@
+using OnlineJudge.Domain.Enums;
+
 namespace OnlineJudge.Application.Teams.Dtos;
 
 public class TeamProjectDto
@@ -8,4 +10,6 @@ public class TeamProjectDto
     public Guid CreatedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? LastSyncedAt { get; set; }
+    public TeamProjectSyncStatus LastSyncStatus { get; set; }
 }

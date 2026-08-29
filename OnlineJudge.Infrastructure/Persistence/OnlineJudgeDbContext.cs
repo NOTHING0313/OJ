@@ -53,6 +53,8 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<TeamProject> TeamProjects => Set<TeamProject>();
 
+    public DbSet<TeamChatMessage> TeamChatMessages => Set<TeamChatMessage>();
+
     public DbSet<LeaderboardSeason> LeaderboardSeasons => Set<LeaderboardSeason>();
 
     public DbSet<LeaderboardSeasonProblem> LeaderboardSeasonProblems => Set<LeaderboardSeasonProblem>();

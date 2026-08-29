@@ -12,6 +12,19 @@ namespace OnlineJudge.Tests.Teams;
 public class TeamCoreTests
 {
     [Fact]
+    public async Task GetMyTeam_WithoutMembership_ReturnsSuccessfulEmptyState()
+    {
+        await using var db = CreateDb();
+        var user = AddUser(db, "no-team-user");
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, user).GetMyTeamAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value);
+    }
+
+    [Fact]
     public async Task CreateTeam_CreatesConsistentOwnerMembership()
     {
         await using var db = CreateDb();
@@ -242,6 +255,8 @@ public class TeamCoreTests
         var created = await ownerService.CreateProjectAsync(team.Id, new CreateTeamProjectRequest { Name = "Judge", RepositoryUrl = "HTTPS://GitHub.com/a/b.git/" });
         Assert.True(created.IsSuccess);
         Assert.Equal("https://github.com/a/b.git", created.Value!.RepositoryUrl);
+        Assert.Equal(TeamProjectSyncStatus.NeverSynced, created.Value.LastSyncStatus);
+        Assert.Null(created.Value.LastSyncedAt);
         Assert.Equal("Repository is already bound to this team.", (await ownerService.CreateProjectAsync(team.Id, new CreateTeamProjectRequest { Name = "Other", RepositoryUrl = "https://github.com/a/b.git" })).ErrorMessage);
         Assert.True((await Service(db, member).GetProjectsAsync(team.Id)).IsSuccess);
         Assert.Equal("Forbidden.", (await Service(db, member).CreateProjectAsync(team.Id, new CreateTeamProjectRequest { Name = "No", RepositoryUrl = "https://github.com/a/c.git" })).ErrorMessage);

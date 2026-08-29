@@ -54,6 +54,7 @@ public class ChallengeService(
 
         var challenges = await visibilityPolicy.ApplyChallengeVisibility(query, visibilityRole)
             .Include(challenge => challenge.Tasks)
+            .Include(challenge => challenge.Participants)
             .Include(challenge => challenge.TeamParticipants)
             .OrderByDescending(challenge => challenge.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -73,6 +74,9 @@ public class ChallengeService(
                 IsPublished = challenge.IsPublished,
                 ParticipationMode = challenge.ParticipationMode,
                 TeamCount = challenge.TeamParticipants.Count,
+                ParticipantCount = challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly
+                    ? challenge.TeamParticipants.Count
+                    : challenge.Participants.Count,
                 CreatedAt = challenge.CreatedAt,
                 TotalTaskCount = challenge.Tasks.Count,
                 CompletedTaskCount = CountCompletedTasks(challenge, completions),
@@ -223,6 +227,7 @@ public class ChallengeService(
             ChallengeId = challenge.Id,
             ChallengeTitle = challenge.Title,
             TotalTaskCount = totalTaskCount,
+            ParticipationMode = ChallengeParticipationMode.Individual,
             Entries = entries
         });
     }

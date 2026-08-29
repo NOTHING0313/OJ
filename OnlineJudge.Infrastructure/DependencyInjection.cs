@@ -99,6 +99,8 @@ public static class DependencyInjection
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<ITeamService, TeamService>();
+        services.AddScoped<ITeamChatService, TeamChatService>();
+        services.AddScoped<ITeamChatSystemEventReconciler, TeamChatSystemEventReconciler>();
         services.AddScoped<ITeamGitRepositoryService, TeamGitRepositoryService>();
         services.AddScoped<ISmsVerificationService, SmsVerificationService>();
         services.AddScoped<ISmsSender, DevSmsSender>();

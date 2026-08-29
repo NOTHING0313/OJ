@@ -121,7 +121,7 @@ public class LeaderboardSeasonTests
     }
 
     [Fact]
-    public async Task SeasonProblemBaseScore_IsFrozenWhenTestCasesChange()
+    public async Task ScheduledSeasonProblem_RefreshesCurrentScore_AndFreezesItOnActivation()
     {
         await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddHours(1), addSeasonProblem: false);
         var service = fixture.RootSeasonService();
@@ -131,7 +131,48 @@ public class LeaderboardSeasonTests
 
         fixture.TestCase.Score = 999;
         await fixture.Db.SaveChangesAsync();
+        var refreshed = await service.GetSeasonsAsync();
+        Assert.Equal(999, Assert.Single(Assert.Single(refreshed.Value!).Problems).BaseScore);
         Assert.Equal(100, (await fixture.Db.LeaderboardSeasonProblems.SingleAsync()).BaseScore);
+
+        fixture.Time.Set(fixture.Season.StartAt);
+        await service.ReconcileCurrentSeasonAsync();
+        Assert.Equal(999, (await fixture.Db.LeaderboardSeasonProblems.SingleAsync()).BaseScore);
+        Assert.Equal(LeaderboardSeasonStatus.Active, fixture.Season.Status);
+    }
+
+    [Fact]
+    public async Task SeasonProblemScore_ExcludesSoftDeletedTestCases()
+    {
+        await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddHours(1), addSeasonProblem: false);
+        fixture.Db.TestCases.Add(new TestCase
+        {
+            Id = Guid.NewGuid(), ProblemId = fixture.Problem.Id, Input = "2", ExpectedOutput = "2", Score = 80,
+            Visibility = TestCaseVisibility.Hidden, IsDeleted = true, DeletedAt = Now, CreatedAt = Now, UpdatedAt = Now
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var result = await fixture.RootSeasonService().AddProblemAsync(
+            fixture.Season.Id, new AddLeaderboardSeasonProblemRequest { ProblemId = fixture.Problem.Id });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(100, Assert.Single(result.Value!.Problems).BaseScore);
+    }
+
+    [Theory]
+    [InlineData(LeaderboardSeasonStatus.Active)]
+    [InlineData(LeaderboardSeasonStatus.Public)]
+    [InlineData(LeaderboardSeasonStatus.Archived)]
+    public async Task StartedSeasonProblem_KeepsFrozenBaseScore(LeaderboardSeasonStatus status)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Season.Status = status;
+        fixture.TestCase.Score = 999;
+        await fixture.Db.SaveChangesAsync();
+
+        var result = await fixture.RootSeasonService().GetSeasonsAsync();
+
+        Assert.Equal(100, Assert.Single(Assert.Single(result.Value!).Problems).BaseScore);
     }
 
     [Fact]
@@ -1026,6 +1067,34 @@ public class LeaderboardSeasonTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("Challenge leaderboard must stay within the season time range.", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task UnlinkChallengeBoard_DoesNotDeleteChallenge()
+    {
+        await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddHours(1));
+        var challenge = new Challenge
+        {
+            Id = Guid.NewGuid(), Title = "Linked", Description = "test", StartAt = fixture.Season.StartAt,
+            EndAt = fixture.Season.FreezeAt, CreatedByUserId = fixture.Root.Id, IsPublished = true,
+            CreatedAt = Now, UpdatedAt = Now
+        };
+        fixture.Db.Challenges.Add(challenge);
+        await fixture.Db.SaveChangesAsync();
+        await using var context = fixture.CreateContext();
+        var service = fixture.SeasonService(fixture.Root, context);
+        var request = new UpdateLeaderboardSeasonRequest
+        {
+            Name = fixture.Season.Name, StartAt = fixture.Season.StartAt, FreezeAt = fixture.Season.FreezeAt,
+            PublicUntil = fixture.Season.PublicUntil, IncludeGlobalBoard = true, ChallengeIds = [challenge.Id]
+        };
+        Assert.True((await service.UpdateSeasonAsync(fixture.Season.Id, request)).IsSuccess);
+
+        request.ChallengeIds = [];
+        Assert.True((await service.UpdateSeasonAsync(fixture.Season.Id, request)).IsSuccess);
+
+        Assert.True(await fixture.Db.Challenges.AnyAsync(item => item.Id == challenge.Id));
+        Assert.False(await fixture.Db.LeaderboardSeasonBoards.AnyAsync(board => board.ChallengeId == challenge.Id));
     }
 
     private static int Count(string value, string token) => (value.Length - value.Replace(token, string.Empty, StringComparison.Ordinal).Length) / token.Length;

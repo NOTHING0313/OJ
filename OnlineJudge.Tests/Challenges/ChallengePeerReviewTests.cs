@@ -255,6 +255,32 @@ public class ChallengePeerReviewTests
     }
 
     [Fact]
+    public async Task CreateFromScheduledSeason_AutoCreatesChallengeBoard()
+    {
+        await using var db = CreateDb();
+        var root = AddUser(db, "root", UserRole.Root);
+        var season = new LeaderboardSeason
+        {
+            Id = Guid.NewGuid(), Name = "Season", StartAt = Now.AddHours(1), FreezeAt = Now.AddHours(4),
+            PublicUntil = Now.AddHours(5), Status = LeaderboardSeasonStatus.Scheduled, IsCurrent = true,
+            CreatedByUserId = root.Id, CreatedAt = Now, UpdatedAt = Now
+        };
+        db.LeaderboardSeasons.Add(season);
+        await db.SaveChangesAsync();
+
+        var result = await ChallengeService(db, root, new MutableTimeProvider(Now)).CreateChallengeAsync(new CreateChallengeRequest
+        {
+            Title = "Season Challenge", StartAt = season.StartAt, EndAt = season.FreezeAt,
+            ParticipationMode = ChallengeParticipationMode.Individual, SeasonId = season.Id
+        });
+
+        Assert.True(result.IsSuccess);
+        var board = await db.LeaderboardSeasonBoards.SingleAsync();
+        Assert.Equal(LeaderboardSeasonBoardType.Challenge, board.BoardType);
+        Assert.Equal(result.Value!.Id, board.ChallengeId);
+    }
+
+    [Fact]
     public async Task PublishedPeerReviewConfiguration_IsFrozen()
     {
         await using var db = CreateDb();
