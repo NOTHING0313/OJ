@@ -33,6 +33,7 @@ using OnlineJudge.Infrastructure.Email;
 using OnlineJudge.Infrastructure.ContentVisibility;
 using OnlineJudge.Application.Teams.Services;
 using OnlineJudge.Infrastructure.Teams;
+using OnlineJudge.Infrastructure.Storage;
 
 namespace OnlineJudge.Infrastructure;
 
@@ -47,6 +48,7 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString));
 
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IRuntimeStoragePathProvider>(_ => new RuntimeStoragePathProvider(configuration));
         services.AddScoped<ContentVisibilityPolicy>();
         var configuredGitHosts = configuration.GetSection($"{TeamProjectOptions.SectionName}:AllowedGitHosts")
             .GetChildren()

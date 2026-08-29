@@ -6,6 +6,27 @@ namespace OnlineJudge.Tests.Challenges;
 public class ChallengeProgressUpdaterTests
 {
     [Fact]
+    public void TryApply_RepeatedCandidates_PreservesHistoricalMaximumAndBestSubmission()
+    {
+        var completion = new ChallengeTaskCompletion();
+        var submissions = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToArray();
+        var now = DateTimeOffset.UtcNow;
+
+        Assert.True(ChallengeProgressUpdater.TryApply(completion, 40, false, 100, submissions[0], now));
+        Assert.True(ChallengeProgressUpdater.TryApply(completion, 70, false, 100, submissions[1], now.AddMinutes(1)));
+        Assert.False(ChallengeProgressUpdater.TryApply(completion, 50, false, 100, submissions[2], now.AddMinutes(2)));
+        Assert.True(ChallengeProgressUpdater.TryApply(completion, 100, true, 100, submissions[3], now.AddMinutes(3)));
+        var completedAt = completion.CompletedAt;
+        var updatedAt = completion.UpdatedAt;
+        Assert.False(ChallengeProgressUpdater.TryApply(completion, 80, false, 100, submissions[4], now.AddMinutes(4)));
+
+        Assert.Equal(100, completion.Score);
+        Assert.Equal(submissions[3], completion.SubmissionId);
+        Assert.Equal(completedAt, completion.CompletedAt);
+        Assert.Equal(updatedAt, completion.UpdatedAt);
+    }
+
+    [Fact]
     public void TryApply_LowerScore_DoesNotChangeBestResultOrTimestamp()
     {
         var oldSubmissionId = Guid.NewGuid();

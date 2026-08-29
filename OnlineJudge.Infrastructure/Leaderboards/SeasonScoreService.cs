@@ -49,6 +49,12 @@ public sealed class SeasonScoreService(
             seasonProblem.Season.UpdatedAt = now;
         }
 
+        await ScoringIdentityTransactionLock.AcquireAsync(
+            dbContext,
+            "season-problem-user",
+            [seasonProblem.SeasonId, submission.ProblemId, submission.UserId],
+            cancellationToken);
+
         var score = await dbContext.LeaderboardUserProblemScores.FirstOrDefaultAsync(
             item => item.SeasonId == seasonProblem.SeasonId
                 && item.ProblemId == submission.ProblemId
@@ -90,7 +96,7 @@ public sealed class SeasonScoreService(
             scoreIncreased = true;
         }
 
-        if (!score.FirstFullScoreAt.HasValue)
+        if (!score.FirstFullScoreAt.HasValue || submission.CreatedAt < score.FirstFullScoreAt.Value)
         {
             score.FirstFullScoreAt = submission.CreatedAt;
             score.FirstFullSubmissionId = submission.SubmissionId;

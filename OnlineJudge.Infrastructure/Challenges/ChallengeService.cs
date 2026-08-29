@@ -11,6 +11,7 @@ using OnlineJudge.Infrastructure.Persistence;
 using System.Text;
 using OnlineJudge.Infrastructure.ContentVisibility;
 using OnlineJudge.Infrastructure.Leaderboards;
+using OnlineJudge.Infrastructure.Storage;
 
 namespace OnlineJudge.Infrastructure.Challenges;
 
@@ -18,15 +19,21 @@ public class ChallengeService(
     OnlineJudgeDbContext dbContext,
     ICurrentUser currentUser,
     ContentVisibilityPolicy visibilityPolicy,
-    LeaderboardIdentityService identityService) : IChallengeService
+    LeaderboardIdentityService identityService,
+    IRuntimeStoragePathProvider storagePaths) : IChallengeService
 {
     public ChallengeService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser)
-        : this(dbContext, currentUser, new ContentVisibilityPolicy(TimeProvider.System), new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System))
+        : this(dbContext, currentUser, new ContentVisibilityPolicy(TimeProvider.System), new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), RuntimeStoragePathProvider.CreateDevelopmentDefault())
     {
     }
 
     public ChallengeService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy)
-        : this(dbContext, currentUser, visibilityPolicy, new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System))
+        : this(dbContext, currentUser, visibilityPolicy, new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), RuntimeStoragePathProvider.CreateDevelopmentDefault())
+    {
+    }
+
+    public ChallengeService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy, IRuntimeStoragePathProvider storagePaths)
+        : this(dbContext, currentUser, visibilityPolicy, new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), storagePaths)
     {
     }
 
@@ -718,9 +725,12 @@ public class ChallengeService(
             return Result<ChallengeFileDownloadDto>.Failure("Forbidden.");
         }
 
-        var uploadRoot = GetFileSubmissionRoot();
-        var fullPath = Path.GetFullPath(fileSubmission.FilePath);
-        if (!fullPath.StartsWith(uploadRoot, StringComparison.OrdinalIgnoreCase))
+        string fullPath;
+        try
+        {
+            fullPath = storagePaths.ResolveChallengeFilePath(fileSubmission.StoredFileName);
+        }
+        catch (InvalidDataException)
         {
             return Result<ChallengeFileDownloadDto>.Failure("Forbidden.");
         }
@@ -837,37 +847,9 @@ public class ChallengeService(
         fileSubmission.ReviewedAt = now;
         fileSubmission.UpdatedAt = now;
 
-        var completion = await dbContext.ChallengeTaskCompletions
-            .FirstOrDefaultAsync(
-                completion => completion.ChallengeId == challengeId
-                    && completion.ChallengeTaskId == fileSubmission.ChallengeTaskId
-                    && completion.UserId == fileSubmission.UserId,
-                cancellationToken);
-
-        if (completion is null)
-        {
-            completion = new ChallengeTaskCompletion
-            {
-                Id = Guid.NewGuid(),
-                ChallengeId = challengeId,
-                ChallengeTaskId = fileSubmission.ChallengeTaskId,
-                UserId = fileSubmission.UserId,
-                SubmissionId = null,
-                CompletedAt = now,
-                UpdatedAt = now,
-                IsCompleted = true,
-                Score = request.Score
-            };
-
-            dbContext.ChallengeTaskCompletions.Add(completion);
-        }
-        else
-        {
-            completion.Score = request.Score;
-            completion.IsCompleted = true;
-            completion.CompletedAt = now;
-            completion.UpdatedAt = now;
-        }
+        await ChallengeBestScoreStore.UpsertFileIndividualAsync(
+            dbContext, challengeId, fileSubmission.ChallengeTaskId, fileSubmission.UserId,
+            request.Score, true, now, cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -1366,18 +1348,10 @@ public class ChallengeService(
         var now = DateTimeOffset.UtcNow;
         await EnsureParticipantAsync(challengeId, userResult.Value.Id, now, cancellationToken);
 
-        var uploadRoot = GetFileSubmissionRoot();
-        Directory.CreateDirectory(uploadRoot);
-
         var storedFileName = $"{Guid.NewGuid():N}.zip";
-        var filePath = Path.Combine(uploadRoot, storedFileName);
-        var fullFilePath = Path.GetFullPath(filePath);
-        if (!fullFilePath.StartsWith(uploadRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            return Result<ChallengeTaskFileSubmissionDto>.Failure("Invalid file path.");
-        }
+        var fullFilePath = storagePaths.ResolveChallengeFilePath(storedFileName);
 
-        await using (var output = File.Create(fullFilePath))
+        await using (var output = storagePaths.CreateChallengeFileWriteStream(storedFileName))
         {
             await request.FileStream.CopyToAsync(output, cancellationToken);
         }
@@ -1408,7 +1382,7 @@ public class ChallengeService(
         }
         else
         {
-            DeleteExistingFileIfSafe(fileSubmission.FilePath, uploadRoot);
+            TryDeleteStoredChallengeFile(fileSubmission.StoredFileName);
             fileSubmission.OriginalFileName = Path.GetFileName(request.OriginalFileName);
             fileSubmission.StoredFileName = storedFileName;
             fileSubmission.FilePath = fullFilePath;
@@ -1421,35 +1395,8 @@ public class ChallengeService(
             fileSubmission.UpdatedAt = now;
         }
 
-        var completion = await dbContext.ChallengeTaskCompletions
-            .FirstOrDefaultAsync(
-                completion => completion.UserId == userResult.Value.Id && completion.ChallengeTaskId == taskId,
-                cancellationToken);
-
-        if (completion is null)
-        {
-            completion = new ChallengeTaskCompletion
-            {
-                Id = Guid.NewGuid(),
-                ChallengeId = challengeId,
-                ChallengeTaskId = taskId,
-                UserId = userResult.Value.Id,
-                CompletedAt = now,
-                UpdatedAt = now,
-                IsCompleted = false,
-                SubmissionId = null,
-                Score = 0
-            };
-
-            dbContext.ChallengeTaskCompletions.Add(completion);
-        }
-        else
-        {
-            completion.SubmissionId = null;
-            completion.Score = 0;
-            completion.IsCompleted = false;
-            completion.UpdatedAt = now;
-        }
+        await ChallengeBestScoreStore.UpsertFileIndividualAsync(
+            dbContext, challengeId, taskId, userResult.Value.Id, 0, false, now, cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -1495,8 +1442,7 @@ public class ChallengeService(
             return Result.Failure("This file submission has already been reviewed and cannot be withdrawn.");
         }
 
-        var uploadRoot = GetFileSubmissionRoot();
-        var filePath = fileSubmission.FilePath;
+        var storedFileName = fileSubmission.StoredFileName;
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
@@ -1507,7 +1453,7 @@ public class ChallengeService(
                     && completion.UserId == userResult.Value.Id,
                 cancellationToken);
 
-        if (completion is not null)
+        if (completion is { Score: <= 0, IsCompleted: false })
         {
             dbContext.ChallengeTaskCompletions.Remove(completion);
         }
@@ -1516,7 +1462,7 @@ public class ChallengeService(
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        TryDeleteExistingFileIfSafe(filePath, uploadRoot);
+        TryDeleteStoredChallengeFile(storedFileName);
 
         return Result.Success();
     }
@@ -1773,62 +1719,15 @@ public class ChallengeService(
         return Result.Success();
     }
 
-    private string GetFileSubmissionRoot()
-    {
-        var root = Path.Combine(ResolveApiContentRoot(), "App_Data", "challenge-file-submissions");
-        var fullRoot = Path.GetFullPath(root);
-        return fullRoot.EndsWith(Path.DirectorySeparatorChar)
-            ? fullRoot
-            : fullRoot + Path.DirectorySeparatorChar;
-    }
-
-    private static string ResolveApiContentRoot()
-    {
-        var currentDirectory = Directory.GetCurrentDirectory();
-        if (File.Exists(Path.Combine(currentDirectory, "OnlineJudge.Api.csproj")))
-        {
-            return currentDirectory;
-        }
-
-        var apiDirectory = Path.Combine(currentDirectory, "OnlineJudge.Api");
-        if (File.Exists(Path.Combine(apiDirectory, "OnlineJudge.Api.csproj")))
-        {
-            return apiDirectory;
-        }
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "OnlineJudge.Api.csproj")))
-            {
-                return directory.FullName;
-            }
-
-            directory = directory.Parent;
-        }
-
-        return currentDirectory;
-    }
-
-    private static void DeleteExistingFileIfSafe(string filePath, string uploadRoot)
-    {
-        if (string.IsNullOrWhiteSpace(filePath))
-        {
-            return;
-        }
-
-        var fullPath = Path.GetFullPath(filePath);
-        if (fullPath.StartsWith(uploadRoot, StringComparison.OrdinalIgnoreCase) && File.Exists(fullPath))
-        {
-            File.Delete(fullPath);
-        }
-    }
-
-    private static void TryDeleteExistingFileIfSafe(string filePath, string uploadRoot)
+    private void TryDeleteStoredChallengeFile(string storedFileName)
     {
         try
         {
-            DeleteExistingFileIfSafe(filePath, uploadRoot);
+            var filePath = storagePaths.ResolveChallengeFilePath(storedFileName);
+            if (File.Exists(filePath)) File.Delete(filePath);
+        }
+        catch (InvalidDataException)
+        {
         }
         catch (IOException)
         {

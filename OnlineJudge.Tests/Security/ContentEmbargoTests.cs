@@ -8,6 +8,7 @@ using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Challenges;
 using OnlineJudge.Infrastructure.ContentVisibility;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Infrastructure.Storage;
 using OnlineJudge.Infrastructure.Problems;
 using OnlineJudge.Infrastructure.Submissions;
 
@@ -408,7 +409,7 @@ public class ContentEmbargoTests
             UserId = ownerId,
             OriginalFileName = "submission.zip",
             StoredFileName = "missing.zip",
-            FilePath = Path.Combine(ResolveApiContentRoot(), "App_Data", "challenge-file-submissions", "missing.zip"),
+            FilePath = Path.Combine(RuntimeStoragePathProvider.CreateDevelopmentDefault().ChallengeFilesRoot, "missing.zip"),
             FileSizeBytes = 1,
             ContentType = "application/zip",
             CreatedAt = Now,
@@ -416,12 +417,6 @@ public class ContentEmbargoTests
         };
         db.AddRange(task, submission);
         return submission;
-    }
-
-    private static string ResolveApiContentRoot()
-    {
-        var method = typeof(ChallengeService).GetMethod("ResolveApiContentRoot", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-        return Assert.IsType<string>(method!.Invoke(null, null));
     }
 
     private static CreateSubmissionRequest Request(Guid problemId) => new()

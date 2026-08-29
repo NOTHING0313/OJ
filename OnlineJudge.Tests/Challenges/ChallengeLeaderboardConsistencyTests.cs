@@ -11,6 +11,30 @@ namespace OnlineJudge.Tests.Challenges;
 public class ChallengeLeaderboardConsistencyTests
 {
     [Fact]
+    public async Task Leaderboard_SumsOneBestCompletionPerTask()
+    {
+        await using var db = CreateDb();
+        var now = DateTimeOffset.UtcNow;
+        var user = NewUser("best-score-user", now);
+        var challenge = NewChallenge(user.Id, now);
+        var tasks = Enumerable.Range(0, 3).Select(_ => NewTask(challenge.Id, now)).ToArray();
+        var scores = new[] { 70, 60, 100 };
+        db.AddRange(user, challenge);
+        db.AddRange(tasks);
+        db.ChallengeParticipants.Add(new ChallengeParticipant { Id = Guid.NewGuid(), ChallengeId = challenge.Id, UserId = user.Id, JoinedAt = now });
+        db.ChallengeTaskCompletions.AddRange(tasks.Select((task, index) => new ChallengeTaskCompletion
+        {
+            Id = Guid.NewGuid(), ChallengeId = challenge.Id, ChallengeTaskId = task.Id, UserId = user.Id,
+            Score = scores[index], IsCompleted = index == 2, CompletedAt = now, UpdatedAt = now
+        }));
+        await db.SaveChangesAsync();
+
+        var leaderboard = await new ChallengeService(db, new TestCurrentUser(user)).GetLeaderboardAsync(challenge.Id);
+
+        Assert.Equal(230, Assert.Single(leaderboard.Value!.Entries).TotalScore);
+    }
+
+    [Fact]
     public async Task PartialScoreUser_HasSameRankInLeaderboardAndProgress()
     {
         await using var db = CreateDb();

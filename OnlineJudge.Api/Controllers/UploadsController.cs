@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OnlineJudge.Infrastructure.Storage;
 
 namespace OnlineJudge.Api.Controllers;
 
 [ApiController]
 [Authorize]
 [Route("api/uploads")]
-public class UploadsController(IWebHostEnvironment environment) : ControllerBase
+public class UploadsController(IRuntimeStoragePathProvider storagePaths) : ControllerBase
 {
     private const long MaxFileSize = 5 * 1024 * 1024;
     private const long MaxRequestSize = MaxFileSize + 1024 * 1024;
@@ -55,21 +56,8 @@ public class UploadsController(IWebHostEnvironment environment) : ControllerBase
             return BadRequest("Unsupported image content type.");
         }
 
-        var webRootPath = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
-        var uploadDirectory = Path.Combine(webRootPath, "uploads", "images");
-
-        Directory.CreateDirectory(uploadDirectory);
-
         var fileName = $"{Guid.NewGuid():N}{extension}";
-        var filePath = Path.GetFullPath(Path.Combine(uploadDirectory, fileName));
-        var uploadRoot = Path.GetFullPath(uploadDirectory);
-
-        if (!filePath.StartsWith(uploadRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            return BadRequest("Invalid file path.");
-        }
-
-        await using var stream = System.IO.File.Create(filePath);
+        await using var stream = storagePaths.CreateUploadImageWriteStream(fileName);
         await file.CopyToAsync(stream, cancellationToken);
 
         return Ok(new

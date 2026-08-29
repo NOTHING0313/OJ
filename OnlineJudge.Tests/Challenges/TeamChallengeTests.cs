@@ -9,6 +9,43 @@ namespace OnlineJudge.Tests.Challenges;
 public class TeamChallengeTests
 {
     [Fact]
+    public void TeamProgress_MemberCompetition_PreservesHistoricalMaximumAndContributor()
+    {
+        var completion = new ChallengeTeamTaskCompletion();
+        var submissions = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToArray();
+        var contributors = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid()).ToArray();
+        var now = DateTimeOffset.UtcNow;
+
+        Assert.True(ChallengeTeamProgressUpdater.TryApply(completion, 40, false, 100, submissions[0], contributors[0], now));
+        Assert.True(ChallengeTeamProgressUpdater.TryApply(completion, 70, false, 100, submissions[1], contributors[1], now.AddMinutes(1)));
+        Assert.False(ChallengeTeamProgressUpdater.TryApply(completion, 50, false, 100, submissions[2], contributors[2], now.AddMinutes(2)));
+        Assert.True(ChallengeTeamProgressUpdater.TryApply(completion, 100, true, 100, submissions[3], contributors[0], now.AddMinutes(3)));
+        var completedAt = completion.CompletedAt;
+        var updatedAt = completion.UpdatedAt;
+        Assert.False(ChallengeTeamProgressUpdater.TryApply(completion, 80, false, 100, submissions[4], contributors[2], now.AddMinutes(4)));
+
+        Assert.Equal(100, completion.Score);
+        Assert.Equal(submissions[3], completion.BestSubmissionId);
+        Assert.Equal(contributors[0], completion.ContributorUserId);
+        Assert.Equal(completedAt, completion.CompletedAt);
+        Assert.Equal(updatedAt, completion.UpdatedAt);
+    }
+
+    [Fact]
+    public void ProductionScoreStores_UseAtomicMaxAndSeasonTransactionLock()
+    {
+        var root = FindRepositoryRoot();
+        var store = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Challenges", "ChallengeBestScoreStore.cs"));
+        var season = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Leaderboards", "SeasonScoreService.cs"));
+        var worker = File.ReadAllText(Path.Combine(root, "OnlineJudge.JudgeWorker", "Worker.cs"));
+
+        Assert.Contains("ON CONFLICT", store, StringComparison.Ordinal);
+        Assert.Contains("GREATEST", store, StringComparison.Ordinal);
+        Assert.Contains("ScoringIdentityTransactionLock.AcquireAsync", season, StringComparison.Ordinal);
+        Assert.Contains("BeginTransactionAsync", worker, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Challenge_DefaultMode_IsIndividual()
     {
         Assert.Equal(ChallengeParticipationMode.Individual, new Challenge().ParticipationMode);
@@ -105,12 +142,13 @@ public class TeamChallengeTests
         var challengeService = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Challenges", "ChallengeService.cs"));
         var submissionService = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Submissions", "SubmissionService.cs"));
         var worker = File.ReadAllText(Path.Combine(root, "OnlineJudge.JudgeWorker", "Worker.cs"));
+        var scoreStore = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Challenges", "ChallengeBestScoreStore.cs"));
 
         Assert.Contains("member.IsActive", challengeService);
         Assert.Contains("ChallengeTeamRosterMembers", submissionService);
         Assert.Contains("ChallengeTeamParticipantId = challengeTeamParticipantId", submissionService);
         Assert.Contains("if (submission.ChallengeTeamParticipantId is", worker);
-        Assert.Contains("ChallengeTeamTaskCompletions", worker);
+        Assert.Contains("ChallengeTeamTaskCompletions", scoreStore);
         Assert.Contains("seasonScoreService.ApplySubmissionResultAsync", worker);
     }
 

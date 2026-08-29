@@ -286,10 +286,13 @@ public class LeaderboardSeasonTests
         var second = await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 80, 50, JudgeLanguage.Cpp17);
         fixture.Time.Advance(TimeSpan.FromMinutes(1));
         var third = await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 100, 100, JudgeLanguage.CSharp);
+        fixture.Time.Advance(TimeSpan.FromMinutes(1));
+        var lowerCandidate = await fixture.ApplyAcceptedAsync(fixture.Answerer.Id, fixture.Problem.Id, 400, 400, JudgeLanguage.CSharp);
 
         var score = await fixture.Db.LeaderboardUserProblemScores.SingleAsync();
         Assert.NotEqual(first, score.BestPerformanceSubmissionId);
         Assert.NotEqual(second, score.BestPerformanceSubmissionId);
+        Assert.NotEqual(lowerCandidate, score.BestPerformanceSubmissionId);
         Assert.Equal(third, score.BestPerformanceSubmissionId);
         Assert.Equal(JudgeLanguage.CSharp, score.BestPerformanceLanguage);
         Assert.Equal(100, score.BestRuntimeMs);

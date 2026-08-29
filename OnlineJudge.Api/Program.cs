@@ -9,6 +9,7 @@ using OnlineJudge.Api.Services;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Infrastructure;
 using OnlineJudge.Infrastructure.Auth;
+using OnlineJudge.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -71,7 +72,8 @@ var app = builder.Build();
 await RootAccountSeeder.SeedAsync(app.Services);
 
 var webRootPath = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
-Directory.CreateDirectory(Path.Combine(webRootPath, "uploads", "images"));
+var storagePaths = app.Services.GetRequiredService<IRuntimeStoragePathProvider>();
+Directory.CreateDirectory(storagePaths.UploadImagesRoot);
 
 if (app.Environment.IsDevelopment())
 {
@@ -83,6 +85,11 @@ app.UseForwardedHeaders();
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(webRootPath)
+});
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(storagePaths.UploadImagesRoot),
+    RequestPath = "/uploads/images"
 });
 
 if (app.Environment.IsDevelopment())

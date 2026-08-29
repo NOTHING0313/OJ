@@ -7,6 +7,7 @@ using OnlineJudge.Application.Leaderboards.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Infrastructure.Challenges;
 using StackExchange.Redis;
 
 namespace OnlineJudge.JudgeWorker;
@@ -154,6 +155,9 @@ public class Worker(
                 dbContext.SubmissionCaseResults.AddRange(caseResults);
             }
 
+            await using var scoringTransaction = dbContext.Database.IsRelational()
+                ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+                : null;
             if (submission.ChallengeTaskId.HasValue)
             {
                 await UpsertChallengeTaskProgressAsync(dbContext, submission, judgeResult, judgedCases, cancellationToken);
@@ -176,6 +180,7 @@ public class Worker(
                 "ApplyJudgeResult",
                 judgeResult.Status);
             await dbContext.SaveChangesAsync(cancellationToken);
+            if (scoringTransaction is not null) await scoringTransaction.CommitAsync(cancellationToken);
             if (seasonScoreResult.RequiresArchiveRefresh && seasonScoreResult.SeasonId is { } seasonId)
             {
                 await seasonLifecycleService.RefreshPublicSeasonAsync(seasonId, cancellationToken);
@@ -216,53 +221,15 @@ public class Worker(
 
         if (submission.ChallengeTeamParticipantId is { } teamParticipantId)
         {
-            var teamCompletion = await dbContext.ChallengeTeamTaskCompletions.FirstOrDefaultAsync(
-                completion => completion.ChallengeTeamParticipantId == teamParticipantId && completion.ChallengeTaskId == task.Id,
-                cancellationToken);
-            if (teamCompletion is null)
-            {
-                if (earnedScore <= 0 && !isCompleted) return;
-                teamCompletion = new ChallengeTeamTaskCompletion
-                {
-                    Id = Guid.NewGuid(), ChallengeId = task.ChallengeId, ChallengeTaskId = task.Id,
-                    ChallengeTeamParticipantId = teamParticipantId, BestSubmissionId = submission.Id,
-                    ContributorUserId = submission.UserId, CompletedAt = now, UpdatedAt = now,
-                    IsCompleted = isCompleted, Score = earnedScore
-                };
-                dbContext.ChallengeTeamTaskCompletions.Add(teamCompletion);
-                return;
-            }
-            ChallengeTeamProgressUpdater.TryApply(teamCompletion, earnedScore, isCompleted, task.Score, submission.Id, submission.UserId, now);
+            await ChallengeBestScoreStore.UpsertTeamAsync(
+                dbContext, task.ChallengeId, task.Id, teamParticipantId, earnedScore, isCompleted, task.Score,
+                submission.Id, submission.UserId, now, cancellationToken);
             return;
         }
 
-        var completion = await dbContext.ChallengeTaskCompletions
-            .FirstOrDefaultAsync(
-                completion => completion.UserId == submission.UserId && completion.ChallengeTaskId == task.Id,
-                cancellationToken);
-
-        if (completion is null)
-        {
-            if (earnedScore <= 0 && !isCompleted) return;
-
-            completion = new ChallengeTaskCompletion
-            {
-                Id = Guid.NewGuid(),
-                ChallengeId = task.ChallengeId,
-                ChallengeTaskId = task.Id,
-                UserId = submission.UserId,
-                SubmissionId = submission.Id,
-                CompletedAt = now,
-                UpdatedAt = now,
-                IsCompleted = isCompleted,
-                Score = earnedScore
-            };
-
-            dbContext.ChallengeTaskCompletions.Add(completion);
-            return;
-        }
-
-        ChallengeProgressUpdater.TryApply(completion, earnedScore, isCompleted, task.Score, submission.Id, now);
+        await ChallengeBestScoreStore.UpsertAlgorithmIndividualAsync(
+            dbContext, task.ChallengeId, task.Id, submission.UserId, earnedScore, isCompleted, task.Score,
+            submission.Id, now, cancellationToken);
     }
 
     private static JudgeRequest ToJudgeRequest(Submission submission, IReadOnlyList<JudgeCompileAsset> compileAssets)
