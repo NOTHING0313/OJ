@@ -30,7 +30,7 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                 type: "timestamp with time zone",
                 nullable: true);
 
-            migrationBuilder.Sql("UPDATE \"TestCases\" SET \"UpdatedAt\" = \"CreatedAt\"");
+            migrationBuilder.Sql("UPDATE \"TestCases\" SET \"UpdatedAt\" = \"CreatedAt\";");
 
             migrationBuilder.AlterColumn<DateTimeOffset>(
                 name: "UpdatedAt",

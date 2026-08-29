@@ -57,6 +57,8 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<LeaderboardSeasonProblem> LeaderboardSeasonProblems => Set<LeaderboardSeasonProblem>();
 
+    public DbSet<LeaderboardSeasonBoard> LeaderboardSeasonBoards => Set<LeaderboardSeasonBoard>();
+
     public DbSet<LeaderboardSeasonProblemBenchmark> LeaderboardSeasonProblemBenchmarks => Set<LeaderboardSeasonProblemBenchmark>();
 
     public DbSet<LeaderboardUserProblemScore> LeaderboardUserProblemScores => Set<LeaderboardUserProblemScore>();

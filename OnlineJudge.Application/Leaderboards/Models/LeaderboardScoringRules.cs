@@ -2,6 +2,12 @@ namespace OnlineJudge.Application.Leaderboards.Models;
 
 public sealed class LeaderboardScoringRules
 {
+    public bool FirstCompletionBonusEnabled { get; set; } = true;
+
+    public bool RuntimeBonusEnabled { get; set; } = true;
+
+    public bool MemoryBonusEnabled { get; set; } = true;
+
     public List<int> TimeBonusPercentages { get; set; } = [20, 16, 13, 10, 8, 6, 5, 4, 3, 2];
 
     public List<LeaderboardPerformanceBonusTier> RuntimeBonusTiers { get; set; } =

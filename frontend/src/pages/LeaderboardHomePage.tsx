@@ -1,26 +1,31 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import {
   getChallengeLeaderboardIndex,
   getCurrentSeasonLeaderboard,
+  getCurrentSeasonPublicSummary,
   type ChallengeLeaderboardIndex,
+  type LeaderboardSeasonPublicSummary,
   type SeasonLeaderboard
 } from "../api/leaderboardsApi";
+import { canManageContent, useAuth } from "../auth/AuthContext";
 
 export function LeaderboardHomePage() {
   const [globalLeaderboard, setGlobalLeaderboard] = useState<SeasonLeaderboard | null>(null);
   const [challengeIndex, setChallengeIndex] = useState<ChallengeLeaderboardIndex | null>(null);
+  const [summary, setSummary] = useState<LeaderboardSeasonPublicSummary | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let ignore = false;
 
-    Promise.all([getCurrentSeasonLeaderboard(), getChallengeLeaderboardIndex()])
-      .then(([globalData, challengeData]) => {
+    Promise.all([getCurrentSeasonLeaderboard(), getChallengeLeaderboardIndex(), getCurrentSeasonPublicSummary()])
+      .then(([globalData, challengeData, summaryData]) => {
         if (!ignore) {
           setGlobalLeaderboard(globalData);
           setChallengeIndex(challengeData);
+          setSummary(summaryData.season);
           setError(null);
         }
       })
@@ -43,8 +48,14 @@ export function LeaderboardHomePage() {
   const entries = globalLeaderboard?.entries ?? [];
   const season = globalLeaderboard?.season;
   const challenges = challengeIndex?.challenges ?? [];
-  const topUser = entries[0];
-  const participantCount = challenges.reduce((sum, challenge) => sum + challenge.participantCount, 0);
+  const { currentUser } = useAuth();
+  const boards = summary?.boards ?? [];
+  const hasGlobalBoard = boards.some((board) => board.boardType === 1);
+  const hasChallengeBoards = boards.some((board) => board.boardType === 2);
+
+  if (!isLoading && boards.length === 0 && !canManageContent(currentUser?.role)) {
+    return <Navigate to="/problems" replace />;
+  }
 
   return (
     <section className="challenge-page leaderboard-page leaderboard-v2-page">
@@ -54,37 +65,16 @@ export function LeaderboardHomePage() {
           <h1>榜单中心</h1>
           <p>从全局积分到单个挑战，快速查看平台上的排名、参与和完成情况。</p>
         </div>
-        <span className="leaderboard-live-badge">实时榜单</span>
-        <div className="leaderboard-header-actions"><Link className="button" to="/leaderboards/history">历史赛季</Link><Link className="button" to="/account/competition">我的赛季战绩</Link></div>
+        <div className="leaderboard-header-actions">
+          {canManageContent(currentUser?.role) && <Link className="button" to="/admin/leaderboard-seasons">榜单管理</Link>}
+          {currentUser?.role === 1 && <Link className="button" to="/account/competition">我的赛季战绩</Link>}
+        </div>
       </div>
 
       {error && <div className="leaderboard-inline-note">榜单概览暂不可用：{error}</div>}
 
-      <div className="leaderboard-overview-grid">
-        <article className="leaderboard-overview-card">
-          <span>上榜用户</span>
-          <strong>{isLoading ? "—" : entries.length}</strong>
-          <small>进入当前赛季有效榜单的答题人</small>
-        </article>
-        <article className="leaderboard-overview-card">
-          <span>已发布挑战</span>
-          <strong>{isLoading ? "—" : challenges.length}</strong>
-          <small>当前可参与并计入榜单的挑战</small>
-        </article>
-        <article className="leaderboard-overview-card">
-          <span>挑战参与人次</span>
-          <strong>{isLoading ? "—" : participantCount}</strong>
-          <small>所有已发布挑战的参与人数汇总</small>
-        </article>
-        <article className="leaderboard-overview-card leaderboard-overview-card-accent">
-          <span>当前最高总分</span>
-          <strong>{isLoading ? "—" : topUser?.totalScore ?? 0}</strong>
-          <small>{topUser ? `${topUser.displayName} 暂居赛季第一` : "暂无赛季排名记录"}</small>
-        </article>
-      </div>
-
       <div className="leaderboard-v2-hub-grid">
-        <article className="leaderboard-v2-feature-card">
+        {hasGlobalBoard && <article className="leaderboard-v2-feature-card">
           <div className="leaderboard-v2-feature-header">
             <div>
               <p className="eyebrow">SEASON</p>
@@ -120,9 +110,9 @@ export function LeaderboardHomePage() {
               ))
             )}
           </div>
-        </article>
+        </article>}
 
-        <article className="leaderboard-v2-feature-card">
+        {hasChallengeBoards && <article className="leaderboard-v2-feature-card">
           <div className="leaderboard-v2-feature-header">
             <div>
               <p className="eyebrow">CHALLENGES</p>
@@ -156,7 +146,8 @@ export function LeaderboardHomePage() {
               ))
             )}
           </div>
-        </article>
+        </article>}
+        {!isLoading && boards.length === 0 && <div className="empty-state">当前赛季尚未启用公开榜单。</div>}
       </div>
     </section>
   );

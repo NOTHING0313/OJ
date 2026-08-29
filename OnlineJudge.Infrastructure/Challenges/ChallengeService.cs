@@ -146,6 +146,10 @@ public class ChallengeService(
         {
             return Result<ChallengeLeaderboardDto>.Failure("Challenge not found.");
         }
+        if (!await CanViewSelectedLeaderboardAsync(user, challengeId, cancellationToken))
+        {
+            return Result<ChallengeLeaderboardDto>.Failure("Challenge not found.");
+        }
 
         if (challenge.ParticipationMode == ChallengeParticipationMode.TeamOnly)
         {
@@ -242,6 +246,10 @@ public class ChallengeService(
 
         var current = userResult.Value;
         if (!CanViewLeaderboard(current, challenge))
+        {
+            return Result<ChallengeLeaderboardProgressDto>.Failure("Challenge not found.");
+        }
+        if (!await CanViewSelectedLeaderboardAsync(current, challengeId, cancellationToken))
         {
             return Result<ChallengeLeaderboardProgressDto>.Failure("Challenge not found.");
         }
@@ -398,6 +406,10 @@ public class ChallengeService(
 
         var current = userResult.Value;
         if (!CanViewLeaderboard(current, challenge))
+        {
+            return Result<RankHistoryDto>.Failure("Challenge not found.");
+        }
+        if (!await CanViewSelectedLeaderboardAsync(current, challengeId, cancellationToken))
         {
             return Result<RankHistoryDto>.Failure("Challenge not found.");
         }
@@ -1021,6 +1033,22 @@ public class ChallengeService(
             return Result<ChallengeDetailDto>.Failure(peerReviewValidation.ErrorMessage!);
         }
 
+        LeaderboardSeason? linkedSeason = null;
+        if (request.SeasonId.HasValue)
+        {
+            if (userResult.Value.Role != UserRole.Root) return Result<ChallengeDetailDto>.Failure("Forbidden.");
+            linkedSeason = await dbContext.LeaderboardSeasons
+                .FirstOrDefaultAsync(season => season.Id == request.SeasonId.Value && season.IsCurrent, cancellationToken);
+            if (linkedSeason is null) return Result<ChallengeDetailDto>.Failure("Leaderboard season not found.");
+            if (linkedSeason.Status != LeaderboardSeasonStatus.Scheduled
+                || visibilityPolicy.UtcNow >= linkedSeason.StartAt
+                || request.StartAt < linkedSeason.StartAt
+                || request.EndAt > linkedSeason.FreezeAt)
+            {
+                return Result<ChallengeDetailDto>.Failure("Challenge must stay within the scheduled season time range.");
+            }
+        }
+
         var now = DateTimeOffset.UtcNow;
         var challenge = new Challenge
         {
@@ -1039,6 +1067,17 @@ public class ChallengeService(
         };
 
         dbContext.Challenges.Add(challenge);
+        if (linkedSeason is not null)
+        {
+            dbContext.LeaderboardSeasonBoards.Add(new LeaderboardSeasonBoard
+            {
+                Id = Guid.NewGuid(),
+                SeasonId = linkedSeason.Id,
+                BoardType = LeaderboardSeasonBoardType.Challenge,
+                ChallengeId = challenge.Id,
+                CreatedAt = now
+            });
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, new Dictionary<Guid, ChallengeTaskCompletion>(), userResult.Value.Role));
@@ -1085,6 +1124,14 @@ public class ChallengeService(
         if (peerReviewValidation.IsFailure)
         {
             return Result<ChallengeDetailDto>.Failure(peerReviewValidation.ErrorMessage!);
+        }
+        var linkedSeasonRanges = await dbContext.LeaderboardSeasonBoards.AsNoTracking()
+            .Where(board => board.ChallengeId == id && board.BoardType == LeaderboardSeasonBoardType.Challenge)
+            .Select(board => new { board.Season!.StartAt, board.Season.FreezeAt })
+            .ToListAsync(cancellationToken);
+        if (linkedSeasonRanges.Any(season => request.StartAt < season.StartAt || request.EndAt > season.FreezeAt))
+        {
+            return Result<ChallengeDetailDto>.Failure("Challenge leaderboard must stay within the season time range.");
         }
         var peerReviewChanged = challenge.PeerReviewEnabled != request.PeerReviewEnabled
             || challenge.PeerReviewEndAt != (request.PeerReviewEnabled ? request.PeerReviewEndAt : null);
@@ -1686,6 +1733,17 @@ public class ChallengeService(
     private bool CanViewLeaderboard(User? user, Challenge challenge)
     {
         return visibilityPolicy.CanViewChallenge(user?.Role, challenge);
+    }
+
+    private async Task<bool> CanViewSelectedLeaderboardAsync(User? user, Guid challengeId, CancellationToken cancellationToken)
+    {
+        if (user?.Role is UserRole.ProblemSetter or UserRole.Root) return true;
+        return await dbContext.LeaderboardSeasonBoards.AsNoTracking().AnyAsync(
+            board => board.BoardType == LeaderboardSeasonBoardType.Challenge
+                && board.ChallengeId == challengeId
+                && board.Season!.IsCurrent
+                && board.Season.Status != LeaderboardSeasonStatus.Archived,
+            cancellationToken);
     }
 
     private bool CanModifyAfterEnd(User user, Challenge challenge)

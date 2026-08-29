@@ -205,6 +205,9 @@ public class TeamChallengeIntegrationTests
         db.TeamMembers.AddRange(Member(team.Id, owner.Id, TeamMemberRole.Owner, true), Member(team.Id, member.Id, TeamMemberRole.Member, true));
         var challenge = new Challenge { Id = Guid.NewGuid(), Title = "Team", Description = "", StartAt = Now.AddHours(-1), EndAt = Now.AddHours(1), CreatedByUserId = setter.Id, IsPublished = true, ParticipationMode = ChallengeParticipationMode.TeamOnly, CreatedAt = Now, UpdatedAt = Now };
         db.Challenges.Add(challenge);
+        var season = new LeaderboardSeason { Id = Guid.NewGuid(), Name = "Current", StartAt = Now.AddDays(-1), FreezeAt = Now.AddDays(1), PublicUntil = Now.AddDays(2), Status = LeaderboardSeasonStatus.Active, IsCurrent = true, CreatedByUserId = setter.Id, CreatedAt = Now, UpdatedAt = Now };
+        db.LeaderboardSeasons.Add(season);
+        db.LeaderboardSeasonBoards.Add(new LeaderboardSeasonBoard { Id = Guid.NewGuid(), SeasonId = season.Id, BoardType = LeaderboardSeasonBoardType.Challenge, ChallengeId = challenge.Id, CreatedAt = Now });
         Problem? problem = null;
         ChallengeTask? task = null;
         if (withProblem)

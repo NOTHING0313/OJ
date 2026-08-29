@@ -67,8 +67,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/leaderboards/users" element={<SeasonLeaderboardPage />} />
             <Route path="/leaderboards/users/problems/:problemId" element={<SeasonProblemLeaderboardPage />} />
             <Route path="/leaderboards/challenges" element={<ChallengeLeaderboardIndexPage />} />
-            <Route path="/leaderboards/history" element={<LeaderboardSeasonHistoryPage />} />
-            <Route path="/leaderboards/history/:seasonId" element={<LeaderboardSeasonHistoryDetailPage />} />
+            <Route path="/leaderboards/history" element={<ProtectedRoute allowedRoles={[2, 3]}><LeaderboardSeasonHistoryPage /></ProtectedRoute>} />
+            <Route path="/leaderboards/history/:seasonId" element={<ProtectedRoute allowedRoles={[2, 3]}><LeaderboardSeasonHistoryDetailPage /></ProtectedRoute>} />
             <Route path="/teams" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
             <Route
               path="/challenges/:challengeId/admin"

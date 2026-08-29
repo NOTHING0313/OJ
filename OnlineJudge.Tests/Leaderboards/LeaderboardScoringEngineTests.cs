@@ -128,6 +128,44 @@ public sealed class LeaderboardScoringEngineTests
         Assert.Equal(2, scores.Single(item => item.ScoreId == laterScoreId).TimeRank);
     }
 
+    [Fact]
+    public void DisabledFirstCompletionBonus_ReturnsNoRankOrTimeBonus()
+    {
+        rules.FirstCompletionBonusEnabled = false;
+        var score = Assert.Single(engine.CalculateProblemScores(100, rules,
+            [new(Guid.NewGuid(), Guid.NewGuid(), 100, Now, Guid.NewGuid(), null, Now)], []));
+        Assert.Null(score.TimeRank);
+        Assert.Equal(0, score.TimeBonus);
+    }
+
+    [Fact]
+    public void DisabledRuntimeBonus_LeavesMemoryBonusEnabled()
+    {
+        rules.RuntimeBonusEnabled = false;
+        var score = Performance(50, 50);
+        Assert.Equal(0, score.RuntimeBonus);
+        Assert.Equal(4, score.MemoryBonus);
+    }
+
+    [Fact]
+    public void DisabledMemoryBonus_LeavesRuntimeBonusEnabled()
+    {
+        rules.MemoryBonusEnabled = false;
+        var score = Performance(50, 50);
+        Assert.Equal(6, score.RuntimeBonus);
+        Assert.Equal(0, score.MemoryBonus);
+    }
+
+    [Fact]
+    public void LegacyRulesJson_DefaultsNewRewardSwitchesToEnabled()
+    {
+        const string legacy = "{\"timeBonusPercentages\":[20,16,13,10,8,6,5,4,3,2],\"runtimeBonusTiers\":[{\"maxRatioPercentage\":100,\"bonusPercentage\":1}],\"memoryBonusTiers\":[{\"maxRatioPercentage\":100,\"bonusPercentage\":1}]}";
+        var deserialized = LeaderboardScoringRulesSerializer.Deserialize(legacy);
+        Assert.True(deserialized.FirstCompletionBonusEnabled);
+        Assert.True(deserialized.RuntimeBonusEnabled);
+        Assert.True(deserialized.MemoryBonusEnabled);
+    }
+
     private LeaderboardPerformanceScore Performance(int? runtime, int? memory) =>
         engine.CalculatePerformance(100, rules, Candidate(JudgeLanguage.Cpp17, runtime, memory), [Benchmark(JudgeLanguage.Cpp17)]);
 

@@ -5,7 +5,7 @@ namespace OnlineJudge.Infrastructure.Leaderboards;
 
 public static class LeaderboardScoringRulesSerializer
 {
-    public const string DefaultRulesJson = "{\"timeBonusPercentages\":[20,16,13,10,8,6,5,4,3,2],\"runtimeBonusTiers\":[{\"maxRatioPercentage\":50,\"bonusPercentage\":6},{\"maxRatioPercentage\":65,\"bonusPercentage\":5},{\"maxRatioPercentage\":80,\"bonusPercentage\":3},{\"maxRatioPercentage\":100,\"bonusPercentage\":1}],\"memoryBonusTiers\":[{\"maxRatioPercentage\":50,\"bonusPercentage\":4},{\"maxRatioPercentage\":70,\"bonusPercentage\":3},{\"maxRatioPercentage\":85,\"bonusPercentage\":2},{\"maxRatioPercentage\":100,\"bonusPercentage\":1}]}";
+    public const string DefaultRulesJson = "{\"firstCompletionBonusEnabled\":true,\"runtimeBonusEnabled\":true,\"memoryBonusEnabled\":true,\"timeBonusPercentages\":[20,16,13,10,8,6,5,4,3,2],\"runtimeBonusTiers\":[{\"maxRatioPercentage\":50,\"bonusPercentage\":6},{\"maxRatioPercentage\":65,\"bonusPercentage\":5},{\"maxRatioPercentage\":80,\"bonusPercentage\":3},{\"maxRatioPercentage\":100,\"bonusPercentage\":1}],\"memoryBonusTiers\":[{\"maxRatioPercentage\":50,\"bonusPercentage\":4},{\"maxRatioPercentage\":70,\"bonusPercentage\":3},{\"maxRatioPercentage\":85,\"bonusPercentage\":2},{\"maxRatioPercentage\":100,\"bonusPercentage\":1}]}";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 

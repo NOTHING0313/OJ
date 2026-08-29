@@ -36,7 +36,10 @@ public sealed class LeaderboardSeasonService(
     public async Task<Result<SeasonLeaderboardDto>> GetCurrentLeaderboardAsync(CancellationToken cancellationToken = default)
     {
         var season = await LoadCurrentSeasonAsync(cancellationToken);
-        if (season is null) return Result<SeasonLeaderboardDto>.Success(new SeasonLeaderboardDto());
+        if (season is null || !season.Boards.Any(board => board.BoardType == LeaderboardSeasonBoardType.Global))
+        {
+            return Result<SeasonLeaderboardDto>.Success(new SeasonLeaderboardDto());
+        }
 
         var effectiveStatus = LeaderboardSeasonLifecycle.GetEffectiveStatus(season, timeProvider.GetUtcNow());
         if (effectiveStatus == LeaderboardSeasonStatus.Archived)
@@ -60,6 +63,7 @@ public sealed class LeaderboardSeasonService(
     public async Task<Result<LeaderboardSeasonPublicSummaryResponseDto>> GetCurrentPublicSummaryAsync(CancellationToken cancellationToken = default)
     {
         var season = await dbContext.LeaderboardSeasons.AsNoTracking()
+            .Include(item => item.Boards).ThenInclude(board => board.Challenge)
             .SingleOrDefaultAsync(item => item.IsCurrent, cancellationToken);
         if (season is null)
         {
@@ -80,7 +84,15 @@ public sealed class LeaderboardSeasonService(
                 Status = effectiveStatus,
                 StartAt = season.StartAt,
                 FreezeAt = season.FreezeAt,
-                PublicUntil = season.PublicUntil
+                PublicUntil = season.PublicUntil,
+                Boards = season.Boards
+                    .Where(board => board.BoardType == LeaderboardSeasonBoardType.Global || board.Challenge!.IsPublished)
+                    .OrderBy(board => board.BoardType).ThenBy(board => board.Challenge?.Title ?? string.Empty).Select(board => new LeaderboardSeasonPublicBoardDto
+                {
+                    BoardType = board.BoardType,
+                    ChallengeId = board.ChallengeId,
+                    ChallengeTitle = board.Challenge?.Title
+                }).ToList()
             }
         });
     }
@@ -103,7 +115,10 @@ public sealed class LeaderboardSeasonService(
         CancellationToken cancellationToken = default)
     {
         var season = await LoadCurrentSeasonAsync(cancellationToken);
-        if (season is null) return Result<SeasonProblemLeaderboardDto>.Success(new SeasonProblemLeaderboardDto());
+        if (season is null || !season.Boards.Any(board => board.BoardType == LeaderboardSeasonBoardType.Global))
+        {
+            return Result<SeasonProblemLeaderboardDto>.Success(new SeasonProblemLeaderboardDto());
+        }
 
         var effectiveStatus = LeaderboardSeasonLifecycle.GetEffectiveStatus(season, timeProvider.GetUtcNow());
         var seasonProblem = season.Problems.FirstOrDefault(problem => problem.ProblemId == problemId);
@@ -127,6 +142,8 @@ public sealed class LeaderboardSeasonService(
         if (userResult.IsFailure) return Result<IReadOnlyList<LeaderboardSeasonDto>>.Failure(userResult.ErrorMessage ?? "Forbidden.");
 
         var seasons = await dbContext.LeaderboardSeasons.AsNoTracking()
+            .Include(season => season.Boards)
+            .ThenInclude(board => board.Challenge)
             .Include(season => season.Problems)
             .ThenInclude(problem => problem.Problem)
             .Include(season => season.Problems)
@@ -151,6 +168,10 @@ public sealed class LeaderboardSeasonService(
         }
 
         var now = timeProvider.GetUtcNow();
+        var rules = scoringOptions.CreateSnapshot();
+        rules.FirstCompletionBonusEnabled = request.FirstCompletionBonusEnabled;
+        rules.RuntimeBonusEnabled = request.RuntimeBonusEnabled;
+        rules.MemoryBonusEnabled = request.MemoryBonusEnabled;
         var season = new LeaderboardSeason
         {
             Id = Guid.NewGuid(),
@@ -160,11 +181,14 @@ public sealed class LeaderboardSeasonService(
             PublicUntil = request.PublicUntil,
             Status = LeaderboardSeasonStatus.Scheduled,
             IsCurrent = true,
-            ScoringRulesJson = LeaderboardScoringRulesSerializer.Serialize(scoringOptions.CreateSnapshot()),
+            ScoringRulesJson = LeaderboardScoringRulesSerializer.Serialize(rules),
             CreatedByUserId = userResult.Value!.Id,
             CreatedAt = now,
             UpdatedAt = now
         };
+
+        var boardError = await SynchronizeBoardsAsync(season, request.IncludeGlobalBoard, request.ChallengeIds, cancellationToken);
+        if (boardError is not null) return Result<LeaderboardSeasonDto>.Failure(boardError);
 
         dbContext.LeaderboardSeasons.Add(season);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -187,6 +211,13 @@ public sealed class LeaderboardSeasonService(
         season.StartAt = request.StartAt;
         season.FreezeAt = request.FreezeAt;
         season.PublicUntil = request.PublicUntil;
+        var rules = LeaderboardScoringRulesSerializer.Deserialize(season.ScoringRulesJson);
+        rules.FirstCompletionBonusEnabled = request.FirstCompletionBonusEnabled;
+        rules.RuntimeBonusEnabled = request.RuntimeBonusEnabled;
+        rules.MemoryBonusEnabled = request.MemoryBonusEnabled;
+        season.ScoringRulesJson = LeaderboardScoringRulesSerializer.Serialize(rules);
+        var boardError = await SynchronizeBoardsAsync(season, request.IncludeGlobalBoard, request.ChallengeIds, cancellationToken);
+        if (boardError is not null) return Result<LeaderboardSeasonDto>.Failure(boardError);
         season.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
@@ -201,6 +232,7 @@ public sealed class LeaderboardSeasonService(
         if (season is null) return Result<LeaderboardSeasonDto>.Failure("Leaderboard season not found.");
         if (!CanEditScheduledSeason(season)) return Result<LeaderboardSeasonDto>.Failure("Season problems are frozen after the season starts.");
         if (season.Problems.Any(item => item.ProblemId == request.ProblemId)) return Result<LeaderboardSeasonDto>.Failure("Problem is already in this season.");
+        if (request.BaseScore is <= 0) return Result<LeaderboardSeasonDto>.Failure("Base score must be greater than zero.");
 
         var problem = await dbContext.Problems
             .Include(problem => problem.TestCases.Where(testCase => !testCase.IsDeleted))
@@ -214,13 +246,75 @@ public sealed class LeaderboardSeasonService(
             ProblemId = problem.Id,
             Season = season,
             Problem = problem,
-            BaseScore = problem.TestCases.Sum(testCase => Math.Max(0, testCase.Score)),
+            BaseScore = request.BaseScore ?? problem.TestCases.Sum(testCase => Math.Max(0, testCase.Score)),
             CreatedAt = timeProvider.GetUtcNow()
         };
         dbContext.LeaderboardSeasonProblems.Add(seasonProblem);
         season.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
+    }
+
+    public async Task<Result<LeaderboardSeasonDto>> AddProblemsAsync(Guid seasonId, AddLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken = default)
+    {
+        var userResult = await RequireRootAsync(cancellationToken);
+        if (userResult.IsFailure) return Result<LeaderboardSeasonDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
+        var problemIds = request.ProblemIds.Distinct().ToList();
+        if (problemIds.Count == 0) return Result<LeaderboardSeasonDto>.Failure("At least one problem is required.");
+        var season = await LoadSeasonAsync(seasonId, cancellationToken);
+        if (season is null) return Result<LeaderboardSeasonDto>.Failure("Leaderboard season not found.");
+        if (!CanEditScheduledSeason(season)) return Result<LeaderboardSeasonDto>.Failure("Season problems are frozen after the season starts.");
+        if (season.Problems.Any(item => problemIds.Contains(item.ProblemId)))
+        {
+            return Result<LeaderboardSeasonDto>.Failure("Problem is already in this season.");
+        }
+        var problems = await dbContext.Problems
+            .Include(problem => problem.TestCases.Where(testCase => !testCase.IsDeleted))
+            .Where(problem => problemIds.Contains(problem.Id) && !problem.IsDeleted)
+            .ToListAsync(cancellationToken);
+        if (problems.Count != problemIds.Count) return Result<LeaderboardSeasonDto>.Failure("Problem not found.");
+        var now = timeProvider.GetUtcNow();
+        var additions = problems.Select(problem => new LeaderboardSeasonProblem
+        {
+            Id = Guid.NewGuid(), SeasonId = season.Id, ProblemId = problem.Id, Season = season, Problem = problem,
+            BaseScore = problem.TestCases.Sum(testCase => Math.Max(0, testCase.Score)), CreatedAt = now
+        }).ToList();
+        dbContext.LeaderboardSeasonProblems.AddRange(additions);
+        season.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Result<LeaderboardSeasonDto>.Success(ToDto(season));
+    }
+
+    public async Task<Result<LeaderboardSeasonDto>> UpdateProblemAsync(Guid seasonId, Guid problemId, UpdateLeaderboardSeasonProblemRequest request, CancellationToken cancellationToken = default)
+    {
+        var userResult = await RequireRootAsync(cancellationToken);
+        if (userResult.IsFailure) return Result<LeaderboardSeasonDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
+        var season = await LoadSeasonAsync(seasonId, cancellationToken);
+        if (season is null) return Result<LeaderboardSeasonDto>.Failure("Leaderboard season not found.");
+        if (!CanEditScheduledSeason(season)) return Result<LeaderboardSeasonDto>.Failure("Season problems are frozen after the season starts.");
+        if (request.BaseScore <= 0) return Result<LeaderboardSeasonDto>.Failure("Base score must be greater than zero.");
+        var problem = season.Problems.FirstOrDefault(item => item.ProblemId == problemId);
+        if (problem is null) return Result<LeaderboardSeasonDto>.Failure("Season problem not found.");
+        problem.BaseScore = request.BaseScore;
+        season.UpdatedAt = timeProvider.GetUtcNow();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Result<LeaderboardSeasonDto>.Success(ToDto(season));
+    }
+
+    public async Task<Result> RemoveProblemsAsync(Guid seasonId, RemoveLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken = default)
+    {
+        var userResult = await RequireRootAsync(cancellationToken);
+        if (userResult.IsFailure) return Result.Failure(userResult.ErrorMessage ?? "Forbidden.");
+        var season = await LoadSeasonAsync(seasonId, cancellationToken);
+        if (season is null) return Result.Failure("Leaderboard season not found.");
+        if (!CanEditScheduledSeason(season)) return Result.Failure("Season problems are frozen after the season starts.");
+        var problemIds = request.ProblemIds.Distinct().ToHashSet();
+        var items = season.Problems.Where(item => problemIds.Contains(item.ProblemId)).ToList();
+        if (items.Count != problemIds.Count) return Result.Failure("Season problem not found.");
+        dbContext.LeaderboardSeasonProblems.RemoveRange(items);
+        season.UpdatedAt = timeProvider.GetUtcNow();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Result.Success();
     }
 
     public async Task<Result<LeaderboardSeasonDto>> UpdateProblemBenchmarkAsync(
@@ -236,9 +330,11 @@ public sealed class LeaderboardSeasonService(
         var season = await LoadSeasonAsync(seasonId, cancellationToken);
         if (season is null) return Result<LeaderboardSeasonDto>.Failure("Leaderboard season not found.");
         if (!CanEditScheduledSeason(season)) return Result<LeaderboardSeasonDto>.Failure("Season benchmarks are frozen after the season starts.");
-        if (request.RuntimeBaselineMs <= 0 || request.MemoryBaselineKb <= 0)
+        var rules = LeaderboardScoringRulesSerializer.Deserialize(season.ScoringRulesJson);
+        if ((rules.RuntimeBonusEnabled && request.RuntimeBaselineMs is null or <= 0)
+            || (rules.MemoryBonusEnabled && request.MemoryBaselineKb is null or <= 0))
         {
-            return Result<LeaderboardSeasonDto>.Failure("Runtime and memory baselines must be greater than zero.");
+            return Result<LeaderboardSeasonDto>.Failure("Enabled reward baselines must be greater than zero.");
         }
 
         var seasonProblem = season.Problems.FirstOrDefault(problem => problem.ProblemId == problemId);
@@ -263,8 +359,8 @@ public sealed class LeaderboardSeasonService(
             dbContext.LeaderboardSeasonProblemBenchmarks.Add(benchmark);
         }
 
-        benchmark.RuntimeBaselineMs = request.RuntimeBaselineMs;
-        benchmark.MemoryBaselineKb = request.MemoryBaselineKb;
+        benchmark.RuntimeBaselineMs = rules.RuntimeBonusEnabled ? request.RuntimeBaselineMs!.Value : 0;
+        benchmark.MemoryBaselineKb = rules.MemoryBonusEnabled ? request.MemoryBaselineKb!.Value : 0;
         benchmark.UpdatedAt = now;
         season.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -429,7 +525,10 @@ public sealed class LeaderboardSeasonService(
         if (userResult.IsFailure) return Result<LeaderboardSeasonPersonalDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
 
         var season = await LoadCurrentSeasonAsync(cancellationToken);
-        if (season is null) return Result<LeaderboardSeasonPersonalDto>.Success(new LeaderboardSeasonPersonalDto());
+        if (season is null || !season.Boards.Any(board => board.BoardType == LeaderboardSeasonBoardType.Global))
+        {
+            return Result<LeaderboardSeasonPersonalDto>.Success(new LeaderboardSeasonPersonalDto());
+        }
 
         var userId = userResult.Value!.Id;
         var snapshots = await dbContext.LeaderboardSeasonRankSnapshots.AsNoTracking()
@@ -1021,6 +1120,7 @@ public sealed class LeaderboardSeasonService(
 
     private async Task<LeaderboardSeason?> LoadCurrentSeasonAsync(CancellationToken cancellationToken) =>
         await dbContext.LeaderboardSeasons
+            .Include(season => season.Boards).ThenInclude(board => board.Challenge)
             .Include(season => season.Problems).ThenInclude(problem => problem.Problem)
             .Include(season => season.Problems).ThenInclude(problem => problem.Benchmarks)
             .Include(season => season.ArchiveEntries).ThenInclude(entry => entry.ProblemScores)
@@ -1028,6 +1128,7 @@ public sealed class LeaderboardSeasonService(
 
     private async Task<LeaderboardSeason?> LoadSeasonAsync(Guid seasonId, CancellationToken cancellationToken) =>
         await dbContext.LeaderboardSeasons
+            .Include(season => season.Boards).ThenInclude(board => board.Challenge)
             .Include(season => season.Problems).ThenInclude(problem => problem.Problem)
             .Include(season => season.Problems).ThenInclude(problem => problem.Benchmarks)
             .Include(season => season.ArchiveEntries).ThenInclude(entry => entry.ProblemScores)
@@ -1092,6 +1193,13 @@ public sealed class LeaderboardSeasonService(
         ArchivedAt = season.ArchivedAt,
         ManuallyFrozenAt = season.ManuallyFrozenAt,
         ScoringRules = LeaderboardScoringRulesSerializer.Deserialize(season.ScoringRulesJson),
+        Boards = season.Boards.OrderBy(board => board.BoardType).ThenBy(board => board.Challenge?.Title).Select(board => new LeaderboardSeasonBoardDto
+        {
+            Id = board.Id,
+            BoardType = board.BoardType,
+            ChallengeId = board.ChallengeId,
+            ChallengeTitle = board.Challenge?.Title
+        }).ToList(),
         Problems = season.Problems.OrderBy(problem => problem.CreatedAt).Select(problem => new LeaderboardSeasonProblemDto
         {
             Id = problem.Id,
@@ -1107,6 +1215,40 @@ public sealed class LeaderboardSeasonService(
             }).ToList()
         }).ToList()
     };
+
+    private async Task<string?> SynchronizeBoardsAsync(LeaderboardSeason season, bool includeGlobalBoard, IReadOnlyCollection<Guid> challengeIds, CancellationToken cancellationToken)
+    {
+        var selectedChallengeIds = challengeIds.Distinct().ToHashSet();
+        var challenges = await dbContext.Challenges
+            .Where(challenge => selectedChallengeIds.Contains(challenge.Id))
+            .ToListAsync(cancellationToken);
+        if (challenges.Count != selectedChallengeIds.Count) return "Challenge not found.";
+        if (challenges.Any(challenge => challenge.StartAt < season.StartAt || challenge.EndAt > season.FreezeAt))
+        {
+            return "Challenge leaderboard must stay within the season time range.";
+        }
+
+        var desired = new List<LeaderboardSeasonBoard>();
+        if (includeGlobalBoard)
+        {
+            desired.Add(new LeaderboardSeasonBoard
+            {
+                Id = Guid.NewGuid(), SeasonId = season.Id, Season = season,
+                BoardType = LeaderboardSeasonBoardType.Global, CreatedAt = timeProvider.GetUtcNow()
+            });
+        }
+        desired.AddRange(challenges.Select(challenge => new LeaderboardSeasonBoard
+        {
+            Id = Guid.NewGuid(), SeasonId = season.Id, Season = season,
+            BoardType = LeaderboardSeasonBoardType.Challenge, ChallengeId = challenge.Id,
+            Challenge = challenge, CreatedAt = timeProvider.GetUtcNow()
+        }));
+
+        dbContext.LeaderboardSeasonBoards.RemoveRange(season.Boards);
+        season.Boards.Clear();
+        season.Boards.AddRange(desired);
+        return null;
+    }
 
     private static bool IsLanguageAllowed(int mask, JudgeLanguage language)
     {

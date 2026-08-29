@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { getCurrentSeasonLeaderboard, type SeasonLeaderboard } from "../api/leaderboardsApi";
 
 const LIVE_REFRESH_MS = 10_000;
@@ -41,15 +41,7 @@ export function SeasonLeaderboardPage() {
   }
 
   if (!leaderboard?.season) {
-    return (
-      <section className="challenge-page leaderboard-page leaderboard-v2-page">
-        <div className="leaderboard-header leaderboard-v2-header">
-          <div><p className="eyebrow">SEASON LEADERBOARD</p><h1>赛季排行榜</h1></div>
-          <Link className="button" to="/leaderboards">返回榜单中心</Link>
-        </div>
-        <div className="empty-state">当前暂无进行中的排行榜赛季。</div>
-      </section>
-    );
+    return <Navigate to="/problems" replace />;
   }
 
   const { season, entries } = leaderboard;
@@ -65,10 +57,8 @@ export function SeasonLeaderboardPage() {
           <p className="season-status-note">{state.note}</p>
         </div>
         <div className="leaderboard-header-actions">
-          <span className="leaderboard-live-status"><i /> 实时更新 · 10 秒</span>
           <span className="leaderboard-total">共 {entries.length} 名答题人</span>
           <Link className="button" to="/leaderboards">返回榜单中心</Link>
-          <Link className="button" to="/leaderboards/history">历史赛季</Link>
         </div>
       </div>
 

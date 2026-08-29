@@ -17,6 +17,7 @@ public class ChallengeLeaderboardConsistencyTests
         var now = DateTimeOffset.UtcNow;
         var user = NewUser("best-score-user", now);
         var challenge = NewChallenge(user.Id, now);
+        SelectChallengeBoard(db, challenge, user.Id, now);
         var tasks = Enumerable.Range(0, 3).Select(_ => NewTask(challenge.Id, now)).ToArray();
         var scores = new[] { 70, 60, 100 };
         db.AddRange(user, challenge);
@@ -41,6 +42,7 @@ public class ChallengeLeaderboardConsistencyTests
         var now = DateTimeOffset.UtcNow;
         var user = NewUser("partial-user", now);
         var challenge = NewChallenge(user.Id, now);
+        SelectChallengeBoard(db, challenge, user.Id, now);
         var task = NewTask(challenge.Id, now);
         db.AddRange(user, challenge, task,
             new ChallengeParticipant { Id = Guid.NewGuid(), ChallengeId = challenge.Id, UserId = user.Id, JoinedAt = now },
@@ -70,6 +72,7 @@ public class ChallengeLeaderboardConsistencyTests
         var now = DateTimeOffset.UtcNow;
         var user = NewUser("pending-user", now);
         var challenge = NewChallenge(user.Id, now);
+        SelectChallengeBoard(db, challenge, user.Id, now);
         var task = NewTask(challenge.Id, now);
         db.AddRange(user, challenge, task,
             new ChallengeParticipant { Id = Guid.NewGuid(), ChallengeId = challenge.Id, UserId = user.Id, JoinedAt = now },
@@ -110,6 +113,7 @@ public class ChallengeLeaderboardConsistencyTests
                 Id = Guid.NewGuid(), ChallengeId = challenge.Id, ChallengeTaskId = task.Id, UserId = anonymousUser.Id,
                 Score = 300, IsCompleted = true, CompletedAt = now, UpdatedAt = now
             });
+        db.LeaderboardSeasonBoards.Add(new LeaderboardSeasonBoard { Id = Guid.NewGuid(), SeasonId = season.Id, BoardType = LeaderboardSeasonBoardType.Challenge, ChallengeId = challenge.Id, CreatedAt = now });
         await db.SaveChangesAsync();
 
         var current = new TestCurrentUser(viewer);
@@ -157,6 +161,18 @@ public class ChallengeLeaderboardConsistencyTests
     {
         Id = Guid.NewGuid(), ChallengeId = challengeId, Title = "Partial", Description = "test", TaskType = ChallengeTaskType.Algorithm, Difficulty = ChallengeTaskDifficulty.Pawn, Score = 300, IsPublished = true, CreatedAt = now, UpdatedAt = now
     };
+
+    private static void SelectChallengeBoard(OnlineJudgeDbContext db, Challenge challenge, Guid creatorId, DateTimeOffset now)
+    {
+        var season = new LeaderboardSeason
+        {
+            Id = Guid.NewGuid(), Name = "Current", StartAt = now.AddDays(-1), FreezeAt = now.AddDays(1),
+            PublicUntil = now.AddDays(2), Status = LeaderboardSeasonStatus.Active, IsCurrent = true,
+            CreatedByUserId = creatorId, CreatedAt = now, UpdatedAt = now
+        };
+        db.LeaderboardSeasons.Add(season);
+        db.LeaderboardSeasonBoards.Add(new LeaderboardSeasonBoard { Id = Guid.NewGuid(), SeasonId = season.Id, BoardType = LeaderboardSeasonBoardType.Challenge, ChallengeId = challenge.Id, CreatedAt = now });
+    }
 
     private sealed class TestCurrentUser(User user) : ICurrentUser
     {

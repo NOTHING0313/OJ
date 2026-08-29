@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import {
   getChallengeLeaderboardHistory,
   getChallengeLeaderboardProgress,
@@ -156,7 +156,7 @@ export function ChallengeLeaderboardIndexPage() {
   }
 
   if (!index || index.challenges.length === 0) {
-    return <div className="empty-state">暂无已发布挑战</div>;
+    return <Navigate to="/leaderboards" replace />;
   }
 
   const selectedChallenge = index.challenges.find((challenge) => challenge.challengeId === selectedChallengeId) ?? index.challenges[0];

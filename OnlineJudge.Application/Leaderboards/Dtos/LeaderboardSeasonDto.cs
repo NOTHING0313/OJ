@@ -33,7 +33,20 @@ public class LeaderboardSeasonDto
 
     public LeaderboardScoringRules ScoringRules { get; set; } = new();
 
+    public IReadOnlyList<LeaderboardSeasonBoardDto> Boards { get; set; } = [];
+
     public IReadOnlyList<LeaderboardSeasonProblemDto> Problems { get; set; } = [];
+}
+
+public class LeaderboardSeasonBoardDto
+{
+    public Guid Id { get; set; }
+
+    public LeaderboardSeasonBoardType BoardType { get; set; }
+
+    public Guid? ChallengeId { get; set; }
+
+    public string? ChallengeTitle { get; set; }
 }
 
 public class LeaderboardSeasonProblemDto

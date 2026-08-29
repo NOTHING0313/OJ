@@ -194,7 +194,11 @@ public class LeaderboardService(
         var viewer = await identityService.GetViewerAsync(cancellationToken);
         var challenges = await dbContext.Challenges
             .AsNoTracking()
-            .Where(challenge => challenge.IsPublished)
+            .Where(challenge => challenge.IsPublished
+                && dbContext.LeaderboardSeasonBoards.Any(board => board.ChallengeId == challenge.Id
+                    && board.BoardType == LeaderboardSeasonBoardType.Challenge
+                    && board.Season!.IsCurrent
+                    && board.Season.Status != LeaderboardSeasonStatus.Archived))
             .OrderByDescending(challenge => challenge.StartAt)
             .Select(challenge => new
             {

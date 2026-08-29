@@ -8,12 +8,12 @@ namespace OnlineJudge.Api.Controllers;
 [Route("api/leaderboard-seasons")]
 public class LeaderboardSeasonHistoryController(ILeaderboardSeasonService seasonService) : ControllerBase
 {
-    [AllowAnonymous]
+    [Authorize(Policy = "RequireProblemSetter")]
     [HttpGet("history")]
     public async Task<IActionResult> GetHistory(CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetHistoryAsync(cancellationToken));
 
-    [AllowAnonymous]
+    [Authorize(Policy = "RequireProblemSetter")]
     [HttpGet("history/{seasonId:guid}")]
     public async Task<IActionResult> GetHistory(Guid seasonId, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetHistoryAsync(seasonId, cancellationToken));
@@ -23,7 +23,7 @@ public class LeaderboardSeasonHistoryController(ILeaderboardSeasonService season
     public async Task<IActionResult> GetCurrentPersonal(CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetCurrentPersonalAsync(cancellationToken));
 
-    [Authorize]
+    [Authorize(Policy = "RequireProblemSetter")]
     [HttpGet("me/history")]
     public async Task<IActionResult> GetPersonalHistory(CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetPersonalHistoryAsync(cancellationToken));

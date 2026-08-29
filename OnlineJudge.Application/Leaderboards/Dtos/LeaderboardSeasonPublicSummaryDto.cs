@@ -18,4 +18,15 @@ public class LeaderboardSeasonPublicSummaryDto
     public DateTimeOffset FreezeAt { get; set; }
 
     public DateTimeOffset PublicUntil { get; set; }
+
+    public IReadOnlyList<LeaderboardSeasonPublicBoardDto> Boards { get; set; } = [];
+}
+
+public class LeaderboardSeasonPublicBoardDto
+{
+    public LeaderboardSeasonBoardType BoardType { get; set; }
+
+    public Guid? ChallengeId { get; set; }
+
+    public string? ChallengeTitle { get; set; }
 }

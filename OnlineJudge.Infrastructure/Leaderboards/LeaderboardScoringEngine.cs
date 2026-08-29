@@ -21,8 +21,8 @@ public sealed class LeaderboardScoringEngine : ILeaderboardScoringEngine
             return new LeaderboardPerformanceScore(candidate, null, null, 0, 0);
         }
 
-        var runtimePercentage = MatchTier(candidate.RuntimeMs, benchmark.RuntimeBaselineMs, rules.RuntimeBonusTiers);
-        var memoryPercentage = MatchTier(candidate.MemoryKb, benchmark.MemoryBaselineKb, rules.MemoryBonusTiers);
+        var runtimePercentage = rules.RuntimeBonusEnabled ? MatchTier(candidate.RuntimeMs, benchmark.RuntimeBaselineMs, rules.RuntimeBonusTiers) : 0;
+        var memoryPercentage = rules.MemoryBonusEnabled ? MatchTier(candidate.MemoryKb, benchmark.MemoryBaselineKb, rules.MemoryBonusTiers) : 0;
         return new LeaderboardPerformanceScore(
             candidate,
             benchmark.RuntimeBaselineMs,
@@ -58,7 +58,7 @@ public sealed class LeaderboardScoringEngine : ILeaderboardScoringEngine
         return facts.Select(fact =>
         {
             var timeRank = timeRanks[fact.ScoreId];
-            var timePercentage = timeRank <= rules.TimeBonusPercentages.Count
+            var timePercentage = rules.FirstCompletionBonusEnabled && timeRank <= rules.TimeBonusPercentages.Count
                 ? rules.TimeBonusPercentages[timeRank - 1]
                 : 0;
             var performance = fact.BestPerformance is null
@@ -69,7 +69,7 @@ public sealed class LeaderboardScoringEngine : ILeaderboardScoringEngine
                 fact.UserId,
                 baseScore,
                 fact.EarnedBaseScore,
-                timeRank <= rules.TimeBonusPercentages.Count ? timeRank : null,
+                rules.FirstCompletionBonusEnabled && timeRank <= rules.TimeBonusPercentages.Count ? timeRank : null,
                 CalculateBonus(baseScore, timePercentage),
                 performance,
                 fact.FirstFullScoreAt,

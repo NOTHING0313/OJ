@@ -21,6 +21,9 @@ public sealed class LeaderboardScoringOptions
 
     public LeaderboardScoringRules CreateSnapshot() => new()
     {
+        FirstCompletionBonusEnabled = true,
+        RuntimeBonusEnabled = true,
+        MemoryBonusEnabled = true,
         TimeBonusPercentages = [.. TimeBonusPercentages],
         RuntimeBonusTiers = RuntimeBonusTiers.Select(tier => new LeaderboardPerformanceBonusTier(tier.MaxRatioPercentage, tier.BonusPercentage)).ToList(),
         MemoryBonusTiers = MemoryBonusTiers.Select(tier => new LeaderboardPerformanceBonusTier(tier.MaxRatioPercentage, tier.BonusPercentage)).ToList()

@@ -89,6 +89,7 @@ export interface SaveChallengeRequest {
   participationMode: ChallengeParticipationMode;
   peerReviewEnabled: boolean;
   peerReviewEndAt: string | null;
+  seasonId?: string | null;
 }
 
 export interface ChallengeTeamParticipation {

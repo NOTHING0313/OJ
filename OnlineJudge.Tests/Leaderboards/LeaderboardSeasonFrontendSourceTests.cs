@@ -21,7 +21,7 @@ public class LeaderboardSeasonFrontendSourceTests
         Assert.Contains("排行榜匿名", account, StringComparison.Ordinal);
         Assert.Contains("updateLeaderboardAnonymity", account, StringComparison.Ordinal);
         Assert.Contains("const isRoot = currentUser?.role === 3", admin, StringComparison.Ordinal);
-        Assert.Contains("Finalize / Public", admin, StringComparison.Ordinal);
+        Assert.Contains("榜单管理", admin, StringComparison.Ordinal);
         Assert.Contains("allowedRoles={[2, 3]}", main, StringComparison.Ordinal);
     }
 

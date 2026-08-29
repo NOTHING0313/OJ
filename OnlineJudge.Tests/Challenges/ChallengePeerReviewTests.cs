@@ -572,6 +572,13 @@ public class ChallengePeerReviewTests
     {
         var challenge = new Challenge { Id = Guid.NewGuid(), Title = "Peer", Description = "", StartAt = startAt, EndAt = endAt, PeerReviewEndAt = endAt.AddHours(2), PeerReviewEnabled = true, ParticipationMode = ChallengeParticipationMode.TeamOnly, IsPublished = true, CreatedByUserId = setter.Id, CreatedAt = Now, UpdatedAt = Now };
         db.Challenges.Add(challenge);
+        var season = db.LeaderboardSeasons.Local.FirstOrDefault(item => item.IsCurrent);
+        if (season is null)
+        {
+            season = new LeaderboardSeason { Id = Guid.NewGuid(), Name = "Current", StartAt = Now.AddYears(-1), FreezeAt = Now.AddYears(1), PublicUntil = Now.AddYears(2), Status = LeaderboardSeasonStatus.Active, IsCurrent = true, CreatedByUserId = setter.Id, CreatedAt = Now, UpdatedAt = Now };
+            db.LeaderboardSeasons.Add(season);
+        }
+        db.LeaderboardSeasonBoards.Add(new LeaderboardSeasonBoard { Id = Guid.NewGuid(), SeasonId = season.Id, BoardType = LeaderboardSeasonBoardType.Challenge, ChallengeId = challenge.Id, CreatedAt = Now });
         return challenge;
     }
 

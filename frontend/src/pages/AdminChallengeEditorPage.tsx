@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   createChallenge,
   deleteChallengeTask,
@@ -9,14 +9,17 @@ import {
   type SaveChallengeRequest
 } from "../api/challengesApi";
 import { MarkdownEditor } from "../components/MarkdownEditor";
+import { getAdminLeaderboardSeasons, type LeaderboardSeason } from "../api/leaderboardsApi";
 
 export function AdminChallengeEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isEditMode = Boolean(id);
+  const seasonId = isEditMode ? null : searchParams.get("seasonId");
   const startInputRef = useRef<HTMLInputElement | null>(null);
   const endInputRef = useRef<HTMLInputElement | null>(null);
   const peerReviewEndInputRef = useRef<HTMLInputElement | null>(null);
-  const isEditMode = Boolean(id);
   const [challenge, setChallenge] = useState<ChallengeDetailDto | null>(null);
   const [form, setForm] = useState({
     title: "",
@@ -32,6 +35,7 @@ export function AdminChallengeEditorPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(isEditMode);
   const [isSaving, setIsSaving] = useState(false);
+  const [linkedSeason, setLinkedSeason] = useState<LeaderboardSeason | null>(null);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,6 +79,19 @@ export function AdminChallengeEditorPage() {
     };
   }, [id]);
 
+  useEffect(() => {
+    if (!seasonId) return;
+    let ignore = false;
+    getAdminLeaderboardSeasons().then((items) => {
+      const season = items.find((item) => item.id === seasonId && item.effectiveStatus === 1) ?? null;
+      if (!ignore && season) {
+        setLinkedSeason(season);
+        setForm((current) => ({ ...current, startAt: toDateTimeLocalValue(season.startAt), endAt: toDateTimeLocalValue(season.freezeAt) }));
+      }
+    }).catch((err: unknown) => { if (!ignore) setError(err instanceof Error ? err.message : "赛季配置加载失败"); });
+    return () => { ignore = true; };
+  }, [seasonId]);
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setIsSaving(true);
@@ -84,6 +101,11 @@ export function AdminChallengeEditorPage() {
     const validationError = validateTimeRange(form.startAt, form.endAt);
     if (validationError) {
       setError(validationError);
+      setIsSaving(false);
+      return;
+    }
+    if (linkedSeason && (new Date(form.startAt) < new Date(linkedSeason.startAt) || new Date(form.endAt) > new Date(linkedSeason.freezeAt))) {
+      setError("关联挑战时间必须位于赛季开始与冻结时间之间");
       setIsSaving(false);
       return;
     }
@@ -106,7 +128,8 @@ export function AdminChallengeEditorPage() {
       isPublished: form.isPublished,
       participationMode: form.participationMode,
       peerReviewEnabled,
-      peerReviewEndAt
+      peerReviewEndAt,
+      seasonId
     };
 
     try {
@@ -196,6 +219,7 @@ export function AdminChallengeEditorPage() {
       {error && <div className="alert error">{error}</div>}
 
       <form className="form-stack" onSubmit={handleSubmit}>
+        {linkedSeason && <div className="quiet-note">将关联到榜单赛季：{linkedSeason.name}。挑战时间不得超出赛季范围。</div>}
         <label>
           标题
           <input required value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />

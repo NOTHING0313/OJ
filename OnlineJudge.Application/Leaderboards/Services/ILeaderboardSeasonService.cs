@@ -22,6 +22,12 @@ public interface ILeaderboardSeasonService
 
     Task<Result<LeaderboardSeasonDto>> AddProblemAsync(Guid seasonId, AddLeaderboardSeasonProblemRequest request, CancellationToken cancellationToken = default);
 
+    Task<Result<LeaderboardSeasonDto>> AddProblemsAsync(Guid seasonId, AddLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<LeaderboardSeasonDto>> UpdateProblemAsync(Guid seasonId, Guid problemId, UpdateLeaderboardSeasonProblemRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result> RemoveProblemsAsync(Guid seasonId, RemoveLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken = default);
+
     Task<Result<LeaderboardSeasonDto>> UpdateProblemBenchmarkAsync(
         Guid seasonId,
         Guid problemId,

@@ -52,4 +52,6 @@ public class Challenge
     public List<ChallengeTaskAnswer> Answers { get; set; } = [];
 
     public List<ChallengeTaskFileSubmission> FileSubmissions { get; set; } = [];
+
+    public List<LeaderboardSeasonBoard> LeaderboardSeasonBoards { get; set; } = [];
 }

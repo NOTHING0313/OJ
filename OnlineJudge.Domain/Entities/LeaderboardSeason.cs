@@ -40,6 +40,8 @@ public class LeaderboardSeason
 
     public List<LeaderboardSeasonProblem> Problems { get; set; } = [];
 
+    public List<LeaderboardSeasonBoard> Boards { get; set; } = [];
+
     public List<LeaderboardUserProblemScore> UserProblemScores { get; set; } = [];
 
     public List<LeaderboardSeasonAlias> Aliases { get; set; } = [];

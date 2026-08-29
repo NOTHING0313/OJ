@@ -971,11 +971,11 @@ public class LeaderboardSeasonTests
         await fixture.RootSeasonService().ReconcileCurrentSeasonAsync();
         var published = (await service.GetCurrentPublicSummaryAsync()).Value!.Season!;
         Assert.Equal(LeaderboardSeasonStatus.Public, published.Status);
+        Assert.Equal(LeaderboardSeasonBoardType.Global, Assert.Single(published.Boards).BoardType);
 
         var json = JsonSerializer.Serialize(published);
         Assert.DoesNotContain("Problem", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Entry", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Challenge", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("User", json, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -990,6 +990,42 @@ public class LeaderboardSeasonTests
 
         Assert.True(summary.IsSuccess);
         Assert.Null(summary.Value!.Season);
+    }
+
+    [Fact]
+    public async Task PublicLeaderboard_IsHiddenWhenGlobalBoardIsNotSelected()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Db.LeaderboardSeasonBoards.RemoveRange(fixture.Db.LeaderboardSeasonBoards);
+        await fixture.Db.SaveChangesAsync();
+
+        var result = await fixture.PublicSeasonService().GetCurrentLeaderboardAsync();
+
+        Assert.Null(result.Value!.Season);
+        Assert.Empty(result.Value.Entries);
+    }
+
+    [Fact]
+    public async Task ScheduledSeason_RejectsChallengeBoardOutsideSeasonRange()
+    {
+        await using var fixture = await Fixture.CreateAsync(seasonStart: Now.AddHours(1));
+        var challenge = new Challenge
+        {
+            Id = Guid.NewGuid(), Title = "Outside", Description = "test", StartAt = fixture.Season.StartAt,
+            EndAt = fixture.Season.FreezeAt.AddMinutes(1), CreatedByUserId = fixture.Root.Id,
+            IsPublished = true, CreatedAt = Now, UpdatedAt = Now
+        };
+        fixture.Db.Challenges.Add(challenge);
+        await fixture.Db.SaveChangesAsync();
+
+        var result = await fixture.RootSeasonService().UpdateSeasonAsync(fixture.Season.Id, new UpdateLeaderboardSeasonRequest
+        {
+            Name = fixture.Season.Name, StartAt = fixture.Season.StartAt, FreezeAt = fixture.Season.FreezeAt,
+            PublicUntil = fixture.Season.PublicUntil, IncludeGlobalBoard = true, ChallengeIds = [challenge.Id]
+        });
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Challenge leaderboard must stay within the season time range.", result.ErrorMessage);
     }
 
     private static int Count(string value, string token) => (value.Length - value.Replace(token, string.Empty, StringComparison.Ordinal).Length) / token.Length;
@@ -1044,6 +1080,11 @@ public class LeaderboardSeasonTests
                 Status = LeaderboardSeasonStatus.Scheduled, IsCurrent = true, CreatedByUserId = fixture.Root.Id, CreatedAt = Now, UpdatedAt = Now
             };
             fixture.Db.LeaderboardSeasons.Add(fixture.Season);
+            fixture.Db.LeaderboardSeasonBoards.Add(new LeaderboardSeasonBoard
+            {
+                Id = Guid.NewGuid(), SeasonId = fixture.Season.Id,
+                BoardType = LeaderboardSeasonBoardType.Global, CreatedAt = Now
+            });
             if (addSeasonProblem)
             {
                 fixture.Db.LeaderboardSeasonProblems.Add(new LeaderboardSeasonProblem
