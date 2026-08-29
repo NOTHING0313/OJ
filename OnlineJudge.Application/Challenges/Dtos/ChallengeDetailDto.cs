@@ -22,6 +22,12 @@ public class ChallengeDetailDto
 
     public bool ParticipationModeLocked { get; set; }
 
+    public bool PeerReviewEnabled { get; set; }
+
+    public DateTimeOffset? PeerReviewEndAt { get; set; }
+
+    public bool PeerReviewConfigurationLocked { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

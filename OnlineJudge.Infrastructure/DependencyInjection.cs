@@ -80,6 +80,7 @@ public static class DependencyInjection
         services.AddScoped<IProblemService, ProblemService>();
         services.AddScoped<IProblemJudgeAssetService, ProblemJudgeAssetService>();
         services.AddScoped<IChallengeService, ChallengeService>();
+        services.AddScoped<IChallengePeerReviewService, ChallengePeerReviewService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
         services.AddSingleton(LeaderboardScoringOptions.FromConfiguration(configuration));
         services.AddSingleton(LeaderboardSeasonLifecycleOptions.FromConfiguration(configuration));

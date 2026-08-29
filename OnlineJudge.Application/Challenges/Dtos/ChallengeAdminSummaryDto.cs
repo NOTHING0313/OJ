@@ -10,6 +10,8 @@ public class ChallengeAdminSummaryDto
 
     public ChallengeParticipationMode ParticipationMode { get; set; }
 
+    public bool PeerReviewEnabled { get; set; }
+
     public int TotalTaskCount { get; set; }
 
     /// <summary>

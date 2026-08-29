@@ -50,6 +50,9 @@ export interface ChallengeDetailDto {
   isPublished: boolean;
   participationMode: ChallengeParticipationMode;
   participationModeLocked: boolean;
+  peerReviewEnabled: boolean;
+  peerReviewEndAt: string | null;
+  peerReviewConfigurationLocked: boolean;
   createdAt: string;
   updatedAt: string;
   totalTaskCount: number;
@@ -84,6 +87,8 @@ export interface SaveChallengeRequest {
   endAt: string;
   isPublished: boolean;
   participationMode: ChallengeParticipationMode;
+  peerReviewEnabled: boolean;
+  peerReviewEndAt: string | null;
 }
 
 export interface ChallengeTeamParticipation {
@@ -94,6 +99,9 @@ export interface ChallengeTeamParticipation {
   rosterMemberCount: number;
   isRosterMember: boolean;
   canRegisterTeam: boolean;
+  selectedTeamProjectId: string | null;
+  projectName: string | null;
+  repositoryUrl: string | null;
 }
 
 export interface CreateChallengeTaskRequest {
@@ -139,6 +147,56 @@ export interface ChallengeLeaderboard {
   participationMode: ChallengeParticipationMode;
   entries: ChallengeLeaderboardEntry[];
   teamEntries: ChallengeTeamLeaderboardEntry[];
+}
+
+export interface ChallengePeerReview {
+  status: 1 | 2;
+  overallScore: number | null;
+  summary: string | null;
+  strengths: string | null;
+  improvements: string | null;
+  submittedAt: string | null;
+  updatedAt: string;
+}
+
+export interface ChallengePeerReviewWorkspace {
+  assignmentReady: boolean;
+  insufficientTeams: boolean;
+  isExpired: boolean;
+  canEdit: boolean;
+  peerReviewEndAt: string | null;
+  targetTeamName: string | null;
+  targetProjectName: string | null;
+  targetRepositoryUrl: string | null;
+  review: ChallengePeerReview | null;
+}
+
+export interface ChallengePeerReviewAdminSummary {
+  assignmentCount: number;
+  submittedCount: number;
+  assignments: ChallengePeerReviewAdmin[];
+}
+
+export interface ChallengePeerReviewAdmin {
+  assignmentId: string;
+  reviewerTeam: string;
+  targetTeam: string;
+  targetProjectName: string;
+  targetRepositoryUrl: string;
+  reviewStatus: 1 | 2 | null;
+  overallScore: number | null;
+  summary: string | null;
+  strengths: string | null;
+  improvements: string | null;
+  submittedAt: string | null;
+  reviewerRoster: string[];
+}
+
+export interface SaveChallengePeerReviewRequest {
+  overallScore: number | null;
+  summary: string;
+  strengths: string;
+  improvements: string;
 }
 
 export interface ChallengeTeamLeaderboardEntry {
@@ -195,6 +253,7 @@ export interface ChallengeAdminSummary {
   challengeId: string;
   challengeTitle: string;
   participationMode: ChallengeParticipationMode;
+  peerReviewEnabled: boolean;
   totalTaskCount: number;
   participantCount: number;
   totalCompletionCount: number;
@@ -326,8 +385,33 @@ export function joinChallenge(challengeId: string) {
   });
 }
 
-export function registerChallengeTeam(challengeId: string) {
-  return request<ChallengeTeamParticipation>(`/api/challenges/${challengeId}/team-registration`, { method: "POST" });
+export function registerChallengeTeam(challengeId: string, selectedTeamProjectId?: string) {
+  return request<ChallengeTeamParticipation>(`/api/challenges/${challengeId}/team-registration`, {
+    method: "POST",
+    body: JSON.stringify({ selectedTeamProjectId: selectedTeamProjectId ?? null })
+  });
+}
+
+export function getChallengePeerReview(challengeId: string) {
+  return request<ChallengePeerReviewWorkspace>(`/api/challenges/${challengeId}/peer-review`);
+}
+
+export function saveChallengePeerReviewDraft(challengeId: string, payload: SaveChallengePeerReviewRequest) {
+  return request<ChallengePeerReviewWorkspace>(`/api/challenges/${challengeId}/peer-review/draft`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function submitChallengePeerReview(challengeId: string, payload: SaveChallengePeerReviewRequest) {
+  return request<ChallengePeerReviewWorkspace>(`/api/challenges/${challengeId}/peer-review/submit`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getChallengePeerReviewAdminAudit(challengeId: string) {
+  return request<ChallengePeerReviewAdminSummary>(`/api/challenges/${challengeId}/admin-peer-reviews`);
 }
 
 export function getMyChallengeFileSubmission(challengeId: string, taskId: string) {

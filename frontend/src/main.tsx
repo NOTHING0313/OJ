@@ -24,6 +24,8 @@ import { ChallengeAdminTaskDetailPage } from "./pages/ChallengeAdminTaskDetailPa
 import { ChallengeDetailPage } from "./pages/ChallengeDetailPage";
 import { ChallengeLeaderboardIndexPage } from "./pages/ChallengeLeaderboardIndexPage";
 import { ChallengeLeaderboardPage } from "./pages/ChallengeLeaderboardPage";
+import { ChallengePeerReviewPage } from "./pages/ChallengePeerReviewPage";
+import { ChallengePeerReviewAuditPage } from "./pages/ChallengePeerReviewAuditPage";
 import { ChallengeListPage } from "./pages/ChallengeListPage";
 import { ChallengeTaskAnswerPage } from "./pages/ChallengeTaskAnswerPage";
 import { ChallengeTaskDetailPage } from "./pages/ChallengeTaskDetailPage";
@@ -59,6 +61,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/problems/:id" element={<ProblemDetailPage />} />
             <Route path="/challenges" element={<ChallengeListPage />} />
             <Route path="/challenges/:id" element={<ChallengeDetailPage />} />
+            <Route path="/challenges/:challengeId/peer-review" element={<ProtectedRoute><ChallengePeerReviewPage /></ProtectedRoute>} />
+            <Route path="/challenges/:challengeId/peer-review-audit" element={<ProtectedRoute allowedRoles={[2, 3]}><ChallengePeerReviewAuditPage /></ProtectedRoute>} />
             <Route path="/leaderboards" element={<LeaderboardHomePage />} />
             <Route path="/leaderboards/users" element={<SeasonLeaderboardPage />} />
             <Route path="/leaderboards/users/problems/:problemId" element={<SeasonProblemLeaderboardPage />} />

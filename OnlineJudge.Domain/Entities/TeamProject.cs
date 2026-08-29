@@ -20,4 +20,5 @@ public class TeamProject
     public string? DefaultBranch { get; set; }
     public Team? Team { get; set; }
     public User? CreatedByUser { get; set; }
+    public List<ChallengeTeamParticipant> ChallengeParticipations { get; set; } = [];
 }

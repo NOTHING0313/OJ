@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using OnlineJudge.Application.Challenges.Requests;
 using OnlineJudge.Application.Challenges.Services;
 
@@ -7,7 +8,7 @@ namespace OnlineJudge.Api.Controllers;
 
 [ApiController]
 [Route("api/challenges")]
-public class ChallengesController(IChallengeService challengeService) : ControllerBase
+public class ChallengesController(IChallengeService challengeService, IChallengePeerReviewService peerReviewService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet]
@@ -178,11 +179,46 @@ public class ChallengesController(IChallengeService challengeService) : Controll
 
     [Authorize]
     [HttpPost("{id:guid}/team-registration")]
-    public async Task<IActionResult> RegisterTeam(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> RegisterTeam(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] RegisterChallengeTeamRequest? request,
+        CancellationToken cancellationToken)
     {
-        var result = await challengeService.RegisterTeamAsync(id, cancellationToken);
+        var result = await challengeService.RegisterTeamAsync(id, request ?? new RegisterChallengeTeamRequest(), cancellationToken);
         if (result.IsFailure) return ToFailureResult(result.ErrorMessage);
         return Ok(result.Value);
+    }
+
+    [Authorize]
+    [HttpGet("{id:guid}/peer-review")]
+    public async Task<IActionResult> GetPeerReview(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await peerReviewService.GetMyWorkspaceAsync(id, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [Authorize]
+    [HttpPut("{id:guid}/peer-review/draft")]
+    public async Task<IActionResult> SavePeerReviewDraft(Guid id, SaveChallengePeerReviewRequest request, CancellationToken cancellationToken)
+    {
+        var result = await peerReviewService.SaveDraftAsync(id, request, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [Authorize]
+    [HttpPost("{id:guid}/peer-review/submit")]
+    public async Task<IActionResult> SubmitPeerReview(Guid id, SaveChallengePeerReviewRequest request, CancellationToken cancellationToken)
+    {
+        var result = await peerReviewService.SubmitAsync(id, request, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
+    }
+
+    [Authorize]
+    [HttpGet("{id:guid}/admin-peer-reviews")]
+    public async Task<IActionResult> GetAdminPeerReviews(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await peerReviewService.GetAdminAuditAsync(id, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
     }
 
     [Authorize]

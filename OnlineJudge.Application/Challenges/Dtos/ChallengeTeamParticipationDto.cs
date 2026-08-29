@@ -9,4 +9,7 @@ public class ChallengeTeamParticipationDto
     public int RosterMemberCount { get; set; }
     public bool IsRosterMember { get; set; }
     public bool CanRegisterTeam { get; set; }
+    public Guid? SelectedTeamProjectId { get; set; }
+    public string? ProjectName { get; set; }
+    public string? RepositoryUrl { get; set; }
 }

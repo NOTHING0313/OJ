@@ -112,6 +112,7 @@ public class ChallengeService(
             : await GetCurrentUserCompletionsAsync([challenge.Id], cancellationToken);
         var detail = ToDetailDto(challenge, completions, visibilityRole);
         detail.ParticipationModeLocked = await IsParticipationModeLockedAsync(challenge, cancellationToken);
+        detail.PeerReviewConfigurationLocked = await IsPeerReviewConfigurationLockedAsync(challenge, cancellationToken);
         await PopulateTeamParticipationAsync(detail, cancellationToken);
         return Result<ChallengeDetailDto>.Success(detail);
     }
@@ -610,6 +611,7 @@ public class ChallengeService(
             ChallengeId = challenge.Id,
             ChallengeTitle = challenge.Title,
             ParticipationMode = challenge.ParticipationMode,
+            PeerReviewEnabled = challenge.PeerReviewEnabled,
             TotalTaskCount = tasks.Count,
             ParticipantCount = users.Count,
             TotalCompletionCount = completions.Count(completion => completion.IsCompleted),
@@ -649,6 +651,7 @@ public class ChallengeService(
         return Result<ChallengeAdminSummaryDto>.Success(new ChallengeAdminSummaryDto
         {
             ChallengeId = challenge.Id, ChallengeTitle = challenge.Title, ParticipationMode = ChallengeParticipationMode.TeamOnly,
+            PeerReviewEnabled = challenge.PeerReviewEnabled,
             TotalTaskCount = tasks.Count, ParticipantCount = participants.Sum(participant => participant.RosterMembers.Count),
             TotalCompletionCount = participants.Sum(participant => participant.TaskCompletions.Count(completion => completion.IsCompleted)),
             Teams = teams,
@@ -905,7 +908,10 @@ public class ChallengeService(
         return Result.Success();
     }
 
-    public async Task<Result<ChallengeTeamParticipationDto>> RegisterTeamAsync(Guid challengeId, CancellationToken cancellationToken = default)
+    public Task<Result<ChallengeTeamParticipationDto>> RegisterTeamAsync(Guid challengeId, CancellationToken cancellationToken = default)
+        => RegisterTeamAsync(challengeId, new RegisterChallengeTeamRequest(), cancellationToken);
+
+    public async Task<Result<ChallengeTeamParticipationDto>> RegisterTeamAsync(Guid challengeId, RegisterChallengeTeamRequest request, CancellationToken cancellationToken = default)
     {
         var userResult = await GetActiveCurrentUserAsync(cancellationToken);
         if (userResult.IsFailure || userResult.Value is null)
@@ -949,6 +955,21 @@ public class ChallengeService(
             return Result<ChallengeTeamParticipationDto>.Failure("Forbidden.");
         }
 
+        TeamProject? selectedProject = null;
+        if (challenge.PeerReviewEnabled)
+        {
+            if (!request.SelectedTeamProjectId.HasValue)
+            {
+                return Result<ChallengeTeamParticipationDto>.Failure("Team project is required for peer review.");
+            }
+            selectedProject = await dbContext.TeamProjects.AsNoTracking()
+                .FirstOrDefaultAsync(project => project.Id == request.SelectedTeamProjectId.Value && project.TeamId == team.Id, cancellationToken);
+            if (selectedProject is null)
+            {
+                return Result<ChallengeTeamParticipationDto>.Failure("Team project is invalid for this team.");
+            }
+        }
+
         await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         if (await dbContext.ChallengeTeamParticipants.AnyAsync(participant => participant.ChallengeId == challengeId && participant.TeamId == team.Id, cancellationToken))
         {
@@ -965,6 +986,8 @@ public class ChallengeService(
         var participant = new ChallengeTeamParticipant
         {
             Id = Guid.NewGuid(), ChallengeId = challengeId, TeamId = team.Id, TeamNameSnapshot = team.Name,
+            SelectedTeamProjectId = selectedProject?.Id, ProjectNameSnapshot = selectedProject?.Name,
+            RepositoryUrlSnapshot = selectedProject?.RepositoryUrl,
             RegisteredByUserId = userResult.Value.Id, RegisteredAt = now
         };
         participant.RosterMembers = team.Members.Where(member => member.IsActive).Select(member => new ChallengeTeamRosterMember
@@ -1010,6 +1033,11 @@ public class ChallengeService(
         {
             return Result<ChallengeDetailDto>.Failure("Invalid participation mode.");
         }
+        var peerReviewValidation = ValidatePeerReviewConfiguration(request.ParticipationMode, request.PeerReviewEnabled, request.PeerReviewEndAt, request.EndAt);
+        if (peerReviewValidation.IsFailure)
+        {
+            return Result<ChallengeDetailDto>.Failure(peerReviewValidation.ErrorMessage!);
+        }
 
         var now = DateTimeOffset.UtcNow;
         var challenge = new Challenge
@@ -1022,6 +1050,8 @@ public class ChallengeService(
             CreatedByUserId = userResult.Value.Id,
             IsPublished = request.IsPublished,
             ParticipationMode = request.ParticipationMode,
+            PeerReviewEnabled = request.PeerReviewEnabled,
+            PeerReviewEndAt = request.PeerReviewEnabled ? request.PeerReviewEndAt : null,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -1069,6 +1099,17 @@ public class ChallengeService(
         {
             return Result<ChallengeDetailDto>.Failure("Invalid participation mode.");
         }
+        var peerReviewValidation = ValidatePeerReviewConfiguration(request.ParticipationMode, request.PeerReviewEnabled, request.PeerReviewEndAt, request.EndAt);
+        if (peerReviewValidation.IsFailure)
+        {
+            return Result<ChallengeDetailDto>.Failure(peerReviewValidation.ErrorMessage!);
+        }
+        var peerReviewChanged = challenge.PeerReviewEnabled != request.PeerReviewEnabled
+            || challenge.PeerReviewEndAt != (request.PeerReviewEnabled ? request.PeerReviewEndAt : null);
+        if (peerReviewChanged && await IsPeerReviewConfigurationLockedAsync(challenge, cancellationToken))
+        {
+            return Result<ChallengeDetailDto>.Failure("Peer review configuration is locked.");
+        }
         if (challenge.ParticipationMode != request.ParticipationMode)
         {
             var modeLocked = challenge.IsPublished
@@ -1093,6 +1134,8 @@ public class ChallengeService(
         challenge.EndAt = request.EndAt;
         challenge.IsPublished = request.IsPublished;
         challenge.ParticipationMode = request.ParticipationMode;
+        challenge.PeerReviewEnabled = request.PeerReviewEnabled;
+        challenge.PeerReviewEndAt = request.PeerReviewEnabled ? request.PeerReviewEndAt : null;
         challenge.UpdatedAt = DateTimeOffset.UtcNow;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -1654,6 +1697,26 @@ public class ChallengeService(
             : Result.Failure("StartAt must be earlier than EndAt.");
     }
 
+    private static Result ValidatePeerReviewConfiguration(
+        ChallengeParticipationMode participationMode,
+        bool peerReviewEnabled,
+        DateTimeOffset? peerReviewEndAt,
+        DateTimeOffset challengeEndAt)
+    {
+        if (!peerReviewEnabled) return Result.Success();
+        if (participationMode != ChallengeParticipationMode.TeamOnly)
+        {
+            return Result.Failure("Peer review requires team-only participation.");
+        }
+        if (!peerReviewEndAt.HasValue)
+        {
+            return Result.Failure("Peer review deadline is required.");
+        }
+        return peerReviewEndAt.Value > challengeEndAt
+            ? Result.Success()
+            : Result.Failure("Peer review deadline must be after challenge end.");
+    }
+
     private static bool CanManageChallenge(User user, Challenge challenge)
     {
         return user.Role == UserRole.Root || user.Role == UserRole.ProblemSetter && challenge.CreatedByUserId == user.Id;
@@ -1802,6 +1865,9 @@ public class ChallengeService(
             IsPublished = challenge.IsPublished,
             ParticipationMode = challenge.ParticipationMode,
             ParticipationModeLocked = challenge.IsPublished || visibilityPolicy.UtcNow >= challenge.StartAt,
+            PeerReviewEnabled = challenge.PeerReviewEnabled,
+            PeerReviewEndAt = challenge.PeerReviewEndAt,
+            PeerReviewConfigurationLocked = challenge.IsPublished || visibilityPolicy.UtcNow >= challenge.StartAt,
             CreatedAt = challenge.CreatedAt,
             UpdatedAt = challenge.UpdatedAt,
             TotalTaskCount = challenge.Tasks.Count,
@@ -1873,13 +1939,22 @@ public class ChallengeService(
             || await dbContext.Submissions.AnyAsync(submission => submission.ChallengeTask != null && submission.ChallengeTask.ChallengeId == challenge.Id, cancellationToken);
     }
 
+    private async Task<bool> IsPeerReviewConfigurationLockedAsync(Challenge challenge, CancellationToken cancellationToken)
+    {
+        return challenge.IsPublished
+            || visibilityPolicy.UtcNow >= challenge.StartAt
+            || await dbContext.ChallengeTeamParticipants.AnyAsync(participant => participant.ChallengeId == challenge.Id, cancellationToken);
+    }
+
     private static ChallengeTeamParticipationDto ToTeamParticipationDto(ChallengeTeamParticipant participant, Guid userId, bool canRegister)
     {
         return new ChallengeTeamParticipationDto
         {
             Id = participant.Id, TeamId = participant.TeamId, TeamName = participant.TeamNameSnapshot,
             RegisteredAt = participant.RegisteredAt, RosterMemberCount = participant.RosterMembers.Count,
-            IsRosterMember = participant.RosterMembers.Any(member => member.UserId == userId), CanRegisterTeam = canRegister
+            IsRosterMember = participant.RosterMembers.Any(member => member.UserId == userId), CanRegisterTeam = canRegister,
+            SelectedTeamProjectId = participant.SelectedTeamProjectId, ProjectName = participant.ProjectNameSnapshot,
+            RepositoryUrl = participant.RepositoryUrlSnapshot
         };
     }
 

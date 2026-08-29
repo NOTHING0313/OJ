@@ -15,6 +15,7 @@ export function AdminChallengeEditorPage() {
   const navigate = useNavigate();
   const startInputRef = useRef<HTMLInputElement | null>(null);
   const endInputRef = useRef<HTMLInputElement | null>(null);
+  const peerReviewEndInputRef = useRef<HTMLInputElement | null>(null);
   const isEditMode = Boolean(id);
   const [challenge, setChallenge] = useState<ChallengeDetailDto | null>(null);
   const [form, setForm] = useState({
@@ -23,7 +24,9 @@ export function AdminChallengeEditorPage() {
     startAt: toDateTimeLocalValue(new Date().toISOString()),
     endAt: toDateTimeLocalValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()),
     isPublished: false,
-    participationMode: 1 as 1 | 2
+    participationMode: 1 as 1 | 2,
+    peerReviewEnabled: false,
+    peerReviewEndAt: ""
   });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -49,7 +52,9 @@ export function AdminChallengeEditorPage() {
             startAt: toDateTimeLocalValue(detail.startAt),
             endAt: toDateTimeLocalValue(detail.endAt),
             isPublished: detail.isPublished,
-            participationMode: detail.participationMode
+            participationMode: detail.participationMode,
+            peerReviewEnabled: detail.peerReviewEnabled,
+            peerReviewEndAt: detail.peerReviewEndAt ? toDateTimeLocalValue(detail.peerReviewEndAt) : ""
           });
           setError(null);
         }
@@ -83,13 +88,25 @@ export function AdminChallengeEditorPage() {
       return;
     }
 
+    if (form.peerReviewEnabled && (!form.peerReviewEndAt || new Date(form.peerReviewEndAt).getTime() <= new Date(form.endAt).getTime())) {
+      setError("互评截止时间必须晚于挑战截止时间");
+      setIsSaving(false);
+      return;
+    }
+
+    const peerReviewEnabled = challenge?.peerReviewConfigurationLocked ? challenge.peerReviewEnabled : form.peerReviewEnabled;
+    const peerReviewEndAt = challenge?.peerReviewConfigurationLocked
+      ? challenge.peerReviewEndAt
+      : form.peerReviewEnabled ? toIsoString(form.peerReviewEndAt) : null;
     const payload: SaveChallengeRequest = {
       title: form.title.trim(),
       description: form.description,
       startAt: toIsoString(form.startAt),
       endAt: toIsoString(form.endAt),
       isPublished: form.isPublished,
-      participationMode: form.participationMode
+      participationMode: form.participationMode,
+      peerReviewEnabled,
+      peerReviewEndAt
     };
 
     try {
@@ -233,13 +250,49 @@ export function AdminChallengeEditorPage() {
           <select
             value={form.participationMode}
             disabled={challenge?.participationModeLocked}
-            onChange={(event) => setForm((current) => ({ ...current, participationMode: Number(event.target.value) as 1 | 2 }))}
+            onChange={(event) => {
+              const participationMode = Number(event.target.value) as 1 | 2;
+              setForm((current) => ({
+                ...current,
+                participationMode,
+                peerReviewEnabled: participationMode === 2 && current.peerReviewEnabled
+              }));
+            }}
           >
             <option value={1}>个人挑战</option>
             <option value={2}>战队挑战（仅算法题）</option>
           </select>
           {challenge?.participationModeLocked && <small>挑战发布、开始或产生参与/提交后，参与模式不可更改。</small>}
         </label>
+        {form.participationMode === 2 && (
+          <div className="admin-panel">
+            <label className="checkbox-line">
+              <input
+                type="checkbox"
+                checked={form.peerReviewEnabled}
+                disabled={challenge?.peerReviewConfigurationLocked}
+                onChange={(event) => setForm((current) => ({ ...current, peerReviewEnabled: event.target.checked }))}
+              />
+              启用战队项目互评
+            </label>
+            {form.peerReviewEnabled && (
+              <label>
+                互评截止时间
+                <input
+                  ref={peerReviewEndInputRef}
+                  required
+                  type="datetime-local"
+                  value={form.peerReviewEndAt}
+                  disabled={challenge?.peerReviewConfigurationLocked}
+                  onClick={() => openDateTimePicker(peerReviewEndInputRef.current)}
+                  onFocus={() => openDateTimePicker(peerReviewEndInputRef.current)}
+                  onChange={(event) => setForm((current) => ({ ...current, peerReviewEndAt: event.target.value }))}
+                />
+              </label>
+            )}
+            <small>互评仅适用于战队算法挑战；发布、开始或有战队报名后配置被冻结。</small>
+          </div>
+        )}
         <div className="button-row">
           <button className="button primary" disabled={isSaving} type="submit">
             {isSaving ? "保存中..." : "保存"}

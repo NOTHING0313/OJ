@@ -15,4 +15,8 @@ public class CreateChallengeRequest
     public bool IsPublished { get; set; }
 
     public ChallengeParticipationMode ParticipationMode { get; set; } = ChallengeParticipationMode.Individual;
+
+    public bool PeerReviewEnabled { get; set; }
+
+    public DateTimeOffset? PeerReviewEndAt { get; set; }
 }

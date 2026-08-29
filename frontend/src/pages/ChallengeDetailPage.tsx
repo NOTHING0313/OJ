@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { getChallenge, joinChallenge, registerChallengeTeam, type ChallengeDetailDto, type ChallengeTaskDto } from "../api/challengesApi";
-import { useAuth } from "../auth/AuthContext";
+import { getChallenge, getChallengePeerReview, joinChallenge, registerChallengeTeam, type ChallengeDetailDto, type ChallengePeerReviewWorkspace, type ChallengeTaskDto } from "../api/challengesApi";
+import { getMyTeam, type TeamProjectDto } from "../api/teamsApi";
+import { canManageContent, useAuth } from "../auth/AuthContext";
 import { MarkdownRenderer } from "../components/MarkdownRenderer";
 
 const difficultySymbols = {
@@ -40,6 +41,9 @@ export function ChallengeDetailPage() {
   const animationTimerRef = useRef<number | null>(null);
   const pieceRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  const [teamProjects, setTeamProjects] = useState<TeamProjectDto[]>([]);
+  const [selectedTeamProjectId, setSelectedTeamProjectId] = useState("");
+  const [peerReviewWorkspace, setPeerReviewWorkspace] = useState<ChallengePeerReviewWorkspace | null>(null);
 
   useEffect(() => () => {
     if (animationTimerRef.current) {
@@ -80,6 +84,36 @@ export function ChallengeDetailPage() {
       }
     });
   }, [challenge, currentUser, joinedChallengeId]);
+
+  useEffect(() => {
+    if (!currentUser || !challenge?.peerReviewEnabled || !challenge.teamParticipation?.canRegisterTeam) {
+      return;
+    }
+
+    let ignore = false;
+    getMyTeam()
+      .then((team) => {
+        if (ignore) return;
+        const projects = team?.projects ?? [];
+        setTeamProjects(projects);
+        setSelectedTeamProjectId((current) => current || projects[0]?.id || "");
+      })
+      .catch((err: unknown) => {
+        if (!ignore) setJoinWarning(err instanceof Error ? err.message : "战队项目加载失败");
+      });
+    return () => { ignore = true; };
+  }, [challenge?.id, challenge?.peerReviewEnabled, challenge?.teamParticipation?.canRegisterTeam, currentUser]);
+
+  useEffect(() => {
+    if (!challenge?.peerReviewEnabled || !challenge.teamParticipation?.isRosterMember || new Date() < new Date(challenge.endAt)) {
+      return;
+    }
+    let ignore = false;
+    getChallengePeerReview(challenge.id)
+      .then((workspace) => { if (!ignore) setPeerReviewWorkspace(workspace); })
+      .catch((err: unknown) => { if (!ignore) setJoinWarning(err instanceof Error ? err.message : "互评任务加载失败"); });
+    return () => { ignore = true; };
+  }, [challenge?.endAt, challenge?.id, challenge?.peerReviewEnabled, challenge?.teamParticipation?.isRosterMember]);
 
   useEffect(() => {
     if (!challenge) {
@@ -199,11 +233,16 @@ export function ChallengeDetailPage() {
   }
 
   const canOpenAdminSummary = challenge.canManage;
+  const canAuditPeerReviews = challenge.peerReviewEnabled && canManageContent(currentUser?.role);
   const challengeIdForRegistration = challenge.id;
+  const peerReviewEnabledForRegistration = challenge.peerReviewEnabled;
 
   async function registerTeam() {
     try {
-      const teamParticipation = await registerChallengeTeam(challengeIdForRegistration);
+      const teamParticipation = await registerChallengeTeam(
+        challengeIdForRegistration,
+        peerReviewEnabledForRegistration ? selectedTeamProjectId : undefined
+      );
       setChallenge((current) => current ? { ...current, teamParticipation } : current);
       setJoinWarning(null);
     } catch (err) {
@@ -225,12 +264,50 @@ export function ChallengeDetailPage() {
             <div className="quiet-note">
               <strong>战队挑战</strong>
               {challenge.teamParticipation?.isRosterMember
-                ? <span>已随「{challenge.teamParticipation.teamName}」报名 · 冻结阵容 {challenge.teamParticipation.rosterMemberCount} 人</span>
+                ? (
+                  <span>
+                    已随「{challenge.teamParticipation.teamName}」报名 · 冻结阵容 {challenge.teamParticipation.rosterMemberCount} 人
+                    {challenge.teamParticipation.projectName ? ` · 项目「${challenge.teamParticipation.projectName}」` : ""}
+                  </span>
+                )
                 : challenge.teamParticipation?.id
                   ? <span>你的当前战队「{challenge.teamParticipation.teamName}」已报名，但你未被登记在本场挑战的冻结参赛阵容中。</span>
                 : challenge.teamParticipation?.canRegisterTeam
-                  ? <button className="button primary" type="button" onClick={() => void registerTeam()}>以我的战队报名</button>
+                  ? challenge.peerReviewEnabled
+                    ? (
+                      <div className="form-stack">
+                        {teamProjects.length > 0 ? (
+                          <>
+                            <label>
+                              选择本场互评项目
+                              <select value={selectedTeamProjectId} onChange={(event) => setSelectedTeamProjectId(event.target.value)}>
+                                {teamProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                              </select>
+                            </label>
+                            <button className="button primary" type="button" onClick={() => void registerTeam()}>绑定项目并报名</button>
+                          </>
+                        ) : <span>互评挑战报名需要先在战队页创建 Git 项目。</span>}
+                      </div>
+                    )
+                    : <button className="button primary" type="button" onClick={() => void registerTeam()}>以我的战队报名</button>
                   : <span>等待队长报名；若你尚无战队，需要先加入或创建战队。报名阵容将被冻结。</span>}
+            </div>
+          )}
+          {challenge.peerReviewEnabled && challenge.teamParticipation?.isRosterMember && new Date() >= new Date(challenge.endAt) && (
+            <div className="quiet-note">
+              <strong>赛后互评</strong>
+              {!peerReviewWorkspace
+                ? <span>正在加载互评任务...</span>
+                : !peerReviewWorkspace.assignmentReady
+                  ? <span>{peerReviewWorkspace.insufficientTeams ? "参赛战队不足，无法进行互评。" : "正在生成互评任务。"}</span>
+                  : (
+                    <>
+                      <span>评审战队：{peerReviewWorkspace.targetTeamName} · 项目：{peerReviewWorkspace.targetProjectName}</span>
+                      {peerReviewWorkspace.targetRepositoryUrl && <a href={peerReviewWorkspace.targetRepositoryUrl} target="_blank" rel="noreferrer noopener">查看仓库</a>}
+                      <button className="button primary" type="button" onClick={() => navigate(`/challenges/${challenge.id}/peer-review`)}>开始评审</button>
+                    </>
+                  )}
+              {challenge.peerReviewEndAt && <span className="muted">截止：{formatDate(challenge.peerReviewEndAt)}</span>}
             </div>
           )}
         </div>
@@ -346,6 +423,15 @@ export function ChallengeDetailPage() {
                   管理统计
                 </button>
               </div>
+            )}
+            {canAuditPeerReviews && (
+              <button
+                className="button"
+                type="button"
+                onClick={() => navigate(`/challenges/${challenge.id}/peer-review-audit`)}
+              >
+                互评审计
+              </button>
             )}
           </section>
 

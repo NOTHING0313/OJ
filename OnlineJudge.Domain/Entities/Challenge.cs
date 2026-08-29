@@ -23,6 +23,10 @@ public class Challenge
 
     public ChallengeParticipationMode ParticipationMode { get; set; } = ChallengeParticipationMode.Individual;
 
+    public bool PeerReviewEnabled { get; set; }
+
+    public DateTimeOffset? PeerReviewEndAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
@@ -40,6 +44,10 @@ public class Challenge
     public List<ChallengeTeamRosterMember> TeamRosterMembers { get; set; } = [];
 
     public List<ChallengeTeamTaskCompletion> TeamTaskCompletions { get; set; } = [];
+
+    public List<ChallengePeerReviewAssignment> PeerReviewAssignments { get; set; } = [];
+
+    public List<ChallengePeerReview> PeerReviews { get; set; } = [];
 
     public List<ChallengeTaskAnswer> Answers { get; set; } = [];
 

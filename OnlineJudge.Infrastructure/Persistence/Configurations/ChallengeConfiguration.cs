@@ -37,6 +37,12 @@ public class ChallengeConfiguration : IEntityTypeConfiguration<Challenge>
             .HasDefaultValue(OnlineJudge.Domain.Enums.ChallengeParticipationMode.Individual)
             .IsRequired();
 
+        builder.Property(challenge => challenge.PeerReviewEnabled)
+            .HasDefaultValue(false)
+            .IsRequired();
+
+        builder.Property(challenge => challenge.PeerReviewEndAt);
+
         builder.Property(challenge => challenge.CreatedAt)
             .IsRequired();
 
