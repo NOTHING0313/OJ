@@ -8,10 +8,11 @@ using OnlineJudge.Application.HelpDocuments.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Infrastructure.HelpDocuments;
 
-public sealed partial class HelpDocumentService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser) : IHelpDocumentService
+public sealed partial class HelpDocumentService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ISecurityAuditWriter? auditWriter = null) : IHelpDocumentService
 {
     private const int MaxMarkdownLength = 200_000;
     private const int MinSortOrder = -100_000;
@@ -117,6 +118,7 @@ public sealed partial class HelpDocumentService(OnlineJudgeDbContext dbContext, 
             UpdatedAt = now
         };
         dbContext.HelpDocuments.Add(document);
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.HelpCreated, "HelpDocument", document.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<HelpDocumentDto>.Success(ToDto(document));
     }
@@ -142,6 +144,7 @@ public sealed partial class HelpDocumentService(OnlineJudgeDbContext dbContext, 
         document.SortOrder = request.SortOrder;
         document.UpdatedByUserId = userResult.Value!.Id;
         document.UpdatedAt = DateTimeOffset.UtcNow;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.HelpUpdated, "HelpDocument", document.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<HelpDocumentDto>.Success(ToDto(document));
     }
@@ -159,6 +162,7 @@ public sealed partial class HelpDocumentService(OnlineJudgeDbContext dbContext, 
         var document = await dbContext.HelpDocuments.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (document is null) return Result.Failure("Help document not found.");
         dbContext.HelpDocuments.Remove(document);
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.HelpDeleted, "HelpDocument", document.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
@@ -177,6 +181,10 @@ public sealed partial class HelpDocumentService(OnlineJudgeDbContext dbContext, 
         document.IsPublished = isPublished;
         document.UpdatedByUserId = userResult.Value!.Id;
         document.UpdatedAt = DateTimeOffset.UtcNow;
+        auditWriter?.Stage(new SecurityAuditRecord(
+            isPublished ? SecurityAuditActions.HelpPublished : SecurityAuditActions.HelpUnpublished,
+            "HelpDocument",
+            document.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<HelpDocumentDto>.Success(ToDto(document));
     }

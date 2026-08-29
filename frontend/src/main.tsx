@@ -13,6 +13,7 @@ import { AdminProblemEditorPage } from "./pages/AdminProblemEditorPage";
 import { AdminProblemListPage } from "./pages/AdminProblemListPage";
 import { AdminTestCaseEditorPage } from "./pages/AdminTestCaseEditorPage";
 import { AdminUserListPage } from "./pages/AdminUserListPage";
+import { AdminSecurityAuditPage } from "./pages/AdminSecurityAuditPage";
 import { AdminTeamListPage } from "./pages/AdminTeamListPage";
 import { AdminLeaderboardSeasonPage } from "./pages/AdminLeaderboardSeasonPage";
 import { AccountSettingsPage } from "./pages/AccountSettingsPage";
@@ -265,6 +266,14 @@ createRoot(document.getElementById("root")!).render(
               element={(
                 <ProtectedRoute allowedRoles={[3]}>
                   <AdminSiteSettingsPage />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/admin/security-audit"
+              element={(
+                <ProtectedRoute allowedRoles={[3]}>
+                  <AdminSecurityAuditPage />
                 </ProtectedRoute>
               )}
             />

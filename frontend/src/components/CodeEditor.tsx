@@ -1,4 +1,13 @@
-import Editor from "@monaco-editor/react";
+import Editor, { loader } from "@monaco-editor/react";
+import * as monaco from "monaco-editor/editor/editor.api.js";
+import EditorWorker from "monaco-editor/editor/editor.worker?worker";
+import "monaco-editor/languages/definitions/cpp/register.js";
+import "monaco-editor/languages/definitions/csharp/register.js";
+
+self.MonacoEnvironment = {
+  getWorker: () => new EditorWorker()
+};
+loader.config({ monaco });
 
 type CodeEditorProps = {
   value: string;

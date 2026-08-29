@@ -36,6 +36,8 @@ using OnlineJudge.Infrastructure.ContentVisibility;
 using OnlineJudge.Application.Teams.Services;
 using OnlineJudge.Infrastructure.Teams;
 using OnlineJudge.Infrastructure.Storage;
+using OnlineJudge.Application.SecurityAudit;
+using OnlineJudge.Infrastructure.SecurityAudit;
 
 namespace OnlineJudge.Infrastructure;
 
@@ -50,6 +52,9 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString));
 
         services.AddSingleton(TimeProvider.System);
+        services.AddScoped<SecurityAuditRequestContext>();
+        services.AddScoped<ISecurityAuditWriter, SecurityAuditWriter>();
+        services.AddScoped<ISecurityAuditQueryService, SecurityAuditQueryService>();
         services.AddSingleton<IRuntimeStoragePathProvider>(_ => new RuntimeStoragePathProvider(configuration));
         services.AddScoped<ContentVisibilityPolicy>();
         var configuredGitHosts = configuration.GetSection($"{TeamProjectOptions.SectionName}:AllowedGitHosts")

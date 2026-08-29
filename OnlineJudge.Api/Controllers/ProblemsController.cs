@@ -7,6 +7,8 @@ using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Problems.Requests;
 using OnlineJudge.Application.Problems.Services;
 using OnlineJudge.Domain.Enums;
+using OnlineJudge.Api.Security;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -46,6 +48,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ProblemCreated, "Problem")]
     [HttpPost]
     public async Task<IActionResult> CreateProblem(CreateProblemRequest request, CancellationToken cancellationToken)
     {
@@ -61,6 +64,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ProblemUpdated, "Problem", "id")]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateProblem(Guid id, UpdateProblemRequest request, CancellationToken cancellationToken)
     {
@@ -76,6 +80,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ProblemDeleted, "Problem", "id")]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteProblem(Guid id, CancellationToken cancellationToken)
     {
@@ -91,6 +96,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ProblemTestCasesChanged, "Problem", "id")]
     [HttpPost("{id:guid}/test-cases")]
     public async Task<IActionResult> AddTestCase(Guid id, CreateTestCaseRequest request, CancellationToken cancellationToken)
     {
@@ -106,6 +112,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ProblemTestCasesChanged, "Problem", "id")]
     [HttpPut("{id:guid}/test-cases/{testCaseId:guid}")]
     public async Task<IActionResult> UpdateTestCase(Guid id, Guid testCaseId, UpdateTestCaseRequest request, CancellationToken cancellationToken)
     {
@@ -115,6 +122,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ProblemTestCasesChanged, "Problem", "id")]
     [HttpDelete("{id:guid}/test-cases/{testCaseId:guid}")]
     public async Task<IActionResult> DeleteTestCase(Guid id, Guid testCaseId, CancellationToken cancellationToken)
     {
@@ -124,6 +132,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ProblemTestCasesChanged, "Problem", "id")]
     [HttpPost("{id:guid}/test-cases/import")]
     public async Task<IActionResult> ImportTestCases(Guid id, ImportTestCasesRequest request, CancellationToken cancellationToken)
     {

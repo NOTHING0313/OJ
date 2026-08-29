@@ -7,10 +7,11 @@ using OnlineJudge.Application.SiteSettings.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Infrastructure.SiteSettings;
 
-public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettingsService
+public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditWriter? auditWriter = null) : ISiteSettingsService
 {
     private const string AppearanceKey = "appearance";
     private const string UploadImagePrefix = "/uploads/images/";
@@ -139,6 +140,7 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext) : ISiteSettings
         setting.UpdatedAt = DateTimeOffset.UtcNow;
         setting.UpdatedByUserId = currentUserId;
 
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SiteAppearanceUpdated, "SiteAppearance", AppearanceKey));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<SiteAppearanceDto>.Success(appearance);
     }

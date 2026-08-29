@@ -138,7 +138,11 @@ public class HelpCenterFrontendContractTests
             .ToArray();
 
         var helpMigrationPath = Assert.Single(migrations, path => path.EndsWith("20260829132321_AddHelpDocuments.cs", StringComparison.Ordinal));
-        Assert.EndsWith("AddSingleActiveUserSession.cs", migrations[^1], StringComparison.Ordinal);
+        var sessionMigrationIndex = Array.FindIndex(migrations, path => path.EndsWith("AddSingleActiveUserSession.cs", StringComparison.Ordinal));
+        var auditMigrationIndex = Array.FindIndex(migrations, path => path.EndsWith("AddSecurityAuditLogs.cs", StringComparison.Ordinal));
+        Assert.True(sessionMigrationIndex >= 0);
+        Assert.Equal(migrations.Length - 1, auditMigrationIndex);
+        Assert.True(sessionMigrationIndex < auditMigrationIndex);
         var migration = File.ReadAllText(helpMigrationPath);
         Assert.Contains("migrationBuilder.CreateTable(", migration, StringComparison.Ordinal);
         Assert.Contains("name: \"HelpDocuments\"", migration, StringComparison.Ordinal);

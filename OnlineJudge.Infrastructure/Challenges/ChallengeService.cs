@@ -12,6 +12,7 @@ using System.Text;
 using OnlineJudge.Infrastructure.ContentVisibility;
 using OnlineJudge.Infrastructure.Leaderboards;
 using OnlineJudge.Infrastructure.Storage;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Infrastructure.Challenges;
 
@@ -20,7 +21,8 @@ public class ChallengeService(
     ICurrentUser currentUser,
     ContentVisibilityPolicy visibilityPolicy,
     LeaderboardIdentityService identityService,
-    IRuntimeStoragePathProvider storagePaths) : IChallengeService
+    IRuntimeStoragePathProvider storagePaths,
+    ISecurityAuditWriter? auditWriter = null) : IChallengeService
 {
     public ChallengeService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser)
         : this(dbContext, currentUser, new ContentVisibilityPolicy(TimeProvider.System), new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), RuntimeStoragePathProvider.CreateDevelopmentDefault())
@@ -1083,6 +1085,7 @@ public class ChallengeService(
                 CreatedAt = now
             });
         }
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ChallengeCreated, "Challenge", challenge.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<ChallengeDetailDto>.Success(ToDetailDto(challenge, new Dictionary<Guid, ChallengeTaskCompletion>(), userResult.Value.Role));
@@ -1172,6 +1175,7 @@ public class ChallengeService(
         challenge.PeerReviewEndAt = request.PeerReviewEnabled ? request.PeerReviewEndAt : null;
         challenge.UpdatedAt = DateTimeOffset.UtcNow;
 
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ChallengeUpdated, "Challenge", challenge.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var completions = await GetCurrentUserCompletionsAsync([challenge.Id], cancellationToken);
@@ -1206,6 +1210,7 @@ public class ChallengeService(
         }
 
         dbContext.Challenges.Remove(challenge);
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ChallengeDeleted, "Challenge", challenge.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();

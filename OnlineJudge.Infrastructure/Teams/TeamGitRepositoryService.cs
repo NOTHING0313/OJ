@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Teams.Dtos;
@@ -8,6 +9,7 @@ using OnlineJudge.Application.Teams.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Infrastructure.Teams;
 
@@ -19,7 +21,9 @@ public sealed class TeamGitRepositoryService(
     ITeamGitRepositoryStorage storage,
     TeamGitSyncLockProvider lockProvider,
     TeamProjectOptions options,
-    TimeProvider timeProvider) : ITeamGitRepositoryService
+    TimeProvider timeProvider,
+    ISecurityAuditWriter? auditWriter = null,
+    ILogger<TeamGitRepositoryService>? logger = null) : ITeamGitRepositoryService
 {
     private const string GenericSyncFailure = "Repository synchronization failed.";
     private const string UnavailableMessage = "Git repository synchronization is unavailable.";
@@ -64,6 +68,7 @@ public sealed class TeamGitRepositoryService(
             }
 
             project.LastSyncAttemptAt = now;
+            auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.TeamGitSyncRequested, "TeamProject", project.Id.ToString(), SecurityAuditResults.Requested));
             await dbContext.SaveChangesAsync(cancellationToken);
 
             var availability = await RunGitAsync(["--version"], cancellationToken);
@@ -137,7 +142,16 @@ public sealed class TeamGitRepositoryService(
                 project.LastSyncError = null;
                 project.LastSyncedAt = timeProvider.GetUtcNow();
                 project.DefaultBranch = string.IsNullOrWhiteSpace(defaultBranch) ? null : defaultBranch;
-                await dbContext.SaveChangesAsync(cancellationToken);
+                auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.TeamGitSyncSucceeded, "TeamProject", project.Id.ToString()));
+                try
+                {
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                }
+                catch (Exception exception)
+                {
+                    logger?.LogError(exception, "Team Git synchronization completed but audit persistence failed. TeamProjectId={TeamProjectId}", project.Id);
+                    return Result<TeamProjectAuditDto>.Failure(GenericSyncFailure);
+                }
                 return Result<TeamProjectAuditDto>.Success(ToAuditDto(project));
             }
             catch (OperationCanceledException)
@@ -323,7 +337,15 @@ public sealed class TeamGitRepositoryService(
     {
         project.LastSyncStatus = TeamProjectSyncStatus.Failed;
         project.LastSyncError = Sanitize(message, 500);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.TeamGitSyncFailed, "TeamProject", project.Id.ToString(), SecurityAuditResults.Failed));
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogError(exception, "Team Git synchronization failed and its audit result could not be persisted. TeamProjectId={TeamProjectId}", project.Id);
+        }
         return Result<TeamProjectAuditDto>.Failure(project.LastSyncError);
     }
 

@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Users.Services;
 using OnlineJudge.Domain.Enums;
+using OnlineJudge.Api.Security;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -41,6 +43,7 @@ public class UsersController(IUserService userService) : ControllerBase
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.UserRoleChanged, "User", "id")]
     [HttpPost("{id:guid}/promote-to-problem-setter")]
     public async Task<IActionResult> PromoteToProblemSetter(Guid id, CancellationToken cancellationToken)
     {
@@ -56,6 +59,7 @@ public class UsersController(IUserService userService) : ControllerBase
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.UserRoleChanged, "User", "id")]
     [HttpPost("{id:guid}/demote-to-answerer")]
     public async Task<IActionResult> DemoteToAnswerer(Guid id, CancellationToken cancellationToken)
     {
@@ -71,6 +75,7 @@ public class UsersController(IUserService userService) : ControllerBase
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.UserBlacklisted, "User", "id")]
     [HttpPost("{id:guid}/blacklist")]
     public async Task<IActionResult> Blacklist(Guid id, CancellationToken cancellationToken)
     {
@@ -86,6 +91,7 @@ public class UsersController(IUserService userService) : ControllerBase
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.UserUnblacklisted, "User", "id")]
     [HttpPost("{id:guid}/unblacklist")]
     public async Task<IActionResult> Unblacklist(Guid id, CancellationToken cancellationToken)
     {

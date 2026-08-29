@@ -13,6 +13,7 @@ using OnlineJudge.Application.Sms.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Infrastructure.Auth;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Infrastructure.Account;
 
@@ -21,7 +22,8 @@ public partial class AccountService(
     ICurrentUser currentUser,
     ISmsVerificationService smsVerificationService,
     IEmailVerificationService emailVerificationService,
-    PasswordHasher passwordHasher) : IAccountService
+    PasswordHasher passwordHasher,
+    ISecurityAuditWriter? auditWriter = null) : IAccountService
 {
     private const string BindPhoneScene = "BindPhone";
     private const string PasswordResetScene = "PasswordReset";
@@ -291,6 +293,12 @@ public partial class AccountService(
         user.ActiveSessionId = null;
         user.ActiveSessionIssuedAt = null;
         user.UpdatedAt = DateTimeOffset.UtcNow;
+        auditWriter?.Stage(new SecurityAuditRecord(
+            SecurityAuditActions.UserPasswordReset,
+            "User",
+            user.Id.ToString(),
+            ActorUserId: user.Id,
+            ActorNameSnapshot: user.UserName));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
@@ -354,6 +362,12 @@ public partial class AccountService(
         user.ActiveSessionId = null;
         user.ActiveSessionIssuedAt = null;
         user.UpdatedAt = DateTimeOffset.UtcNow;
+        auditWriter?.Stage(new SecurityAuditRecord(
+            SecurityAuditActions.UserPasswordReset,
+            "User",
+            user.Id.ToString(),
+            ActorUserId: user.Id,
+            ActorNameSnapshot: user.UserName));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
@@ -424,6 +438,12 @@ public partial class AccountService(
         user.ActiveSessionIssuedAt = null;
         user.UpdatedAt = now;
 
+        auditWriter?.Stage(new SecurityAuditRecord(
+            SecurityAuditActions.UserDeleted,
+            "User",
+            user.Id.ToString(),
+            ActorUserId: user.Id,
+            ActorNameSnapshot: userResult.Value.UserName));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }

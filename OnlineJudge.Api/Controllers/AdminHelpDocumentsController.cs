@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.HelpDocuments.Requests;
 using OnlineJudge.Application.HelpDocuments.Services;
+using OnlineJudge.Api.Security;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -26,6 +28,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
     }
 
     [RiskRateLimit(RateLimitPolicies.HelpMutation)]
+    [SecurityAudit(SecurityAuditActions.HelpCreated, "HelpDocument")]
     [HttpPost]
     public async Task<IActionResult> Create(UpsertHelpDocumentRequest request, CancellationToken cancellationToken)
     {
@@ -34,6 +37,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
     }
 
     [RiskRateLimit(RateLimitPolicies.HelpMutation)]
+    [SecurityAudit(SecurityAuditActions.HelpUpdated, "HelpDocument", "id")]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, UpsertHelpDocumentRequest request, CancellationToken cancellationToken)
     {
@@ -42,6 +46,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
     }
 
     [RiskRateLimit(RateLimitPolicies.HelpMutation)]
+    [SecurityAudit(SecurityAuditActions.HelpPublished, "HelpDocument", "id")]
     [HttpPost("{id:guid}/publish")]
     public async Task<IActionResult> Publish(Guid id, CancellationToken cancellationToken)
     {
@@ -50,6 +55,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
     }
 
     [RiskRateLimit(RateLimitPolicies.HelpMutation)]
+    [SecurityAudit(SecurityAuditActions.HelpUnpublished, "HelpDocument", "id")]
     [HttpPost("{id:guid}/unpublish")]
     public async Task<IActionResult> Unpublish(Guid id, CancellationToken cancellationToken)
     {
@@ -58,6 +64,7 @@ public sealed class AdminHelpDocumentsController(IHelpDocumentService helpDocume
     }
 
     [RiskRateLimit(RateLimitPolicies.HelpMutation)]
+    [SecurityAudit(SecurityAuditActions.HelpDeleted, "HelpDocument", "id")]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {

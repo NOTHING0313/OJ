@@ -6,10 +6,11 @@ using OnlineJudge.Application.Users.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Infrastructure.Users;
 
-public class UserService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser) : IUserService
+public class UserService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ISecurityAuditWriter? auditWriter = null) : IUserService
 {
     public async Task<Result<PagedResult<AuthUserDto>>> GetUsersAsync(string? keyword, UserRole? role, bool? isBlacklisted, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
     {
@@ -137,6 +138,10 @@ public class UserService(OnlineJudgeDbContext dbContext, ICurrentUser currentUse
 
         targetUser.Role = UserRole.ProblemSetter;
         targetUser.UpdatedAt = DateTimeOffset.UtcNow;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.UserRoleChanged, "User", targetUser.Id.ToString(), Metadata: new Dictionary<string, string?>
+        {
+            ["oldRole"] = UserRole.Answerer.ToString(), ["newRole"] = UserRole.ProblemSetter.ToString()
+        }));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<AuthUserDto>.Success(ToDto(targetUser));
@@ -175,6 +180,10 @@ public class UserService(OnlineJudgeDbContext dbContext, ICurrentUser currentUse
 
         targetUser.Role = UserRole.Answerer;
         targetUser.UpdatedAt = DateTimeOffset.UtcNow;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.UserRoleChanged, "User", targetUser.Id.ToString(), Metadata: new Dictionary<string, string?>
+        {
+            ["oldRole"] = UserRole.ProblemSetter.ToString(), ["newRole"] = UserRole.Answerer.ToString()
+        }));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<AuthUserDto>.Success(ToDto(targetUser));
@@ -205,6 +214,7 @@ public class UserService(OnlineJudgeDbContext dbContext, ICurrentUser currentUse
         targetUser.ActiveSessionId = null;
         targetUser.ActiveSessionIssuedAt = null;
         targetUser.UpdatedAt = DateTimeOffset.UtcNow;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.UserBlacklisted, "User", targetUser.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
@@ -233,6 +243,7 @@ public class UserService(OnlineJudgeDbContext dbContext, ICurrentUser currentUse
 
         targetUser.IsBlacklisted = false;
         targetUser.UpdatedAt = DateTimeOffset.UtcNow;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.UserUnblacklisted, "User", targetUser.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();

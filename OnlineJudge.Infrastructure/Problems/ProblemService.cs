@@ -9,11 +9,12 @@ using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Judging.Function;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Application.SecurityAudit;
 using OnlineJudge.Infrastructure.ContentVisibility;
 
 namespace OnlineJudge.Infrastructure.Problems;
 
-public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy) : IProblemService
+public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy, ISecurityAuditWriter? auditWriter = null) : IProblemService
 {
     private const int AllAllowedLanguagesMask = 0b111;
     private const string ProblemReferencedByChallengeTaskMessage = "该题目已被挑战任务引用，请先移除相关挑战任务后再删除。";
@@ -115,6 +116,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         };
 
         dbContext.Problems.Add(problem);
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemCreated, "Problem", problem.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<ProblemDetailDto>.Success(ToDetailDto(problem, includeHiddenTestCases: true));
@@ -161,6 +163,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         problem.StarterCodeJson = request.JudgeMode == JudgeMode.Function ? request.StarterCodeJson : null;
         problem.UpdatedAt = DateTimeOffset.UtcNow;
 
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemUpdated, "Problem", problem.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<ProblemDetailDto>.Success(ToDetailDto(problem, includeHiddenTestCases: true));
@@ -201,6 +204,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         problem.IsPublished = false;
         problem.DeletedAt = now;
         problem.UpdatedAt = now;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemDeleted, "Problem", problem.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
@@ -252,6 +256,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         };
 
         dbContext.TestCases.Add(testCase);
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "1" }));
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<TestCaseDto>.Success(ToTestCaseDto(testCase));
@@ -301,6 +306,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         testCase.Score = request.Score;
         testCase.UpdatedAt = DateTimeOffset.UtcNow;
 
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "0" }));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<TestCaseDto>.Success(ToTestCaseDto(testCase));
     }
@@ -339,6 +345,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         testCase.IsDeleted = true;
         testCase.DeletedAt = now;
         testCase.UpdatedAt = now;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "-1" }));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
@@ -443,6 +450,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         dbContext.TestCases.AddRange(testCases);
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = testCases.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) }));
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 

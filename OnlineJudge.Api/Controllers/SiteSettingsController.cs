@@ -4,6 +4,8 @@ using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.SiteSettings.Requests;
 using OnlineJudge.Application.SiteSettings.Services;
+using OnlineJudge.Api.Security;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -21,6 +23,7 @@ public class SiteSettingsController(ISiteSettingsService siteSettingsService, IC
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SiteAppearanceUpdated, "SiteAppearance")]
     [HttpPut("appearance")]
     public async Task<IActionResult> UpdateAppearance(UpdateSiteAppearanceRequest request, CancellationToken cancellationToken)
     {

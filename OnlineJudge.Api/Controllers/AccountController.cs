@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OnlineJudge.Application.Account.Requests;
 using OnlineJudge.Application.Account.Services;
+using OnlineJudge.Api.Security;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -74,6 +76,7 @@ public class AccountController(IAccountService accountService) : ControllerBase
     }
 
     [HttpPost("delete/confirm")]
+    [SecurityAudit(SecurityAuditActions.UserDeleted, "User")]
     public async Task<IActionResult> ConfirmDelete(ConfirmAccountDeleteRequest request, CancellationToken cancellationToken)
     {
         var result = await accountService.ConfirmAccountDeleteAsync(request, cancellationToken);

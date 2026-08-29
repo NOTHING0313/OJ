@@ -8,6 +8,7 @@ using OnlineJudge.Api.Authorization;
 using OnlineJudge.Api.Common;
 using OnlineJudge.Api.Services;
 using OnlineJudge.Api.RateLimiting;
+using OnlineJudge.Api.Security;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Infrastructure;
 using OnlineJudge.Infrastructure.Auth;
@@ -15,9 +16,10 @@ using OnlineJudge.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options => options.Filters.Add<SecurityAuditFailureFilter>());
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+builder.Services.AddScoped<SecurityAuditFailureFilter>();
 
 if (builder.Environment.IsDevelopment())
 {
@@ -90,6 +92,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseForwardedHeaders();
+app.UseMiddleware<SecurityAuditRequestContextMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 
 app.UseStaticFiles(new StaticFileOptions
 {

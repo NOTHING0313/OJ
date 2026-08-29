@@ -4,6 +4,8 @@ using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Leaderboards.Requests;
 using OnlineJudge.Application.Leaderboards.Services;
 using OnlineJudge.Domain.Enums;
+using OnlineJudge.Api.Security;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -30,29 +32,34 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonCreated, "LeaderboardSeason")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateLeaderboardSeasonRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.CreateSeasonAsync(request, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", "seasonId")]
     [HttpPut("{seasonId:guid}")]
     public async Task<IActionResult> Update(Guid seasonId, UpdateLeaderboardSeasonRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.UpdateSeasonAsync(seasonId, request, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", "seasonId")]
     [HttpPost("{seasonId:guid}/problems")]
     public async Task<IActionResult> AddProblem(Guid seasonId, AddLeaderboardSeasonProblemRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.AddProblemAsync(seasonId, request, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", "seasonId")]
     [HttpPost("{seasonId:guid}/problems/batch")]
     public async Task<IActionResult> AddProblems(Guid seasonId, AddLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.AddProblemsAsync(seasonId, request, cancellationToken));
 
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", "seasonId")]
     [HttpPut("{seasonId:guid}/problems/{problemId:guid}/benchmarks/{language}")]
     public async Task<IActionResult> UpdateProblemBenchmark(
         Guid seasonId,
@@ -64,6 +71,7 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", "seasonId")]
     [HttpDelete("{seasonId:guid}/problems/{problemId:guid}")]
     public async Task<IActionResult> RemoveProblem(Guid seasonId, Guid problemId, CancellationToken cancellationToken)
     {
@@ -73,6 +81,7 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", "seasonId")]
     [HttpPost("{seasonId:guid}/problems/batch-remove")]
     public async Task<IActionResult> RemoveProblems(Guid seasonId, RemoveLeaderboardSeasonProblemsRequest request, CancellationToken cancellationToken)
     {
@@ -82,18 +91,21 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonFrozen, "LeaderboardSeason", "seasonId")]
     [HttpPost("{seasonId:guid}/freeze")]
     public async Task<IActionResult> Freeze(Guid seasonId, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.FreezeSeasonAsync(seasonId, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonPublished, "LeaderboardSeason", "seasonId")]
     [HttpPost("{seasonId:guid}/finalize")]
     public async Task<IActionResult> FinalizeSeason(Guid seasonId, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.FinalizeSeasonAsync(seasonId, cancellationToken));
 
     [Authorize(Policy = "RequireRoot")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.SeasonArchived, "LeaderboardSeason", "seasonId")]
     [HttpPost("{seasonId:guid}/archive")]
     public async Task<IActionResult> Archive(Guid seasonId, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.ArchiveSeasonAsync(seasonId, cancellationToken));

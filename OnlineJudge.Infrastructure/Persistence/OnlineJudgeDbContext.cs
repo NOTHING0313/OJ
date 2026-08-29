@@ -75,10 +75,32 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<LeaderboardSeasonRankSnapshot> LeaderboardSeasonRankSnapshots => Set<LeaderboardSeasonRankSnapshot>();
 
+    public DbSet<SecurityAuditLog> SecurityAuditLogs => Set<SecurityAuditLog>();
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsureSecurityAuditLogsAreAppendOnly();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        EnsureSecurityAuditLogsAreAppendOnly();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(OnlineJudgeDbContext).Assembly);
+    }
+
+    private void EnsureSecurityAuditLogsAreAppendOnly()
+    {
+        if (ChangeTracker.Entries<SecurityAuditLog>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            throw new InvalidOperationException("Security audit logs are append-only.");
+        }
     }
 }

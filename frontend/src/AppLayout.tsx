@@ -55,6 +55,7 @@ export function AppLayout() {
                 {isRoot(role) && <NavLink to="/admin/submissions">提交管理</NavLink>}
                 {isRoot(role) && <NavLink to="/admin/users">用户管理</NavLink>}
                 {isRoot(role) && <NavLink to="/admin/site-settings">站点设置</NavLink>}
+                {isRoot(role) && <NavLink to="/admin/security-audit">安全审计</NavLink>}
               </div>
             </details>
           )}

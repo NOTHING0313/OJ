@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Teams.Requests;
 using OnlineJudge.Application.Teams.Services;
+using OnlineJudge.Api.Security;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -189,6 +191,7 @@ public class TeamsController(
     }
 
     [RiskRateLimit(RateLimitPolicies.TeamGitSync)]
+    [SecurityAudit(SecurityAuditActions.TeamGitSyncRequested, "TeamProject", "projectId")]
     [HttpPost("{teamId:guid}/projects/{projectId:guid}/sync")]
     public async Task<IActionResult> SyncMemberProject(Guid teamId, Guid projectId, CancellationToken cancellationToken)
     {
@@ -206,6 +209,7 @@ public class TeamsController(
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.TeamGitSync)]
+    [SecurityAudit(SecurityAuditActions.TeamGitSyncRequested, "TeamProject", "projectId")]
     [HttpPost("/api/admin/teams/{teamId:guid}/projects/{projectId:guid}/sync")]
     public async Task<IActionResult> SyncProject(Guid teamId, Guid projectId, CancellationToken cancellationToken)
     {

@@ -4,6 +4,8 @@ using OnlineJudge.Api.RateLimiting;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using OnlineJudge.Application.Challenges.Requests;
 using OnlineJudge.Application.Challenges.Services;
+using OnlineJudge.Api.Security;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Api.Controllers;
 
@@ -225,6 +227,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
 
     [Authorize]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ChallengeCreated, "Challenge")]
     [HttpPost]
     public async Task<IActionResult> CreateChallenge(CreateChallengeRequest request, CancellationToken cancellationToken)
     {
@@ -240,6 +243,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
 
     [Authorize]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ChallengeUpdated, "Challenge", "id")]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateChallenge(Guid id, UpdateChallengeRequest request, CancellationToken cancellationToken)
     {
@@ -255,6 +259,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
 
     [Authorize]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ChallengeDeleted, "Challenge", "id")]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteChallenge(Guid id, CancellationToken cancellationToken)
     {

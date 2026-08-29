@@ -12,6 +12,7 @@ using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
 using OnlineJudge.Infrastructure.Problems;
+using OnlineJudge.Application.SecurityAudit;
 
 namespace OnlineJudge.Infrastructure.Leaderboards;
 
@@ -23,7 +24,8 @@ public sealed class LeaderboardSeasonService(
     ILeaderboardScoringEngine scoringEngine,
     LeaderboardScoringOptions scoringOptions,
     LeaderboardSeasonLifecycleOptions lifecycleOptions,
-    ILogger<LeaderboardSeasonService> logger) : ILeaderboardSeasonService, ILeaderboardSeasonLifecycleService
+    ILogger<LeaderboardSeasonService> logger,
+    ISecurityAuditWriter? auditWriter = null) : ILeaderboardSeasonService, ILeaderboardSeasonLifecycleService
 {
     public LeaderboardSeasonService(
         OnlineJudgeDbContext dbContext,
@@ -197,6 +199,7 @@ public sealed class LeaderboardSeasonService(
         if (boardError is not null) return Result<LeaderboardSeasonDto>.Failure(boardError);
 
         dbContext.LeaderboardSeasons.Add(season);
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonCreated, "LeaderboardSeason", season.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
     }
@@ -225,6 +228,7 @@ public sealed class LeaderboardSeasonService(
         var boardError = await SynchronizeBoardsAsync(season, request.IncludeGlobalBoard, request.ChallengeIds, cancellationToken);
         if (boardError is not null) return Result<LeaderboardSeasonDto>.Failure(boardError);
         season.UpdatedAt = timeProvider.GetUtcNow();
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", season.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
     }
@@ -256,6 +260,7 @@ public sealed class LeaderboardSeasonService(
         };
         dbContext.LeaderboardSeasonProblems.Add(seasonProblem);
         season.UpdatedAt = timeProvider.GetUtcNow();
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", season.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
     }
@@ -286,6 +291,7 @@ public sealed class LeaderboardSeasonService(
         }).ToList();
         dbContext.LeaderboardSeasonProblems.AddRange(additions);
         season.UpdatedAt = now;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", season.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
     }
@@ -302,6 +308,7 @@ public sealed class LeaderboardSeasonService(
         if (items.Count != problemIds.Count) return Result.Failure("Season problem not found.");
         dbContext.LeaderboardSeasonProblems.RemoveRange(items);
         season.UpdatedAt = timeProvider.GetUtcNow();
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", season.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
@@ -352,6 +359,7 @@ public sealed class LeaderboardSeasonService(
         benchmark.MemoryBaselineKb = rules.MemoryBonusEnabled ? request.MemoryBaselineKb!.Value : 0;
         benchmark.UpdatedAt = now;
         season.UpdatedAt = now;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", season.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<LeaderboardSeasonDto>.Success(ToDto(season));
     }
@@ -369,6 +377,7 @@ public sealed class LeaderboardSeasonService(
         if (item is null) return Result.Failure("Season problem not found.");
         dbContext.LeaderboardSeasonProblems.Remove(item);
         season.UpdatedAt = timeProvider.GetUtcNow();
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonUpdated, "LeaderboardSeason", season.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
@@ -392,11 +401,16 @@ public sealed class LeaderboardSeasonService(
         if (now < season.StartAt) return Result<LeaderboardSeasonDto>.Failure("A scheduled season cannot be frozen before it starts.");
         if (season.Status == LeaderboardSeasonStatus.Frozen) return Result<LeaderboardSeasonDto>.Success(ToDto(season));
         if (season.Status == LeaderboardSeasonStatus.Public) return Result<LeaderboardSeasonDto>.Failure("A public season must be re-finalized instead of frozen.");
+        var previousStatus = season.Status;
         season.Status = LeaderboardSeasonStatus.Frozen;
         season.ActivatedAt ??= now;
         season.FrozenAt ??= now;
         if (now < season.FreezeAt) season.ManuallyFrozenAt ??= now;
         season.UpdatedAt = now;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonFrozen, "LeaderboardSeason", season.Id.ToString(), Metadata: new Dictionary<string, string?>
+        {
+            ["seasonStateBefore"] = previousStatus.ToString(), ["seasonStateAfter"] = LeaderboardSeasonStatus.Frozen.ToString()
+        }));
         await dbContext.SaveChangesAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Leaderboard season operation completed. SeasonId={SeasonId}, Operation={Operation}, ActorUserId={ActorUserId}, Timestamp={Timestamp}", season.Id, "Freeze", userResult.Value!.Id, now);
@@ -421,6 +435,7 @@ public sealed class LeaderboardSeasonService(
         {
             return Result<LeaderboardSeasonArchiveDto>.Failure("Only a frozen or public season can be finalized.");
         }
+        var previousStatus = season.Status;
         if (season.Status != LeaderboardSeasonStatus.Public)
         {
             season.Status = LeaderboardSeasonStatus.Frozen;
@@ -428,6 +443,10 @@ public sealed class LeaderboardSeasonService(
             season.FrozenAt ??= now;
         }
 
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonPublished, "LeaderboardSeason", season.Id.ToString(), Metadata: new Dictionary<string, string?>
+        {
+            ["seasonStateBefore"] = previousStatus.ToString(), ["seasonStateAfter"] = LeaderboardSeasonStatus.Public.ToString()
+        }));
         await FinalizeCoreAsync(season, now, cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Leaderboard season operation completed. SeasonId={SeasonId}, Operation={Operation}, ActorUserId={ActorUserId}, Timestamp={Timestamp}", season.Id, "Finalize", userResult.Value!.Id, now);
@@ -452,6 +471,10 @@ public sealed class LeaderboardSeasonService(
         season.IsCurrent = false;
         season.ArchivedAt = timeProvider.GetUtcNow();
         season.UpdatedAt = season.ArchivedAt.Value;
+        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonArchived, "LeaderboardSeason", season.Id.ToString(), Metadata: new Dictionary<string, string?>
+        {
+            ["seasonStateBefore"] = LeaderboardSeasonStatus.Public.ToString(), ["seasonStateAfter"] = LeaderboardSeasonStatus.Archived.ToString()
+        }));
         await dbContext.SaveChangesAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Leaderboard season operation completed. SeasonId={SeasonId}, Operation={Operation}, ActorUserId={ActorUserId}, Timestamp={Timestamp}", season.Id, "Archive", userResult.Value!.Id, season.ArchivedAt);
@@ -634,6 +657,10 @@ public sealed class LeaderboardSeasonService(
             season.Status = LeaderboardSeasonStatus.Active;
             season.ActivatedAt ??= now;
             season.UpdatedAt = now;
+            auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonActivated, "LeaderboardSeason", season.Id.ToString(), Metadata: new Dictionary<string, string?>
+            {
+                ["seasonStateBefore"] = LeaderboardSeasonStatus.Scheduled.ToString(), ["seasonStateAfter"] = LeaderboardSeasonStatus.Active.ToString()
+            }));
             await dbContext.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Leaderboard season lifecycle advanced. SeasonId={SeasonId}, Operation={Operation}, Timestamp={Timestamp}", season.Id, "Activate", now);
             await CaptureRankSnapshotsAsync(season, now, force: true, cancellationToken);
@@ -648,6 +675,10 @@ public sealed class LeaderboardSeasonService(
                 season.Status = LeaderboardSeasonStatus.Frozen;
                 season.FrozenAt ??= now;
                 season.UpdatedAt = now;
+                auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonFrozen, "LeaderboardSeason", season.Id.ToString(), Metadata: new Dictionary<string, string?>
+                {
+                    ["seasonStateBefore"] = LeaderboardSeasonStatus.Active.ToString(), ["seasonStateAfter"] = LeaderboardSeasonStatus.Frozen.ToString()
+                }));
                 await dbContext.SaveChangesAsync(cancellationToken);
                 logger.LogInformation("Leaderboard season lifecycle advanced. SeasonId={SeasonId}, Operation={Operation}, Timestamp={Timestamp}", season.Id, "Freeze", now);
             }
@@ -655,6 +686,10 @@ public sealed class LeaderboardSeasonService(
 
         if (season.Status == LeaderboardSeasonStatus.Frozen)
         {
+            auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonPublished, "LeaderboardSeason", season.Id.ToString(), Metadata: new Dictionary<string, string?>
+            {
+                ["seasonStateBefore"] = LeaderboardSeasonStatus.Frozen.ToString(), ["seasonStateAfter"] = LeaderboardSeasonStatus.Public.ToString()
+            }));
             await FinalizeCoreAsync(season, now, cancellationToken);
             logger.LogInformation("Leaderboard season lifecycle advanced. SeasonId={SeasonId}, Operation={Operation}, Timestamp={Timestamp}", season.Id, "Finalize", now);
         }
@@ -665,6 +700,10 @@ public sealed class LeaderboardSeasonService(
             season.IsCurrent = false;
             season.ArchivedAt ??= now;
             season.UpdatedAt = now;
+            auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonArchived, "LeaderboardSeason", season.Id.ToString(), Metadata: new Dictionary<string, string?>
+            {
+                ["seasonStateBefore"] = LeaderboardSeasonStatus.Public.ToString(), ["seasonStateAfter"] = LeaderboardSeasonStatus.Archived.ToString()
+            }));
             await dbContext.SaveChangesAsync(cancellationToken);
             logger.LogInformation("Leaderboard season lifecycle advanced. SeasonId={SeasonId}, Operation={Operation}, Timestamp={Timestamp}", season.Id, "Archive", now);
         }
@@ -680,6 +719,13 @@ public sealed class LeaderboardSeasonService(
         var season = await LoadSeasonAsync(seasonId, cancellationToken);
         if (season?.Status is LeaderboardSeasonStatus.Frozen or LeaderboardSeasonStatus.Public)
         {
+            if (season.Status == LeaderboardSeasonStatus.Frozen)
+            {
+                auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SeasonPublished, "LeaderboardSeason", season.Id.ToString(), Metadata: new Dictionary<string, string?>
+                {
+                    ["seasonStateBefore"] = LeaderboardSeasonStatus.Frozen.ToString(), ["seasonStateAfter"] = LeaderboardSeasonStatus.Public.ToString()
+                }));
+            }
             await FinalizeCoreAsync(season, timeProvider.GetUtcNow(), cancellationToken);
             if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
