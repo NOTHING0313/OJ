@@ -11,13 +11,29 @@ internal interface IDockerCommandClient
     Task<DockerCommandResult> StartAsync(string containerName, string containerId, TimeSpan timeout, CancellationToken cancellationToken);
 
     Task RemoveAsync(string containerName, CancellationToken cancellationToken);
+
+    Task<int> RemoveManagedContainersAsync(CancellationToken cancellationToken);
 }
 
 internal sealed class DockerCommandClient : IDockerCommandClient
 {
+    internal const string ManagedLabel = "onlinejudge.managed=true";
+    internal const string JudgeKindLabel = "onlinejudge.kind=judge";
+    private readonly JudgeSandboxOptions options;
+
+    public DockerCommandClient()
+        : this(new JudgeSandboxOptions())
+    {
+    }
+
+    public DockerCommandClient(JudgeSandboxOptions options)
+    {
+        this.options = options;
+    }
+
     public async Task<string> CreateAsync(string containerName, DockerContainerRequest request, CancellationToken cancellationToken)
     {
-        var result = await RunCliAsync(BuildCreateArguments(containerName, request), cancellationToken);
+        var result = await RunCliAsync(BuildCreateArguments(containerName, request, options), cancellationToken);
         var containerId = result.StandardOutput.Trim();
         if (result.ExitCode != 0 || !IsSafeContainerId(containerId))
         {
@@ -31,42 +47,85 @@ internal sealed class DockerCommandClient : IDockerCommandClient
     {
         var stopwatch = Stopwatch.StartNew();
         using var process = CreateProcess(["start", "--attach", containerName]);
-        var standardOutputBuilder = new StringBuilder();
-        var standardErrorBuilder = new StringBuilder();
-
-        process.OutputDataReceived += (_, args) => AppendLine(standardOutputBuilder, args.Data);
-        process.ErrorDataReceived += (_, args) => AppendLine(standardErrorBuilder, args.Data);
-
         process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        var outputLimitReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var standardOutputTask = CaptureBoundedAsync(process.StandardOutput.BaseStream, options.MaxCapturedOutputBytes, outputLimitReached);
+        var standardErrorTask = CaptureBoundedAsync(process.StandardError.BaseStream, options.MaxCapturedOutputBytes, outputLimitReached);
 
-        var waitTask = process.WaitForExitAsync(cancellationToken);
+        Task waitTask;
+        try
+        {
+            waitTask = process.WaitForExitAsync(cancellationToken);
+        }
+        catch
+        {
+            TryKill(process);
+            throw;
+        }
         var memoryMetricPathTask = TryResolveMemoryMetricPathAsync(containerName, containerId, process, cancellationToken);
         var timeoutTask = Task.Delay(timeout, cancellationToken);
 
-        if (await Task.WhenAny(waitTask, timeoutTask) == timeoutTask)
+        var completionTask = await Task.WhenAny(waitTask, timeoutTask, outputLimitReached.Task);
+        if (completionTask == outputLimitReached.Task)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            await TryKillContainerAsync(containerName);
             TryKill(process);
+            await WaitForExitWithoutThrowAsync(process);
             stopwatch.Stop();
 
+            var limitedOutput = await standardOutputTask;
+            var limitedError = await standardErrorTask;
+            var limitedMetricPath = await AwaitTelemetryPathAsync(memoryMetricPathTask);
+            var limitedPeakMemoryBytes = TryReadPeakMemoryBytes(limitedMetricPath);
+            return new DockerCommandResult(
+                ExitCode: null,
+                StandardOutput: limitedOutput.Text,
+                StandardError: limitedError.Text,
+                ElapsedMs: ToElapsedMilliseconds(stopwatch),
+                TimedOut: false,
+                PeakMemoryBytes: limitedPeakMemoryBytes,
+                OomKilled: false,
+                OutputLimitExceeded: true,
+                TelemetryWarning: GetMemoryTelemetryWarning(limitedPeakMemoryBytes));
+        }
+
+        if (completionTask == timeoutTask)
+        {
+            TryKill(process);
+            await WaitForExitWithoutThrowAsync(process);
+            cancellationToken.ThrowIfCancellationRequested();
+            stopwatch.Stop();
+
+            var timedOutOutput = await standardOutputTask;
+            var timedOutError = await standardErrorTask;
             var timedOutMetricPath = await AwaitTelemetryPathAsync(memoryMetricPathTask);
             var timedOutPeakMemoryBytes = TryReadPeakMemoryBytes(timedOutMetricPath);
             return new DockerCommandResult(
                 ExitCode: null,
-                StandardOutput: standardOutputBuilder.ToString(),
-                StandardError: standardErrorBuilder.ToString(),
+                StandardOutput: timedOutOutput.Text,
+                StandardError: timedOutError.Text,
                 ElapsedMs: ToElapsedMilliseconds(stopwatch),
                 TimedOut: true,
                 PeakMemoryBytes: timedOutPeakMemoryBytes,
                 OomKilled: false,
+                OutputLimitExceeded: timedOutOutput.Truncated || timedOutError.Truncated,
                 TelemetryWarning: GetMemoryTelemetryWarning(timedOutPeakMemoryBytes));
         }
 
-        await waitTask;
+        try
+        {
+            await waitTask;
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            await WaitForExitWithoutThrowAsync(process);
+            throw;
+        }
         stopwatch.Stop();
 
+        var standardOutput = await standardOutputTask;
+        var standardError = await standardErrorTask;
         var memoryMetricPath = await AwaitTelemetryPathAsync(memoryMetricPathTask);
         var peakMemoryBytes = TryReadPeakMemoryBytes(memoryMetricPath);
         var oomKilled = await TryReadOomKilledAsync(containerName, cancellationToken);
@@ -78,12 +137,13 @@ internal sealed class DockerCommandClient : IDockerCommandClient
 
         return new DockerCommandResult(
             ExitCode: process.ExitCode,
-            StandardOutput: standardOutputBuilder.ToString(),
-            StandardError: standardErrorBuilder.ToString(),
+            StandardOutput: standardOutput.Text,
+            StandardError: standardError.Text,
             ElapsedMs: ToElapsedMilliseconds(stopwatch),
             TimedOut: false,
             PeakMemoryBytes: peakMemoryBytes,
             OomKilled: oomKilled == true,
+            OutputLimitExceeded: standardOutput.Truncated || standardError.Truncated,
             TelemetryWarning: string.Join(' ', telemetryWarnings.Where(message => message is not null)) is { Length: > 0 } warning ? warning : null);
     }
 
@@ -96,8 +156,35 @@ internal sealed class DockerCommandClient : IDockerCommandClient
         }
     }
 
-    internal static IReadOnlyList<string> BuildCreateArguments(string containerName, DockerContainerRequest request)
+    public async Task<int> RemoveManagedContainersAsync(CancellationToken cancellationToken)
     {
+        var list = await RunCliAsync(
+            ["ps", "-aq", "--filter", $"label={ManagedLabel}", "--filter", $"label={JudgeKindLabel}"],
+            cancellationToken);
+        if (list.ExitCode != 0)
+        {
+            throw new InvalidOperationException("Managed judge container discovery failed.");
+        }
+
+        var containerIds = list.StandardOutput
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(IsSafeContainerId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        foreach (var containerId in containerIds)
+        {
+            await RemoveAsync(containerId, cancellationToken);
+        }
+
+        return containerIds.Count;
+    }
+
+    internal static IReadOnlyList<string> BuildCreateArguments(string containerName, DockerContainerRequest request)
+        => BuildCreateArguments(containerName, request, new JudgeSandboxOptions());
+
+    internal static IReadOnlyList<string> BuildCreateArguments(string containerName, DockerContainerRequest request, JudgeSandboxOptions options)
+    {
+        var memoryLimitMb = Math.Max(request.MemoryLimitMb, 16);
         return
         [
             "create",
@@ -106,11 +193,30 @@ internal sealed class DockerCommandClient : IDockerCommandClient
             "--network",
             "none",
             "--memory",
-            $"{Math.Max(request.MemoryLimitMb, 16)}m",
+            $"{memoryLimitMb}m",
+            "--memory-swap",
+            $"{memoryLimitMb}m",
             "--cpus",
-            "1",
+            options.CpuLimit.ToString(CultureInfo.InvariantCulture),
             "--pids-limit",
-            "64",
+            options.PidsLimit.ToString(CultureInfo.InvariantCulture),
+            "--security-opt",
+            "no-new-privileges",
+            "--cap-drop",
+            "ALL",
+            "--read-only",
+            "--tmpfs",
+            $"/tmp:rw,noexec,nosuid,nodev,size={options.TempFileSystemSizeMb}m",
+            "--label",
+            ManagedLabel,
+            "--label",
+            JudgeKindLabel,
+            "--env",
+            "HOME=/tmp",
+            "--env",
+            "DOTNET_CLI_HOME=/tmp/dotnet",
+            "--env",
+            "NUGET_PACKAGES=/tmp/nuget",
             "-v",
             $"{request.WorkspaceDirectory}:{DockerJudgeSandbox.ContainerWorkspace}",
             "-w",
@@ -309,6 +415,54 @@ internal sealed class DockerCommandClient : IDockerCommandClient
         return new CliResult(process.ExitCode, await standardOutputTask, await standardErrorTask);
     }
 
+    internal static async Task<CapturedStream> CaptureBoundedAsync(Stream stream, int maxBytes, TaskCompletionSource outputLimitReached)
+    {
+        var captured = new MemoryStream(Math.Min(maxBytes, 81920));
+        var buffer = new byte[81920];
+        var truncated = false;
+        while (true)
+        {
+            var read = await stream.ReadAsync(buffer);
+            if (read == 0) break;
+
+            var remaining = maxBytes - (int)captured.Length;
+            if (remaining > 0)
+            {
+                await captured.WriteAsync(buffer.AsMemory(0, Math.Min(remaining, read)));
+            }
+
+            if (read > remaining)
+            {
+                truncated = true;
+                outputLimitReached.TrySetResult();
+            }
+        }
+
+        return new CapturedStream(Encoding.UTF8.GetString(captured.ToArray()), truncated);
+    }
+
+    private static async Task WaitForExitWithoutThrowAsync(Process process)
+    {
+        try
+        {
+            await process.WaitForExitAsync(CancellationToken.None);
+        }
+        catch
+        {
+        }
+    }
+
+    private static async Task TryKillContainerAsync(string containerName)
+    {
+        try
+        {
+            await RunCliAsync(["kill", containerName], CancellationToken.None);
+        }
+        catch
+        {
+        }
+    }
+
     private static Process CreateProcess(IReadOnlyList<string> arguments)
     {
         var process = new Process();
@@ -324,14 +478,6 @@ internal sealed class DockerCommandClient : IDockerCommandClient
         }
 
         return process;
-    }
-
-    private static void AppendLine(StringBuilder builder, string? value)
-    {
-        if (value is not null)
-        {
-            builder.AppendLine(value);
-        }
     }
 
     private static int ToElapsedMilliseconds(Stopwatch stopwatch)
@@ -354,6 +500,8 @@ internal sealed class DockerCommandClient : IDockerCommandClient
     }
 
     private sealed record CliResult(int ExitCode, string StandardOutput, string StandardError);
+
+    internal sealed record CapturedStream(string Text, bool Truncated);
 }
 
 internal sealed record DockerContainerRequest(
@@ -370,4 +518,5 @@ internal sealed record DockerCommandResult(
     bool TimedOut,
     long? PeakMemoryBytes = null,
     bool OomKilled = false,
-    string? TelemetryWarning = null);
+    string? TelemetryWarning = null,
+    bool OutputLimitExceeded = false);

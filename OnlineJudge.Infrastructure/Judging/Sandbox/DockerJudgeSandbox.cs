@@ -19,6 +19,11 @@ public class DockerJudgeSandbox : IJudgeSandbox
     {
     }
 
+    public DockerJudgeSandbox(JudgeSandboxOptions options, ILogger<DockerJudgeSandbox> logger)
+        : this(new DockerCommandClient(options), logger)
+    {
+    }
+
     internal DockerJudgeSandbox(IDockerCommandClient dockerCommandClient, ILogger<DockerJudgeSandbox> logger)
     {
         this.dockerCommandClient = dockerCommandClient;
@@ -211,6 +216,18 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 TimeUsedMs = runResult.ElapsedMs,
                 MemoryUsedKb = memoryUsedKb,
                 ErrorMessage = "Memory limit exceeded."
+            };
+        }
+
+        if (runResult.OutputLimitExceeded)
+        {
+            return new JudgeCaseResult
+            {
+                TestCaseId = testCase.TestCaseId,
+                Status = JudgeStatus.RuntimeError,
+                TimeUsedMs = runResult.ElapsedMs,
+                MemoryUsedKb = memoryUsedKb,
+                ErrorMessage = "Output limit exceeded."
             };
         }
 

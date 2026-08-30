@@ -21,6 +21,7 @@ public class Worker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await ReconcileJudgeContainersAsync(stoppingToken);
         var database = connectionMultiplexer.GetDatabase();
 
         while (!stoppingToken.IsCancellationRequested)
@@ -51,6 +52,25 @@ public class Worker(
             {
                 logger.LogError(ex, "Judge worker loop failed. SubmissionId={SubmissionId}, Stage={Stage}", null, "ConsumeQueue");
             }
+        }
+    }
+
+    private async Task ReconcileJudgeContainersAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var maintenance = scope.ServiceProvider.GetRequiredService<IJudgeSandboxMaintenance>();
+            var removed = await maintenance.ReconcileStaleContainersAsync(cancellationToken);
+            logger.LogInformation("Judge sandbox startup reconciliation completed. RemovedContainers={RemovedContainers}", removed);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Judge sandbox startup reconciliation failed.");
         }
     }
 

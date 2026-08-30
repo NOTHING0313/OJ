@@ -194,6 +194,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
             Language = language,
             OriginalFileName = file.FileName,
             FileSizeBytes = file.Length,
+            ContentType = file.ContentType,
             Content = content
         }, cancellationToken);
 

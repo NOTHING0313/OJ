@@ -10,5 +10,7 @@ public class CreateProblemJudgeAssetRequest
 
     public long FileSizeBytes { get; set; }
 
+    public string ContentType { get; set; } = "application/octet-stream";
+
     public Stream Content { get; set; } = Stream.Null;
 }

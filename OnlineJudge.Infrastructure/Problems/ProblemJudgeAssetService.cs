@@ -10,14 +10,22 @@ using OnlineJudge.Application.Problems.Services;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
+using OnlineJudge.Application.Uploads;
+using OnlineJudge.Infrastructure.Uploads;
 
 namespace OnlineJudge.Infrastructure.Problems;
 
 public class ProblemJudgeAssetService(
     OnlineJudgeDbContext dbContext,
     ICurrentUser currentUser,
-    IProblemJudgeAssetStorage storage) : IProblemJudgeAssetService
+    IProblemJudgeAssetStorage storage,
+    ISecureUploadValidator uploadValidator) : IProblemJudgeAssetService
 {
+    public ProblemJudgeAssetService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, IProblemJudgeAssetStorage storage)
+        : this(dbContext, currentUser, storage, new SecureUploadValidator(new SecureUploadOptions()))
+    {
+    }
+
     internal const int MaxAssetsPerLanguage = 8;
     internal const int MaxFileSizeBytes = 512 * 1024;
 
@@ -61,6 +69,23 @@ public class ProblemJudgeAssetService(
         if (access.IsFailure)
         {
             return Result<ProblemJudgeAssetDto>.Failure(access.ErrorMessage!);
+        }
+
+        var allowedExtensions = AllowedExtensions.TryGetValue(request.Language, out var languageExtensions)
+            ? languageExtensions
+            : [];
+        var secureValidation = await uploadValidator.ValidateAsync(new SecureUploadRequest
+        {
+            Policy = UploadPolicy.JudgeSource,
+            OriginalFileName = request.OriginalFileName,
+            DeclaredContentType = request.ContentType,
+            DeclaredLength = request.FileSizeBytes,
+            Content = request.Content,
+            AllowedExtensions = allowedExtensions
+        }, cancellationToken);
+        if (!secureValidation.IsValid)
+        {
+            return Result<ProblemJudgeAssetDto>.Failure($"{secureValidation.ErrorCode}: {secureValidation.ErrorMessage}");
         }
 
         var fileNameValidation = ValidateFileName(request.Language, request.OriginalFileName);

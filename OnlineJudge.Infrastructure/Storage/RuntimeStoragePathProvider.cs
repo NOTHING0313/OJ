@@ -12,9 +12,9 @@ public interface IRuntimeStoragePathProvider
 
     string ResolveChallengeFilePath(string storedFileName);
 
-    FileStream CreateUploadImageWriteStream(string storedFileName);
+    Task<long> WriteUploadImageAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default);
 
-    FileStream CreateChallengeFileWriteStream(string storedFileName);
+    Task<long> WriteChallengeFileAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default);
 }
 
 public sealed class RuntimeStoragePathProvider : IRuntimeStoragePathProvider
@@ -43,9 +43,11 @@ public sealed class RuntimeStoragePathProvider : IRuntimeStoragePathProvider
 
     public string ResolveChallengeFilePath(string storedFileName) => ResolveFile(ChallengeFilesRoot, storedFileName);
 
-    public FileStream CreateUploadImageWriteStream(string storedFileName) => CreateWriteStream(UploadImagesRoot, ResolveUploadImagePath(storedFileName));
+    public Task<long> WriteUploadImageAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default) =>
+        WriteAtomicallyAsync(UploadImagesRoot, ResolveUploadImagePath(storedFileName), content, maxBytes, cancellationToken);
 
-    public FileStream CreateChallengeFileWriteStream(string storedFileName) => CreateWriteStream(ChallengeFilesRoot, ResolveChallengeFilePath(storedFileName));
+    public Task<long> WriteChallengeFileAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default) =>
+        WriteAtomicallyAsync(ChallengeFilesRoot, ResolveChallengeFilePath(storedFileName), content, maxBytes, cancellationToken);
 
     public static RuntimeStoragePathProvider CreateDevelopmentDefault() => new(ResolveApiContentRoot());
 
@@ -75,10 +77,50 @@ public sealed class RuntimeStoragePathProvider : IRuntimeStoragePathProvider
         return fullPath;
     }
 
-    private static FileStream CreateWriteStream(string root, string fullPath)
+    private static async Task<long> WriteAtomicallyAsync(string root, string fullPath, Stream content, long maxBytes, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(content);
+        if (maxBytes <= 0) throw new ArgumentOutOfRangeException(nameof(maxBytes));
+
         Directory.CreateDirectory(root);
-        return new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+        var temporaryPath = Path.Combine(root, $".{Guid.NewGuid():N}.uploading");
+        long totalBytes = 0;
+        try
+        {
+            await using (var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            {
+                var buffer = new byte[81920];
+                while (true)
+                {
+                    var read = await content.ReadAsync(buffer, cancellationToken);
+                    if (read == 0) break;
+                    if (totalBytes > maxBytes - read) throw new InvalidDataException("Uploaded file exceeds the configured size limit.");
+                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                    totalBytes += read;
+                }
+
+                await output.FlushAsync(cancellationToken);
+            }
+
+            File.Move(temporaryPath, fullPath);
+            return totalBytes;
+        }
+        catch
+        {
+            TryDelete(temporaryPath);
+            throw;
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+        }
     }
 
     private static string ResolveApiContentRoot()

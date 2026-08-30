@@ -38,6 +38,9 @@ using OnlineJudge.Infrastructure.Teams;
 using OnlineJudge.Infrastructure.Storage;
 using OnlineJudge.Application.SecurityAudit;
 using OnlineJudge.Infrastructure.SecurityAudit;
+using OnlineJudge.Application.Uploads;
+using OnlineJudge.Infrastructure.Uploads;
+using Microsoft.Extensions.Logging;
 
 namespace OnlineJudge.Infrastructure;
 
@@ -52,6 +55,13 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString));
 
         services.AddSingleton(TimeProvider.System);
+        var secureUploadOptions = SecureUploadOptions.FromConfiguration(configuration);
+        services.AddSingleton(secureUploadOptions);
+        services.AddSingleton<ISecureUploadValidator, SecureUploadValidator>();
+        var judgeSandboxOptions = JudgeSandboxOptions.FromConfiguration(configuration);
+        services.AddSingleton(judgeSandboxOptions);
+        services.AddSingleton<IDockerCommandClient>(_ => new DockerCommandClient(judgeSandboxOptions));
+        services.AddSingleton<IJudgeSandboxMaintenance, DockerJudgeSandboxMaintenance>();
         services.AddScoped<SecurityAuditRequestContext>();
         services.AddScoped<ISecurityAuditWriter, SecurityAuditWriter>();
         services.AddScoped<ISecurityAuditQueryService, SecurityAuditQueryService>();
@@ -128,7 +138,9 @@ public static class DependencyInjection
         services.AddScoped<IJudgeQueue, RedisJudgeQueue>();
         services.AddSingleton<IProblemJudgeAssetStorage, ProblemJudgeAssetStorage>();
         services.AddScoped<IJudgeCompileAssetLoader, JudgeCompileAssetLoader>();
-        services.AddScoped<IJudgeSandbox, DockerJudgeSandbox>();
+        services.AddScoped<IJudgeSandbox>(provider => new DockerJudgeSandbox(
+            provider.GetRequiredService<IDockerCommandClient>(),
+            provider.GetRequiredService<ILogger<DockerJudgeSandbox>>()));
         services.AddScoped<IFunctionJudgeCodeBuilder, Cpp17FunctionJudgeCodeBuilder>();
         services.AddScoped<C11FunctionJudgeCodeBuilder>();
         services.AddScoped<CSharpFunctionJudgeCodeBuilder>();

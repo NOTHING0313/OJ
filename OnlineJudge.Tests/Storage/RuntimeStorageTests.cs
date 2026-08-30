@@ -13,6 +13,7 @@ using OnlineJudge.Infrastructure.Challenges;
 using OnlineJudge.Infrastructure.ContentVisibility;
 using OnlineJudge.Infrastructure.Persistence;
 using OnlineJudge.Infrastructure.Storage;
+using OnlineJudge.Infrastructure.Uploads;
 
 namespace OnlineJudge.Tests.Storage;
 
@@ -51,8 +52,9 @@ public sealed class RuntimeStorageTests : IDisposable
     {
         var imageRoot = Path.Combine(root, "external", "images");
         var paths = new RuntimeStoragePathProvider(root, imageRoot, Path.Combine(root, "challenge"));
-        var controller = new UploadsController(paths);
-        await using var input = new MemoryStream(Encoding.UTF8.GetBytes("image"));
+        var options = new SecureUploadOptions();
+        var controller = new UploadsController(paths, new SecureUploadValidator(options), options);
+        await using var input = new MemoryStream([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
         var file = new FormFile(input, 0, input.Length, "file", "avatar.png")
         {
             Headers = new HeaderDictionary(),
@@ -68,14 +70,15 @@ public sealed class RuntimeStorageTests : IDisposable
     }
 
     [Fact]
-    public void ConfiguredRootFailure_DoesNotFallbackToDevelopmentDirectory()
+    public async Task ConfiguredRootFailure_DoesNotFallbackToDevelopmentDirectory()
     {
         Directory.CreateDirectory(root);
         var blockedRoot = Path.Combine(root, "not-a-directory");
         File.WriteAllText(blockedRoot, "blocked");
         var paths = new RuntimeStoragePathProvider(root, blockedRoot, Path.Combine(root, "challenge"));
 
-        Assert.ThrowsAny<IOException>(() => paths.CreateUploadImageWriteStream("avatar.png"));
+        await using var content = new MemoryStream([1, 2, 3]);
+        await Assert.ThrowsAnyAsync<IOException>(() => paths.WriteUploadImageAsync("avatar.png", content, 1024));
         Assert.False(File.Exists(Path.Combine(root, "wwwroot", "uploads", "images", "avatar.png")));
     }
 
@@ -84,10 +87,8 @@ public sealed class RuntimeStorageTests : IDisposable
     {
         var challengeRoot = Path.Combine(root, "external", "challenge-files");
         var paths = new RuntimeStoragePathProvider(root, Path.Combine(root, "images"), challengeRoot);
-        await using (var output = paths.CreateChallengeFileWriteStream("answer.zip"))
-        {
-            await output.WriteAsync(Encoding.UTF8.GetBytes("zip"));
-        }
+        await using var input = new MemoryStream(Encoding.UTF8.GetBytes("zip"));
+        await paths.WriteChallengeFileAsync("answer.zip", input, 1024);
 
         await using var db = CreateDb();
         var setter = User("setter", UserRole.ProblemSetter);

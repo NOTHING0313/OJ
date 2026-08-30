@@ -13,6 +13,8 @@ using OnlineJudge.Infrastructure.ContentVisibility;
 using OnlineJudge.Infrastructure.Leaderboards;
 using OnlineJudge.Infrastructure.Storage;
 using OnlineJudge.Application.SecurityAudit;
+using OnlineJudge.Application.Uploads;
+using OnlineJudge.Infrastructure.Uploads;
 
 namespace OnlineJudge.Infrastructure.Challenges;
 
@@ -22,30 +24,24 @@ public class ChallengeService(
     ContentVisibilityPolicy visibilityPolicy,
     LeaderboardIdentityService identityService,
     IRuntimeStoragePathProvider storagePaths,
+    ISecureUploadValidator uploadValidator,
+    SecureUploadOptions uploadOptions,
     ISecurityAuditWriter? auditWriter = null) : IChallengeService
 {
     public ChallengeService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser)
-        : this(dbContext, currentUser, new ContentVisibilityPolicy(TimeProvider.System), new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), RuntimeStoragePathProvider.CreateDevelopmentDefault())
+        : this(dbContext, currentUser, new ContentVisibilityPolicy(TimeProvider.System), new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), RuntimeStoragePathProvider.CreateDevelopmentDefault(), new SecureUploadValidator(new SecureUploadOptions()), new SecureUploadOptions())
     {
     }
 
     public ChallengeService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy)
-        : this(dbContext, currentUser, visibilityPolicy, new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), RuntimeStoragePathProvider.CreateDevelopmentDefault())
+        : this(dbContext, currentUser, visibilityPolicy, new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), RuntimeStoragePathProvider.CreateDevelopmentDefault(), new SecureUploadValidator(new SecureUploadOptions()), new SecureUploadOptions())
     {
     }
 
     public ChallengeService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy, IRuntimeStoragePathProvider storagePaths)
-        : this(dbContext, currentUser, visibilityPolicy, new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), storagePaths)
+        : this(dbContext, currentUser, visibilityPolicy, new LeaderboardIdentityService(dbContext, currentUser, TimeProvider.System), storagePaths, new SecureUploadValidator(new SecureUploadOptions()), new SecureUploadOptions())
     {
     }
-
-    private const long MaxFileSubmissionSizeBytes = 50L * 1024 * 1024;
-    private static readonly HashSet<string> AllowedZipContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "application/zip",
-        "application/x-zip-compressed",
-        "application/octet-stream"
-    };
 
     public async Task<Result<IReadOnlyList<ChallengeListItemDto>>> GetChallengesAsync(CancellationToken cancellationToken = default)
     {
@@ -1368,10 +1364,17 @@ public class ChallengeService(
             return Result<ChallengeTaskFileSubmissionDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
         }
 
-        var fileValidation = ValidateZipFile(request);
-        if (fileValidation.IsFailure)
+        var fileValidation = await uploadValidator.ValidateAsync(new SecureUploadRequest
         {
-            return Result<ChallengeTaskFileSubmissionDto>.Failure(fileValidation.ErrorMessage ?? "Invalid file.");
+            Policy = UploadPolicy.ChallengeArchive,
+            OriginalFileName = request.OriginalFileName,
+            DeclaredContentType = request.ContentType,
+            DeclaredLength = request.FileSizeBytes,
+            Content = request.FileStream
+        }, cancellationToken);
+        if (!fileValidation.IsValid)
+        {
+            return Result<ChallengeTaskFileSubmissionDto>.Failure($"{fileValidation.ErrorCode}: {fileValidation.ErrorMessage}");
         }
 
         var task = await dbContext.ChallengeTasks
@@ -1408,16 +1411,27 @@ public class ChallengeService(
         var storedFileName = $"{Guid.NewGuid():N}.zip";
         var fullFilePath = storagePaths.ResolveChallengeFilePath(storedFileName);
 
-        await using (var output = storagePaths.CreateChallengeFileWriteStream(storedFileName))
-        {
-            await request.FileStream.CopyToAsync(output, cancellationToken);
-        }
-
         var fileSubmission = await dbContext.ChallengeTaskFileSubmissions
             .FirstOrDefaultAsync(
                 submission => submission.UserId == userResult.Value.Id && submission.ChallengeTaskId == taskId,
                 cancellationToken);
 
+        try
+        {
+            var storedBytes = await storagePaths.WriteChallengeFileAsync(
+                storedFileName, request.FileStream, uploadOptions.ChallengeArchiveMaxBytes, cancellationToken);
+            if (storedBytes != request.FileSizeBytes)
+            {
+                TryDeleteStoredChallengeFile(storedFileName);
+                return Result<ChallengeTaskFileSubmissionDto>.Failure($"{SecureUploadErrorCodes.InvalidType}: The uploaded file length changed during storage.");
+            }
+        }
+        catch (InvalidDataException)
+        {
+            return Result<ChallengeTaskFileSubmissionDto>.Failure($"{SecureUploadErrorCodes.ArchiveTooLarge}: The archive exceeds the configured upload size limit.");
+        }
+
+        string? replacedStoredFileName = null;
         if (fileSubmission is null)
         {
             fileSubmission = new ChallengeTaskFileSubmission
@@ -1439,7 +1453,7 @@ public class ChallengeService(
         }
         else
         {
-            TryDeleteStoredChallengeFile(fileSubmission.StoredFileName);
+            replacedStoredFileName = fileSubmission.StoredFileName;
             fileSubmission.OriginalFileName = Path.GetFileName(request.OriginalFileName);
             fileSubmission.StoredFileName = storedFileName;
             fileSubmission.FilePath = fullFilePath;
@@ -1452,10 +1466,22 @@ public class ChallengeService(
             fileSubmission.UpdatedAt = now;
         }
 
-        await ChallengeBestScoreStore.UpsertFileIndividualAsync(
-            dbContext, challengeId, taskId, userResult.Value.Id, 0, false, now, cancellationToken);
+        try
+        {
+            await ChallengeBestScoreStore.UpsertFileIndividualAsync(
+                dbContext, challengeId, taskId, userResult.Value.Id, 0, false, now, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            TryDeleteStoredChallengeFile(storedFileName);
+            throw;
+        }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (replacedStoredFileName is not null)
+        {
+            TryDeleteStoredChallengeFile(replacedStoredFileName);
+        }
 
         return Result<ChallengeTaskFileSubmissionDto>.Success(ToFileSubmissionDto(fileSubmission));
     }
@@ -1759,32 +1785,6 @@ public class ChallengeService(
     private bool CanModifyAfterEnd(User user, Challenge challenge)
     {
         return user.Role == UserRole.Root || visibilityPolicy.UtcNow <= challenge.EndAt;
-    }
-
-    private Result ValidateZipFile(SubmitChallengeTaskFileRequest request)
-    {
-        if (request.FileStream == Stream.Null || request.FileSizeBytes <= 0)
-        {
-            return Result.Failure("File is required.");
-        }
-
-        if (request.FileSizeBytes > MaxFileSubmissionSizeBytes)
-        {
-            return Result.Failure("File size must not exceed 50MB.");
-        }
-
-        var extension = Path.GetExtension(request.OriginalFileName);
-        if (!string.Equals(extension, ".zip", StringComparison.OrdinalIgnoreCase))
-        {
-            return Result.Failure("Only .zip files are allowed.");
-        }
-
-        if (!AllowedZipContentTypes.Contains(request.ContentType))
-        {
-            return Result.Failure("Unsupported file content type.");
-        }
-
-        return Result.Success();
     }
 
     private void TryDeleteStoredChallengeFile(string storedFileName)

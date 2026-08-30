@@ -1,34 +1,22 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OnlineJudge.Api.RateLimiting;
+using OnlineJudge.Application.Uploads;
 using OnlineJudge.Infrastructure.Storage;
+using OnlineJudge.Infrastructure.Uploads;
 
 namespace OnlineJudge.Api.Controllers;
 
 [ApiController]
 [Authorize]
 [Route("api/uploads")]
-public class UploadsController(IRuntimeStoragePathProvider storagePaths) : ControllerBase
+public class UploadsController(
+    IRuntimeStoragePathProvider storagePaths,
+    ISecureUploadValidator uploadValidator,
+    SecureUploadOptions uploadOptions) : ControllerBase
 {
     private const long MaxFileSize = 5 * 1024 * 1024;
     private const long MaxRequestSize = MaxFileSize + 1024 * 1024;
-
-    private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".webp",
-        ".gif"
-    };
-
-    private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "image/png",
-        "image/jpeg",
-        "image/webp",
-        "image/gif"
-    };
 
     [RiskRateLimit(RateLimitPolicies.Upload)]
     [HttpPost("images")]
@@ -41,26 +29,29 @@ public class UploadsController(IRuntimeStoragePathProvider storagePaths) : Contr
             return BadRequest("File is required.");
         }
 
-        if (file.Length > MaxFileSize)
+        await using var content = file.OpenReadStream();
+        var validation = await uploadValidator.ValidateAsync(new SecureUploadRequest
         {
-            return BadRequest("File size must be 5MB or less.");
+            Policy = UploadPolicy.Image,
+            OriginalFileName = file.FileName,
+            DeclaredContentType = file.ContentType,
+            DeclaredLength = file.Length,
+            Content = content
+        }, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return BadRequest($"{validation.ErrorCode}: {validation.ErrorMessage}");
         }
 
-        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-
-        if (string.IsNullOrWhiteSpace(extension) || !AllowedExtensions.Contains(extension))
+        var fileName = $"{Guid.NewGuid():N}{validation.CanonicalExtension}";
+        try
         {
-            return BadRequest("Unsupported image extension.");
+            await storagePaths.WriteUploadImageAsync(fileName, content, uploadOptions.ImageMaxBytes, cancellationToken);
         }
-
-        if (string.IsNullOrWhiteSpace(file.ContentType) || !AllowedContentTypes.Contains(file.ContentType))
+        catch (InvalidDataException)
         {
-            return BadRequest("Unsupported image content type.");
+            return BadRequest($"{SecureUploadErrorCodes.TooLarge}: The image exceeds the configured size limit.");
         }
-
-        var fileName = $"{Guid.NewGuid():N}{extension}";
-        await using var stream = storagePaths.CreateUploadImageWriteStream(fileName);
-        await file.CopyToAsync(stream, cancellationToken);
 
         return Ok(new
         {

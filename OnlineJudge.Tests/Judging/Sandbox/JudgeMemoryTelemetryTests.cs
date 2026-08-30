@@ -358,5 +358,7 @@ public class JudgeMemoryTelemetryTests
             RemovedNames.Add(containerName);
             return Task.CompletedTask;
         }
+
+        public Task<int> RemoveManagedContainersAsync(CancellationToken cancellationToken) => Task.FromResult(0);
     }
 }
