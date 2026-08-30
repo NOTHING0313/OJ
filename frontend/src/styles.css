@@ -11687,6 +11687,155 @@ h2 {
   justify-content: flex-end;
 }
 
+.theme-library-panel {
+  margin: 16px 0;
+  padding: 18px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 12px;
+  background: rgba(8, 12, 20, 0.82);
+}
+
+.theme-library-panel > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+
+.theme-library-panel > header span {
+  color: var(--oj-accent);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.theme-library-panel > header h2,
+.theme-library-panel > header p { margin: 3px 0 0; }
+
+.theme-library-panel > header p,
+.theme-library-meta p,
+.theme-library-meta small {
+  color: var(--oj-text-muted);
+  font-size: 0.78rem;
+}
+
+.theme-library-panel > header > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.theme-library-panel input,
+.theme-library-panel select {
+  min-height: 36px;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 7px;
+  background: rgba(5, 8, 14, 0.9);
+  color: var(--oj-text-primary);
+  padding: 0 10px;
+}
+
+.theme-library-panel label.button input { display: none; }
+
+.theme-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 10px;
+}
+
+.theme-library-grid article {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 11px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.theme-library-grid article.selected { border-color: color-mix(in srgb, var(--oj-accent) 65%, transparent); }
+
+.theme-library-swatch {
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+
+.theme-library-meta { min-width: 0; }
+.theme-library-meta > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.theme-library-meta strong,
+.theme-library-meta p,
+.theme-library-meta small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-library-meta span { padding: 2px 5px; border-radius: 4px; background: rgba(110, 123, 255, 0.13); color: var(--oj-text-secondary); font-size: 0.58rem; letter-spacing: 0.08em; }
+.theme-library-meta p { margin: 5px 0 3px; }
+
+.theme-library-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+  position: relative;
+}
+
+.theme-library-actions > button,
+.theme-library-actions summary,
+.theme-library-actions details button {
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--oj-text-secondary);
+  padding: 6px 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.theme-library-actions > button.primary { border-color: transparent; background: var(--oj-accent); color: #fff; }
+.theme-library-actions summary { list-style: none; }
+.theme-library-actions details > div { position: absolute; z-index: 10; right: 0; display: grid; min-width: 130px; padding: 6px; border: 1px solid var(--oj-panel-border); border-radius: 8px; background: #0b1019; box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35); }
+.theme-library-actions details button { border: 0; border-radius: 5px; background: transparent; text-align: left; }
+.theme-library-actions details button:hover,
+.theme-library-actions > button:hover,
+.theme-library-actions summary:hover { background: rgba(255, 255, 255, 0.08); color: var(--oj-text-primary); }
+.theme-library-actions .danger { color: #e89a9a; }
+.theme-library-empty { grid-column: 1 / -1; padding: 24px; color: var(--oj-text-muted); text-align: center; }
+
+.theme-preset-save-dialog > label {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  color: var(--oj-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.theme-preset-save-dialog input,
+.theme-preset-save-dialog textarea {
+  width: 100%;
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 7px;
+  background: rgba(5, 8, 14, 0.9);
+  color: var(--oj-text-primary);
+  padding: 9px 10px;
+  font: inherit;
+  font-weight: 400;
+}
+
+.theme-preset-save-dialog textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+@media (max-width: 760px) {
+  .theme-library-panel > header { align-items: stretch; flex-direction: column; }
+  .theme-library-panel > header > div:last-child,
+  .theme-library-panel input,
+  .theme-library-panel select { width: 100%; }
+}
+
 .theme-editor-asset-library {
   display: grid;
   gap: 9px;

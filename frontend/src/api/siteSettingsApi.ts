@@ -120,6 +120,23 @@ export interface SiteAppearance {
 
 export type UpdateSiteAppearanceRequest = SiteAppearance;
 
+export interface ThemePreset {
+  id: string | null;
+  name: string;
+  description: string | null;
+  schemaVersion: number;
+  appearance: SiteAppearance;
+  createdAt: string | null;
+  updatedAt: string | null;
+  isBuiltIn: boolean;
+  assetCount: number;
+}
+
+export interface ThemePresetList {
+  items: ThemePreset[];
+  lastAppliedPresetId: string | null;
+}
+
 export const sitePageOptions: Array<{ key: SitePageKey; label: string; description: string }> = [
   { key: "global", label: "全局默认", description: "页面没有单独配置时使用的背景。" },
   { key: "problems", label: "题目页面", description: "题目列表、题目详情和答题页面。" },
@@ -156,6 +173,82 @@ export function listThemeAssets() {
 
 export function deleteThemeAsset(assetId: string) {
   return request<void>(`/api/site-settings/theme-assets/${encodeURIComponent(assetId)}`, { method: "DELETE" });
+}
+
+export function listThemePresets() {
+  return request<ThemePresetList>("/api/site-settings/theme-presets").then((value) => ({
+    ...value,
+    items: value.items.map(normalizeThemePreset)
+  }));
+}
+
+export function createThemePreset(name: string, description: string | null, appearance: SiteAppearance) {
+  return request<ThemePreset>("/api/site-settings/theme-presets", {
+    method: "POST",
+    body: JSON.stringify({ name, description, appearance: normalizeSiteAppearance(appearance) })
+  }).then(normalizeThemePreset);
+}
+
+export function updateThemePreset(presetId: string, name: string, description: string | null, appearance: SiteAppearance) {
+  return request<ThemePreset>(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ name, description, appearance: normalizeSiteAppearance(appearance) })
+  }).then(normalizeThemePreset);
+}
+
+export function duplicateThemePreset(presetId: string) {
+  return request<ThemePreset>(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}/duplicate`, { method: "POST" }).then(normalizeThemePreset);
+}
+
+export function renameThemePreset(presetId: string, name: string) {
+  return request<ThemePreset>(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}/name`, {
+    method: "PATCH",
+    body: JSON.stringify({ name })
+  }).then(normalizeThemePreset);
+}
+
+export function deleteThemePreset(presetId: string) {
+  return request<void>(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}`, { method: "DELETE" });
+}
+
+export function applyThemePreset(presetId: string | null) {
+  const path = presetId
+    ? `/api/site-settings/theme-presets/${encodeURIComponent(presetId)}/apply`
+    : "/api/site-settings/theme-presets/default/apply";
+  return request<SiteAppearance>(path, { method: "POST" }).then(normalizeSiteAppearance);
+}
+
+export async function exportThemePreset(presetId: string, name: string) {
+  const token = localStorage.getItem("accessToken");
+  const response = await fetch(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}/export`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+  });
+  if (!response.ok) throw new Error((await response.text()) || "Theme preset export failed.");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${name.replace(/[^\p{L}\p{N}._-]+/gu, "-") || "theme"}.oj-theme.zip`;
+    anchor.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export function importThemePreset(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return request<ThemePreset>("/api/site-settings/theme-presets/import", { method: "POST", body }).then(normalizeThemePreset);
+}
+
+function normalizeThemePreset(value: ThemePreset): ThemePreset {
+  return {
+    ...value,
+    appearance: normalizeSiteAppearance(value.appearance),
+    assetCount: Number.isFinite(value.assetCount) ? Math.max(0, value.assetCount) : 0,
+    isBuiltIn: Boolean(value.isBuiltIn)
+  };
 }
 
 export function createDefaultPageBackground(): SitePageBackground {

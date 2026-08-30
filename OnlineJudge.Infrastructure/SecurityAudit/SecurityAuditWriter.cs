@@ -16,7 +16,8 @@ public sealed class SecurityAuditWriter(
     {
         "oldRole", "newRole", "seasonStateBefore", "seasonStateAfter", "testCaseCountDelta",
         "backgroundEnabledChanged", "panelSkinEnabledChanged", "changedAssetSlots",
-        "changedIconSlots", "changedDecorationSlots"
+        "changedIconSlots", "changedDecorationSlots", "presetId", "presetName",
+        "schemaVersion", "assetCount", "sourcePresetId"
     };
 
     public void Stage(SecurityAuditRecord record) => dbContext.SecurityAuditLogs.Add(CreateEntity(record));

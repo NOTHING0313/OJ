@@ -12,7 +12,8 @@ public sealed class ThemeAssetService(
     IRuntimeStoragePathProvider storagePaths,
     ISecureUploadValidator uploadValidator,
     SecureUploadOptions uploadOptions,
-    ISiteSettingsService siteSettingsService) : IThemeAssetService
+    ISiteSettingsService siteSettingsService,
+    IThemeLibraryService? themeLibraryService = null) : IThemeAssetService
 {
     private const string AssetUrlPrefix = "/theme-assets/";
 
@@ -34,6 +35,11 @@ public sealed class ThemeAssetService(
             return Result<IReadOnlyList<ThemeAssetLibraryItemDto>>.Success([]);
         }
 
+        var presetReferences = themeLibraryService is null
+            ? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            : (await themeLibraryService.GetAssetReferencesAsync(cancellationToken)).Value
+                ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
         var assets = Directory.EnumerateFiles(storagePaths.ThemeAssetsRoot, "*", SearchOption.TopDirectoryOnly)
             .Select(path => new FileInfo(path))
             .Where(file => IsManagedAssetId(file.Name))
@@ -45,6 +51,8 @@ public sealed class ThemeAssetService(
                 ContentType = GetContentType(file.Extension.ToLowerInvariant()),
                 Size = file.Length,
                 UsedBy = GetReferences(appearance.Value, file.Name)
+                    .Concat(presetReferences.GetValueOrDefault(file.Name) ?? [])
+                    .ToArray()
             })
             .ToArray();
 
@@ -110,7 +118,11 @@ public sealed class ThemeAssetService(
             return Result.Failure("Theme appearance could not be read.");
         }
 
-        if (GetReferences(appearance.Value, assetId).Count > 0)
+        var presetReferences = themeLibraryService is null
+            ? null
+            : (await themeLibraryService.GetAssetReferencesAsync(cancellationToken)).Value;
+        if (GetReferences(appearance.Value, assetId).Count > 0
+            || presetReferences?.ContainsKey(assetId) == true)
         {
             return Result.Failure("Theme asset is currently referenced.");
         }
@@ -139,6 +151,14 @@ public sealed class ThemeAssetService(
         foreach (var (slot, assignment) in appearance.Decorations)
         {
             AddReference(references, $"decoration:{slot}", assignment?.Asset, assetId);
+        }
+
+        foreach (var (page, background) in appearance.Pages)
+        {
+            if (string.Equals(background.ImageUrl, AssetUrlPrefix + assetId, StringComparison.Ordinal))
+            {
+                references.Add($"page:{page}");
+            }
         }
 
         return references;

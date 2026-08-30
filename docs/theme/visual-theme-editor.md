@@ -38,7 +38,9 @@ One `SiteAppearance` value is the editor Draft. The session history reducer owns
 
 Slider, color, enum, asset, and reset changes update local Draft only. Undo and Redo operate only on that session history and do not call the API. Dirty state adds a browser-close warning and an editor-route navigation confirmation; both listeners are installed only while the lazy editor route is mounted and are removed on unmount.
 
-`Save & Apply` is the only path that calls the existing Appearance PUT. A successful response becomes the new Saved baseline, clears history, reloads ThemeProvider, and produces the existing single `SiteAppearance.Updated` audit event. A failed or rate-limited save retains the full Draft. `Discard Changes` restores Current Saved without an API call.
+`Save & Apply` remains the direct Draft path that calls the existing Appearance PUT. Preset `Load` changes the local Draft only; `Save As` and `Save Draft` persist a reusable preset without applying it. Preset `Apply` uses the backend Appearance update service exactly once, then reloads ThemeProvider. A successful Appearance mutation produces `SiteAppearance.Updated`; preset application additionally produces the narrowly scoped `Theme.Applied` lifecycle audit record, without duplicating the mutation itself. A failed or rate-limited save retains the full Draft. `Discard Changes` restores Current Saved without an API call.
+
+Loading or applying another preset while the Draft is dirty opens a three-way Save / Discard / Cancel guard. The built-in Default Theme is a virtual exact-default entry: it can be loaded and applied but never renamed, overwritten, duplicated as a system object, deleted, or stored as an ordinary preset.
 
 `Reset Section` changes only the selected surface. `Reset Entire Theme` requires a confirmation dialog and places the exact default configuration into the Draft. Neither reset operation deletes assets; explicit deletion remains manual and protected by saved and draft references.
 

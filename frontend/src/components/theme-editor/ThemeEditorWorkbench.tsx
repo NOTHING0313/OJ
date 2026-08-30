@@ -1,12 +1,21 @@
 import { createContext, type ChangeEvent, type DragEvent, type ReactNode, useContext, useEffect, useMemo, useReducer, useState } from "react";
 import {
+  applyThemePreset,
+  createThemePreset,
   createDefaultSiteAppearance,
   deleteThemeAsset,
+  deleteThemePreset,
+  duplicateThemePreset,
+  exportThemePreset,
+  importThemePreset,
   listThemeAssets,
+  listThemePresets,
   normalizeSiteAppearance,
+  renameThemePreset,
   resolveSiteAssetUrl,
   sitePageOptions,
   updateSiteAppearance,
+  updateThemePreset,
   uploadThemeAsset,
   type SiteAppearance,
   type SiteAppearanceTheme,
@@ -16,7 +25,9 @@ import {
   type SiteThemeDecorationSlot,
   type SiteThemeIconSlot,
   type ThemeAssetLibraryItem,
-  type ThemeAssetReference
+  type ThemeAssetReference,
+  type ThemePreset,
+  type ThemePresetList
 } from "../../api/siteSettingsApi";
 import { getApiErrorMessage } from "../../api/httpClient";
 import { uploadImage } from "../../api/uploadsApi";
@@ -62,6 +73,15 @@ export function ThemeEditorWorkbench() {
   const [error, setError] = useState<string | null>(null);
   const [showResetAll, setShowResetAll] = useState(false);
   const [showAssetLibrary, setShowAssetLibrary] = useState(false);
+  const [themeLibrary, setThemeLibrary] = useState<ThemePresetList>({ items: [], lastAppliedPresetId: null });
+  const [presetSearch, setPresetSearch] = useState("");
+  const [presetSort, setPresetSort] = useState<"updated" | "name">("updated");
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null | undefined>(undefined);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [pendingLibraryAction, setPendingLibraryAction] = useState<{ kind: "load" | "apply"; preset: ThemePreset } | null>(null);
+  const [savePresetDialog, setSavePresetDialog] = useState<{ continuation: { kind: "load" | "apply"; preset: ThemePreset } | null } | null>(null);
+  const [applyPresetDialog, setApplyPresetDialog] = useState<ThemePreset | null>(null);
+  const [importPresetDialog, setImportPresetDialog] = useState<File | null>(null);
   const dirty = !appearanceEquals(history.saved, history.present);
   const previewAppearance = compareMode === "draft" ? history.present : compareMode === "saved" ? history.saved : createDefaultSiteAppearance();
   const selected = getThemeSurface(selectedSurface);
@@ -76,7 +96,7 @@ export function ThemeEditorWorkbench() {
   }), []);
 
   useEffect(() => dispatch({ type: "initialize", value: siteAppearance }), [siteAppearance]);
-  useEffect(() => { void refreshAssets(); }, []);
+  useEffect(() => { void refreshAssets(); void refreshLibrary(); }, []);
   useUnsavedAppearanceGuard(dirty);
 
   function changeDraft(mutator: (draft: SiteAppearance) => void) {
@@ -95,6 +115,144 @@ export function ThemeEditorWorkbench() {
       setError(getApiErrorMessage(reason, "主题资源列表加载失败。"));
     }
   }
+
+  async function refreshLibrary() {
+    try {
+      setThemeLibrary(await listThemePresets());
+    } catch (reason) {
+      setError(getApiErrorMessage(reason, "Theme Library 加载失败。"));
+    }
+  }
+
+  async function saveDraftAsPreset(requestedName: string, description: string | null) {
+    const name = requestedName.trim();
+    if (!name) { setError("Preset 名称不能为空。"); return false; }
+    setLibraryBusy(true);
+    setError(null);
+    try {
+      const created = await createThemePreset(name, description, history.present);
+      setSelectedPresetId(created.id);
+      await refreshLibrary();
+      setNotice("当前 Draft 已保存为 Preset；正式 Appearance 未改变。");
+      return true;
+    } catch (reason) {
+      setError(getApiErrorMessage(reason, "Preset 保存失败。"));
+      return false;
+    } finally {
+      setLibraryBusy(false);
+    }
+  }
+
+  function requestLibraryAction(kind: "load" | "apply", preset: ThemePreset) {
+    if (dirty) setPendingLibraryAction({ kind, preset });
+    else void executeLibraryAction(kind, preset);
+  }
+
+  async function executeLibraryAction(kind: "load" | "apply", preset: ThemePreset) {
+    setPendingLibraryAction(null);
+    setSelectedPresetId(preset.id);
+    if (kind === "load") {
+      dispatch({ type: "change", value: preset.appearance });
+      setCompareMode("draft");
+      setNotice(`${preset.name} 已载入 Draft；未发送 Appearance PUT。`);
+      setError(null);
+      return;
+    }
+    setApplyPresetDialog(preset);
+  }
+
+  async function performApply(preset: ThemePreset) {
+    setApplyPresetDialog(null);
+    setLibraryBusy(true);
+    setError(null);
+    try {
+      const applied = await applyThemePreset(preset.id);
+      dispatch({ type: "save-success", value: applied });
+      await reloadSiteAppearance();
+      await Promise.all([refreshLibrary(), refreshAssets()]);
+      setNotice(appearanceEquals(applied, preset.appearance)
+        ? `${preset.name} 已通过正式 Appearance 更新路径应用。`
+        : `${preset.name} 已应用；缺失资源已安全禁用并回退到默认视觉。`);
+    } catch (reason) {
+      setError(getApiErrorMessage(reason, "Theme 应用失败。"));
+    } finally {
+      setLibraryBusy(false);
+    }
+  }
+
+  function saveThenContinuePendingAction() {
+    const pending = pendingLibraryAction;
+    if (!pending) return;
+    setPendingLibraryAction(null);
+    setSavePresetDialog({ continuation: pending });
+  }
+
+  async function confirmSavePreset(name: string, description: string | null) {
+    const continuation = savePresetDialog?.continuation ?? null;
+    if (!await saveDraftAsPreset(name, description)) return;
+    setSavePresetDialog(null);
+    if (continuation) await executeLibraryAction(continuation.kind, continuation.preset);
+  }
+
+  function discardThenContinuePendingAction() {
+    const pending = pendingLibraryAction;
+    if (!pending) return;
+    dispatch({ type: "discard" });
+    void executeLibraryAction(pending.kind, pending.preset);
+  }
+
+  async function handleUpdatePreset(preset: ThemePreset) {
+    if (!preset.id || !window.confirm(`用当前 Draft 覆盖「${preset.name}」？正式 Appearance 不会改变。`)) return;
+    setLibraryBusy(true);
+    try {
+      await updateThemePreset(preset.id, preset.name, preset.description, history.present);
+      await refreshLibrary();
+      setNotice(`${preset.name} 已更新；正式 Appearance 未改变。`);
+    } catch (reason) { setError(getApiErrorMessage(reason, "Preset 更新失败。")); }
+    finally { setLibraryBusy(false); }
+  }
+
+  async function handleDuplicatePreset(preset: ThemePreset) {
+    if (!preset.id) return;
+    setLibraryBusy(true);
+    try { const created = await duplicateThemePreset(preset.id); setSelectedPresetId(created.id); await refreshLibrary(); setNotice(`已创建 ${created.name}。`); }
+    catch (reason) { setError(getApiErrorMessage(reason, "Preset 复制失败。")); }
+    finally { setLibraryBusy(false); }
+  }
+
+  async function handleRenamePreset(preset: ThemePreset) {
+    if (!preset.id) return;
+    const name = window.prompt("新的 Preset 名称", preset.name)?.trim();
+    if (!name) return;
+    setLibraryBusy(true);
+    try { await renameThemePreset(preset.id, name); await refreshLibrary(); setNotice("Preset 已重命名。"); }
+    catch (reason) { setError(getApiErrorMessage(reason, "Preset 重命名失败。")); }
+    finally { setLibraryBusy(false); }
+  }
+
+  async function handleDeletePreset(preset: ThemePreset) {
+    if (!preset.id || !window.confirm(`删除「${preset.name}」？引用的资源文件不会被自动删除。`)) return;
+    setLibraryBusy(true);
+    try { await deleteThemePreset(preset.id); if (selectedPresetId === preset.id) setSelectedPresetId(undefined); await Promise.all([refreshLibrary(), refreshAssets()]); setNotice("Preset 已删除；资源文件保持不变。"); }
+    catch (reason) { setError(getApiErrorMessage(reason, "Preset 删除失败。")); }
+    finally { setLibraryBusy(false); }
+  }
+
+  async function performImportPreset(file: File) {
+    setImportPresetDialog(null);
+    setLibraryBusy(true);
+    try { const imported = await importThemePreset(file); setSelectedPresetId(imported.id); await Promise.all([refreshLibrary(), refreshAssets()]); setNotice(`${imported.name} 已安全导入，尚未应用。`); }
+    catch (reason) { setError(getApiErrorMessage(reason, "Theme Pack 导入失败。")); }
+    finally { setLibraryBusy(false); }
+  }
+
+  const visiblePresets = useMemo(() => {
+    const query = presetSearch.trim().toLocaleLowerCase();
+    const items = themeLibrary.items.filter((preset) => preset.name.toLocaleLowerCase().includes(query));
+    return items.sort((first, second) => presetSort === "name"
+      ? first.name.localeCompare(second.name)
+      : (second.updatedAt ?? "").localeCompare(first.updatedAt ?? "") || first.name.localeCompare(second.name));
+  }, [themeLibrary.items, presetSearch, presetSort]);
 
   async function handleAssetUpload(file: File) {
     setIsUploading(true);
@@ -228,6 +386,18 @@ export function ThemeEditorWorkbench() {
         </div>
       </div>
 
+      <section className="theme-library-panel" aria-label="Theme Library">
+        <header><div><span>THEME LIBRARY</span><h2>Presets</h2><p>保存、预览、导入或应用可移植主题；运行时仍只读取正式 Appearance。</p></div><div><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="Search presets..." aria-label="Search theme presets" /><select value={presetSort} onChange={(event) => setPresetSort(event.target.value as "updated" | "name")} aria-label="Sort theme presets"><option value="updated">Updated</option><option value="name">Name</option></select><label className="button">Import<input type="file" accept=".zip,application/zip" disabled={libraryBusy} onChange={(event) => { const file = event.target.files?.[0]; if (file) setImportPresetDialog(file); event.currentTarget.value = ""; }} /></label><button className="button primary" type="button" disabled={libraryBusy} onClick={() => setSavePresetDialog({ continuation: null })}>Save As</button></div></header>
+        <div className="theme-library-grid">
+          {visiblePresets.map((preset) => <article key={preset.id ?? "default"} className={selectedPresetId !== undefined && selectedPresetId === preset.id ? "selected" : ""}>
+            <div className="theme-library-swatch" style={{ background: `linear-gradient(135deg, ${preset.appearance.theme.panelColor}, ${preset.appearance.theme.accentColor})` }} aria-hidden="true" />
+            <div className="theme-library-meta"><div><strong>{preset.name}</strong><span>{preset.isBuiltIn ? "SYSTEM" : "CUSTOM"}</span></div><p>{preset.description || (preset.isBuiltIn ? "Exact built-in default" : "Portable SiteAppearance preset")}</p><small>{preset.assetCount} assets · {preset.updatedAt ? new Date(preset.updatedAt).toLocaleString() : "Built-in"}{themeLibrary.lastAppliedPresetId === preset.id && preset.id ? " · last applied" : ""}</small></div>
+            <div className="theme-library-actions"><button type="button" onClick={() => requestLibraryAction("load", preset)}>Load</button><button type="button" className="primary" onClick={() => requestLibraryAction("apply", preset)}>Apply</button>{!preset.isBuiltIn && <details><summary>More</summary><div><button type="button" onClick={() => void handleUpdatePreset(preset)}>Save Draft</button><button type="button" onClick={() => void handleDuplicatePreset(preset)}>Duplicate</button><button type="button" onClick={() => void handleRenamePreset(preset)}>Rename</button><button type="button" onClick={() => preset.id && void exportThemePreset(preset.id, preset.name)}>Export</button><button type="button" className="danger" onClick={() => void handleDeletePreset(preset)}>Delete</button></div></details>}</div>
+          </article>)}
+          {visiblePresets.length === 0 && <div className="theme-library-empty">No matching presets.</div>}
+        </div>
+      </section>
+
       <div className="theme-editor-context-bar">
         <label>Preview Page<select value={previewPage} onChange={(event) => changePreviewPage(event.target.value as ThemeEditorPreviewPage)}>{themeEditorPreviewPages.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
         <div className="theme-editor-viewport-switch" aria-label="Preview viewport">{themeEditorViewports.map((option) => <SegmentedButton key={option.key} active={viewport === option.key} onClick={() => setViewport(option.key)}>{option.label}<small>{option.width}</small></SegmentedButton>)}</div>
@@ -269,6 +439,10 @@ export function ThemeEditorWorkbench() {
 
       {showAssetLibrary && <AssetLibraryDialog assets={themeAssets} draft={history.present} onClose={() => setShowAssetLibrary(false)} onSelect={(asset) => { assignAsset(asset); setShowAssetLibrary(false); }} onDelete={handleDeleteAsset} onNavigate={(surface) => { selectSurface(surface); setShowAssetLibrary(false); }} />}
       {showResetAll && <ConfirmDialog title="Reset Entire Theme?" description="全部自定义配置将进入 Default Theme 草稿。资源文件不会自动删除；只有 Save & Apply 后才影响正式 Appearance。" confirmLabel="Reset Draft" onCancel={() => setShowResetAll(false)} onConfirm={handleResetAll} />}
+      {pendingLibraryAction && <DraftTransitionDialog target={pendingLibraryAction.preset.name} onSave={saveThenContinuePendingAction} onDiscard={discardThenContinuePendingAction} onCancel={() => setPendingLibraryAction(null)} />}
+      {savePresetDialog && <PresetSaveDialog busy={libraryBusy} onCancel={() => setSavePresetDialog(null)} onSave={(name, description) => void confirmSavePreset(name, description)} />}
+      {applyPresetDialog && <ConfirmDialog title="Apply Theme to Site?" description={`「${applyPresetDialog.name}」将通过正式 Appearance 更新路径应用到全站。缺失资源会安全回退。`} confirmLabel="Apply to Site" onCancel={() => setApplyPresetDialog(null)} onConfirm={() => void performApply(applyPresetDialog)} />}
+      {importPresetDialog && <ConfirmDialog title="Import Theme Pack?" description={`${importPresetDialog.name} 将由服务器校验 manifest、路径、ZIP 边界、图片类型与签名。成功后仅加入 Library，不会自动应用。`} confirmLabel="Validate & Import" onCancel={() => setImportPresetDialog(null)} onConfirm={() => void performImportPreset(importPresetDialog)} />}
     </section>
     </ThemeEditorGestureContext.Provider>
   );
@@ -393,6 +567,16 @@ function SegmentedButton({ active, children, onClick }: { active: boolean; child
 
 function ConfirmDialog({ title, description, confirmLabel, onCancel, onConfirm }: { title: string; description: string; confirmLabel: string; onCancel: () => void; onConfirm: () => void }) {
   return <div className="theme-editor-modal-backdrop" role="presentation"><section className="theme-editor-modal confirm" role="dialog" aria-modal="true" aria-labelledby="theme-editor-confirm-title"><h2 id="theme-editor-confirm-title">{title}</h2><p>{description}</p><div><button className="button" type="button" onClick={onCancel}>Cancel</button><button className="button primary" type="button" onClick={onConfirm}>{confirmLabel}</button></div></section></div>;
+}
+
+function DraftTransitionDialog({ target, onSave, onDiscard, onCancel }: { target: string; onSave: () => void; onDiscard: () => void; onCancel: () => void }) {
+  return <div className="theme-editor-modal-backdrop" role="presentation"><section className="theme-editor-modal confirm" role="dialog" aria-modal="true" aria-labelledby="theme-draft-transition-title"><h2 id="theme-draft-transition-title">Unsaved Theme Draft</h2><p>切换到「{target}」前，请保存当前 Draft、丢弃修改或取消。</p><div><button className="button" type="button" onClick={onCancel}>Cancel</button><button className="button danger" type="button" onClick={onDiscard}>Discard</button><button className="button primary" type="button" onClick={onSave}>Save Draft</button></div></section></div>;
+}
+
+function PresetSaveDialog({ busy, onCancel, onSave }: { busy: boolean; onCancel: () => void; onSave: (name: string, description: string | null) => void }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  return <div className="theme-editor-modal-backdrop" role="presentation"><section className="theme-editor-modal confirm theme-preset-save-dialog" role="dialog" aria-modal="true" aria-labelledby="theme-preset-save-title"><h2 id="theme-preset-save-title">Save Draft as Preset</h2><p>保存到 Theme Library，不会改变当前全站 Appearance。</p><label>Name<input autoFocus maxLength={64} value={name} onChange={(event) => setName(event.target.value)} placeholder="Theme name" /></label><label>Description <small>optional</small><textarea maxLength={256} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Short plain-text description" /></label><div><button className="button" type="button" disabled={busy} onClick={onCancel}>Cancel</button><button className="button primary" type="button" disabled={busy || !name.trim()} onClick={() => onSave(name, description.trim() || null)}>{busy ? "Saving..." : "Save Preset"}</button></div></section></div>;
 }
 
 function useUnsavedAppearanceGuard(dirty: boolean) {

@@ -29,4 +29,11 @@ public static class SecurityAuditActions
     public const string TeamGitSyncSucceeded = "TeamGit.SyncSucceeded";
     public const string TeamGitSyncFailed = "TeamGit.SyncFailed";
     public const string SiteAppearanceUpdated = "SiteAppearance.Updated";
+    public const string ThemePresetCreated = "ThemePreset.Created";
+    public const string ThemePresetUpdated = "ThemePreset.Updated";
+    public const string ThemePresetDuplicated = "ThemePreset.Duplicated";
+    public const string ThemePresetRenamed = "ThemePreset.Renamed";
+    public const string ThemePresetDeleted = "ThemePreset.Deleted";
+    public const string ThemePresetImported = "ThemePreset.Imported";
+    public const string ThemeApplied = "Theme.Applied";
 }

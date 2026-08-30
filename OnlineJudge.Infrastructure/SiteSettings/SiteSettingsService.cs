@@ -64,13 +64,12 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
         }
     }
 
-    public async Task<Result<SiteAppearanceDto>> UpdateAppearanceAsync(UpdateSiteAppearanceRequest request, Guid currentUserId, UserRole currentUserRole, string? requestHost = null, CancellationToken cancellationToken = default)
-    {
-        if (currentUserRole != UserRole.Root)
-        {
-            return Result<SiteAppearanceDto>.Failure("Forbidden.");
-        }
+    public SiteAppearanceDto GetDefaultAppearance() => CreateDefaultAppearance();
 
+    public async Task<Result<SiteAppearanceDto>> ValidateAppearanceAsync(UpdateSiteAppearanceRequest request, string? requestHost = null, CancellationToken cancellationToken = default)
+    {
+        await Task.CompletedTask;
+        cancellationToken.ThrowIfCancellationRequested();
         var validationError = ValidateTheme(request.Theme);
         if (validationError is not null)
         {
@@ -222,6 +221,12 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
                 return Result<SiteAppearanceDto>.Failure("Background image URL must point to uploaded images.");
             }
 
+            if (imageUrl?.StartsWith(ThemeAssetPrefix, StringComparison.Ordinal) == true
+                && (storagePaths is null || !File.Exists(storagePaths.ResolveThemeAssetPath(imageUrl[ThemeAssetPrefix.Length..]))))
+            {
+                return Result<SiteAppearanceDto>.Failure("Background theme asset does not exist.");
+            }
+
             appearance.Pages[pageKey] = new SitePageBackgroundDto
             {
                 Enabled = source.Enabled,
@@ -233,6 +238,23 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             };
         }
 
+        return Result<SiteAppearanceDto>.Success(appearance);
+    }
+
+    public async Task<Result<SiteAppearanceDto>> UpdateAppearanceAsync(UpdateSiteAppearanceRequest request, Guid currentUserId, UserRole currentUserRole, string? requestHost = null, CancellationToken cancellationToken = default)
+    {
+        if (currentUserRole != UserRole.Root)
+        {
+            return Result<SiteAppearanceDto>.Failure("Forbidden.");
+        }
+
+        var validated = await ValidateAppearanceAsync(request, requestHost, cancellationToken);
+        if (validated.IsFailure || validated.Value is null)
+        {
+            return Result<SiteAppearanceDto>.Failure(validated.ErrorMessage ?? "Theme appearance is invalid.");
+        }
+
+        var appearance = validated.Value;
         var value = JsonSerializer.Serialize(appearance, JsonOptions);
         var setting = await dbContext.SiteSettings
             .FirstOrDefaultAsync(item => item.Key == AppearanceKey, cancellationToken);
@@ -884,7 +906,7 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             return true;
         }
 
-        if (IsSafeUploadPath(trimmed))
+        if (IsSafeBackgroundPath(trimmed))
         {
             normalizedPath = trimmed;
             return true;
@@ -893,7 +915,7 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
         if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
             || uri.Scheme is not ("http" or "https")
             || !IsAllowedHost(uri.Host, requestHost)
-            || !IsSafeUploadPath(uri.AbsolutePath))
+            || !IsSafeBackgroundPath(uri.AbsolutePath))
         {
             return false;
         }
@@ -910,9 +932,12 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             || (!string.IsNullOrWhiteSpace(requestHost) && host.Equals(requestHost, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static bool IsSafeUploadPath(string path)
+    private static bool IsSafeBackgroundPath(string path)
     {
-        return path.StartsWith(UploadImagePrefix, StringComparison.OrdinalIgnoreCase)
+        var isUpload = path.StartsWith(UploadImagePrefix, StringComparison.OrdinalIgnoreCase);
+        var isThemeAsset = path.StartsWith(ThemeAssetPrefix, StringComparison.Ordinal)
+            && IsManagedThemeAssetId(path[ThemeAssetPrefix.Length..]);
+        return (isUpload || isThemeAsset)
             && !path.Contains("..", StringComparison.Ordinal)
             && !path.Contains('\\', StringComparison.Ordinal);
     }

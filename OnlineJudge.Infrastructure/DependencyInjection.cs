@@ -58,6 +58,7 @@ public static class DependencyInjection
         var secureUploadOptions = SecureUploadOptions.FromConfiguration(configuration);
         services.AddSingleton(secureUploadOptions);
         services.AddSingleton<ISecureUploadValidator, SecureUploadValidator>();
+        services.AddSingleton<ISecureArchiveExtractor, SecureArchiveExtractor>();
         var judgeSandboxOptions = JudgeSandboxOptions.FromConfiguration(configuration);
         services.AddSingleton(judgeSandboxOptions);
         services.AddSingleton<IDockerCommandClient>(_ => new DockerCommandClient(judgeSandboxOptions));
@@ -114,6 +115,7 @@ public static class DependencyInjection
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ISiteSettingsService, SiteSettingsService>();
         services.AddScoped<IThemeAssetService, ThemeAssetService>();
+        services.AddScoped<IThemeLibraryService, ThemeLibraryService>();
         services.AddScoped<IHelpDocumentService, HelpDocumentService>();
         services.AddScoped<ISubmissionService, SubmissionService>();
         services.AddScoped<IAuthService, AuthService>();
