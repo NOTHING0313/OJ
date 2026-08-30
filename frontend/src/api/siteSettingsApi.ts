@@ -1,5 +1,11 @@
 import { request } from "./httpClient";
 import { normalizeUploadedImagePath, resolveSiteAssetUrl } from "../utils/uploadedImageUrl";
+import {
+  isThemeDecorationSlot,
+  isThemeIconSlot,
+  type ThemeDecorationSlot,
+  type ThemeIconSlot
+} from "../theme/themeSlots";
 
 export { normalizeUploadedImagePath, resolveSiteAssetUrl };
 
@@ -28,6 +34,27 @@ export interface ThemeAssetReference {
 export interface ThemeAsset extends ThemeAssetReference {
   contentType: string;
   size: number;
+}
+
+export interface ThemeAssetLibraryItem extends ThemeAsset {
+  usedBy: string[];
+}
+
+export interface SiteThemeIconSlot {
+  enabled: boolean;
+  asset: ThemeAssetReference | null;
+  opacity: number | null;
+  scale: number | null;
+  offsetX: number | null;
+  offsetY: number | null;
+}
+
+export type ThemeDecorationAlignment = "start" | "center" | "end";
+export type ThemeDecorationCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+export interface SiteThemeDecorationSlot extends SiteThemeIconSlot {
+  alignment: ThemeDecorationAlignment | null;
+  corner: ThemeDecorationCorner | null;
 }
 
 export interface SiteThemeBackground {
@@ -87,6 +114,8 @@ export interface SiteAppearance {
   pages: Record<string, SitePageBackground>;
   background: SiteThemeBackground;
   panelSkin: SitePanelSkin;
+  icons: Partial<Record<ThemeIconSlot, SiteThemeIconSlot | null>>;
+  decorations: Partial<Record<ThemeDecorationSlot, SiteThemeDecorationSlot | null>>;
 }
 
 export type UpdateSiteAppearanceRequest = SiteAppearance;
@@ -119,6 +148,10 @@ export function uploadThemeAsset(file: File) {
   const body = new FormData();
   body.append("file", file);
   return request<ThemeAsset>("/api/site-settings/theme-assets", { method: "POST", body });
+}
+
+export function listThemeAssets() {
+  return request<ThemeAssetLibraryItem[]>("/api/site-settings/theme-assets");
 }
 
 export function deleteThemeAsset(assetId: string) {
@@ -184,7 +217,9 @@ export function createDefaultSiteAppearance(): SiteAppearance {
       textureOpacity: null,
       radius: null,
       shadowStrength: null
-    }
+    },
+    icons: {},
+    decorations: {}
   };
 }
 
@@ -248,6 +283,18 @@ export function normalizeSiteAppearance(value: SiteAppearance | any): SiteAppear
     shadowStrength: readOptionalBoundedNumber(panelSkin.shadowStrength, 0, 1)
   };
 
+  const icons = value.icons ?? {};
+  for (const [key, slot] of Object.entries(icons)) {
+    if (!isThemeIconSlot(key)) continue;
+    fallback.icons[key] = readThemeIconSlot(slot);
+  }
+
+  const decorations = value.decorations ?? {};
+  for (const [key, slot] of Object.entries(decorations)) {
+    if (!isThemeDecorationSlot(key)) continue;
+    fallback.decorations[key] = readThemeDecorationSlot(slot);
+  }
+
   for (const { key } of sitePageOptions) {
     const source = value.pages?.[key] ?? readLegacyPage(value.pages, key) ?? {};
     fallback.pages[key] = {
@@ -302,6 +349,38 @@ function readThemeAsset(value: unknown): ThemeAssetReference | null {
   if (typeof asset.assetId !== "string" || !/^[0-9a-f]{32}\.(png|jpg|webp)$/.test(asset.assetId)) return null;
   const url = `/theme-assets/${asset.assetId}`;
   return asset.url === url ? { assetId: asset.assetId, url } : null;
+}
+
+function readThemeIconSlot(value: unknown): SiteThemeIconSlot | null {
+  if (!value || typeof value !== "object") return null;
+  const slot = value as Record<string, unknown>;
+  return {
+    enabled: Boolean(slot.enabled),
+    asset: readThemeAsset(slot.asset),
+    opacity: readOptionalBoundedNumber(slot.opacity, 0, 1),
+    scale: readOptionalBoundedNumber(slot.scale, 0.5, 2),
+    offsetX: readOptionalBoundedNumber(slot.offsetX, -64, 64),
+    offsetY: readOptionalBoundedNumber(slot.offsetY, -64, 64)
+  };
+}
+
+function readThemeDecorationSlot(value: unknown): SiteThemeDecorationSlot | null {
+  const slot = readThemeIconSlot(value);
+  if (!slot || !value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  return {
+    ...slot,
+    alignment: readDecorationAlignment(source.alignment),
+    corner: readDecorationCorner(source.corner)
+  };
+}
+
+function readDecorationAlignment(value: unknown): ThemeDecorationAlignment | null {
+  return value === "start" || value === "center" || value === "end" ? value : null;
+}
+
+function readDecorationCorner(value: unknown): ThemeDecorationCorner | null {
+  return value === "top-left" || value === "top-right" || value === "bottom-left" || value === "bottom-right" ? value : null;
 }
 
 function readBackgroundSizeMode(value: unknown): ThemeBackgroundSizeMode | null {

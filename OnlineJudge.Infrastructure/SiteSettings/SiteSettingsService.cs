@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OnlineJudge.Application.Common;
+using OnlineJudge.Application.SiteSettings;
 using OnlineJudge.Application.SiteSettings.Dtos;
 using OnlineJudge.Application.SiteSettings.Requests;
 using OnlineJudge.Application.SiteSettings.Services;
@@ -88,6 +89,21 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             return Result<SiteAppearanceDto>.Failure(validationError);
         }
 
+        var requestedIcons = request.Icons ?? new Dictionary<string, SiteThemeIconSlotDto?>();
+        var requestedDecorations = request.Decorations ?? new Dictionary<string, SiteThemeDecorationSlotDto?>();
+
+        validationError = ValidateIconSlots(requestedIcons);
+        if (validationError is not null)
+        {
+            return Result<SiteAppearanceDto>.Failure(validationError);
+        }
+
+        validationError = ValidateDecorationSlots(requestedDecorations);
+        if (validationError is not null)
+        {
+            return Result<SiteAppearanceDto>.Failure(validationError);
+        }
+
         if (!TryNormalizeThemeAssetReference(request.Background.Asset, out var backgroundAsset)
             || !TryNormalizeThemeAssetReference(request.PanelSkin.BackgroundTexture, out var panelBackgroundAsset)
             || !TryNormalizeThemeAssetReference(request.PanelSkin.HeaderTexture, out var panelHeaderAsset)
@@ -140,6 +156,54 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             Radius = request.PanelSkin.Radius,
             ShadowStrength = request.PanelSkin.ShadowStrength
         };
+
+        foreach (var slotKey in ThemeSlotKeys.Icons)
+        {
+            if (!requestedIcons.TryGetValue(slotKey, out var slot) || slot is null)
+            {
+                continue;
+            }
+
+            if (!TryNormalizeThemeAssetReference(slot.Asset, out var asset))
+            {
+                return Result<SiteAppearanceDto>.Failure($"Theme icon slot '{slotKey}' must use a server-managed same-origin asset.");
+            }
+
+            appearance.Icons[slotKey] = new SiteThemeIconSlotDto
+            {
+                Enabled = slot.Enabled,
+                Asset = asset,
+                Opacity = slot.Opacity,
+                Scale = slot.Scale,
+                OffsetX = slot.OffsetX,
+                OffsetY = slot.OffsetY
+            };
+        }
+
+        foreach (var slotKey in ThemeSlotKeys.Decorations)
+        {
+            if (!requestedDecorations.TryGetValue(slotKey, out var slot) || slot is null)
+            {
+                continue;
+            }
+
+            if (!TryNormalizeThemeAssetReference(slot.Asset, out var asset))
+            {
+                return Result<SiteAppearanceDto>.Failure($"Theme decoration slot '{slotKey}' must use a server-managed same-origin asset.");
+            }
+
+            appearance.Decorations[slotKey] = new SiteThemeDecorationSlotDto
+            {
+                Enabled = slot.Enabled,
+                Asset = asset,
+                Opacity = slot.Opacity,
+                Scale = slot.Scale,
+                OffsetX = slot.OffsetX,
+                OffsetY = slot.OffsetY,
+                Alignment = slot.Alignment?.ToLowerInvariant(),
+                Corner = slot.Corner?.ToLowerInvariant()
+            };
+        }
 
         foreach (var pageKey in SupportedPageKeys)
         {
@@ -348,6 +412,28 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             ShadowStrength = panelSkin.ShadowStrength is >= 0 and <= 1 ? panelSkin.ShadowStrength : null
         };
 
+        var iconSlots = appearance.Icons ?? new Dictionary<string, SiteThemeIconSlotDto?>();
+        foreach (var slotKey in ThemeSlotKeys.Icons)
+        {
+            if (!iconSlots.TryGetValue(slotKey, out var slot) || slot is null)
+            {
+                continue;
+            }
+
+            normalized.Icons[slotKey] = NormalizeIconSlot(slot);
+        }
+
+        var decorationSlots = appearance.Decorations ?? new Dictionary<string, SiteThemeDecorationSlotDto?>();
+        foreach (var slotKey in ThemeSlotKeys.Decorations)
+        {
+            if (!decorationSlots.TryGetValue(slotKey, out var slot) || slot is null)
+            {
+                continue;
+            }
+
+            normalized.Decorations[slotKey] = NormalizeDecorationSlot(slot);
+        }
+
         foreach (var pageKey in SupportedPageKeys)
         {
             if (!TryGetPageSource(appearance.Pages, pageKey, out var source))
@@ -542,6 +628,86 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
         return null;
     }
 
+    private static string? ValidateIconSlots(IReadOnlyDictionary<string, SiteThemeIconSlotDto?> slots)
+    {
+        var unknownSlot = slots.Keys.FirstOrDefault(key => !ThemeSlotKeys.Icons.Contains(key, StringComparer.Ordinal));
+        if (unknownSlot is not null)
+        {
+            return $"Unknown theme icon slot '{unknownSlot}'.";
+        }
+
+        foreach (var (slotKey, slot) in slots)
+        {
+            var validationError = ValidateSlotValues(slotKey, slot);
+            if (validationError is not null)
+            {
+                return validationError;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ValidateDecorationSlots(IReadOnlyDictionary<string, SiteThemeDecorationSlotDto?> slots)
+    {
+        var unknownSlot = slots.Keys.FirstOrDefault(key => !ThemeSlotKeys.Decorations.Contains(key, StringComparer.Ordinal));
+        if (unknownSlot is not null)
+        {
+            return $"Unknown theme decoration slot '{unknownSlot}'.";
+        }
+
+        foreach (var (slotKey, slot) in slots)
+        {
+            var validationError = ValidateSlotValues(slotKey, slot);
+            if (validationError is not null)
+            {
+                return validationError;
+            }
+
+            if (slot?.Alignment is not null && !IsDecorationAlignment(slot.Alignment))
+            {
+                return $"Unsupported alignment for theme decoration slot '{slotKey}'.";
+            }
+
+            if (slot?.Corner is not null && !IsDecorationCorner(slot.Corner))
+            {
+                return $"Unsupported corner for theme decoration slot '{slotKey}'.";
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ValidateSlotValues(string slotKey, SiteThemeIconSlotDto? slot)
+    {
+        if (slot is null)
+        {
+            return null;
+        }
+
+        if (slot.Enabled && slot.Asset is null)
+        {
+            return $"Enabled theme slot '{slotKey}' requires an uploaded asset.";
+        }
+
+        if (slot.Opacity is < 0 or > 1)
+        {
+            return $"Opacity for theme slot '{slotKey}' must be between 0 and 1.";
+        }
+
+        if (slot.Scale is < 0.5 or > 2)
+        {
+            return $"Scale for theme slot '{slotKey}' must be between 0.5 and 2.";
+        }
+
+        if (slot.OffsetX is < -64 or > 64 || slot.OffsetY is < -64 or > 64)
+        {
+            return $"Offset for theme slot '{slotKey}' must be between -64 and 64.";
+        }
+
+        return null;
+    }
+
     private static bool IsHexColor(string? color)
     {
         return color is { Length: 7 }
@@ -559,6 +725,32 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
     private static bool IsBackgroundRepeat(string? value) => value?.ToLowerInvariant() is "no-repeat" or "repeat" or "repeat-x" or "repeat-y";
 
     private static bool IsBackgroundAttachment(string? value) => value?.ToLowerInvariant() is "scroll" or "fixed";
+
+    private static bool IsDecorationAlignment(string? value) => value?.ToLowerInvariant() is "start" or "center" or "end";
+
+    private static bool IsDecorationCorner(string? value) => value?.ToLowerInvariant() is "top-left" or "top-right" or "bottom-left" or "bottom-right";
+
+    private static SiteThemeIconSlotDto NormalizeIconSlot(SiteThemeIconSlotDto slot) => new()
+    {
+        Enabled = slot.Enabled,
+        Asset = NormalizeThemeAssetReference(slot.Asset),
+        Opacity = slot.Opacity is >= 0 and <= 1 ? slot.Opacity : null,
+        Scale = slot.Scale is >= 0.5 and <= 2 ? slot.Scale : null,
+        OffsetX = slot.OffsetX is >= -64 and <= 64 ? slot.OffsetX : null,
+        OffsetY = slot.OffsetY is >= -64 and <= 64 ? slot.OffsetY : null
+    };
+
+    private static SiteThemeDecorationSlotDto NormalizeDecorationSlot(SiteThemeDecorationSlotDto slot) => new()
+    {
+        Enabled = slot.Enabled,
+        Asset = NormalizeThemeAssetReference(slot.Asset),
+        Opacity = slot.Opacity is >= 0 and <= 1 ? slot.Opacity : null,
+        Scale = slot.Scale is >= 0.5 and <= 2 ? slot.Scale : null,
+        OffsetX = slot.OffsetX is >= -64 and <= 64 ? slot.OffsetX : null,
+        OffsetY = slot.OffsetY is >= -64 and <= 64 ? slot.OffsetY : null,
+        Alignment = IsDecorationAlignment(slot.Alignment) ? slot.Alignment!.ToLowerInvariant() : null,
+        Corner = IsDecorationCorner(slot.Corner) ? slot.Corner!.ToLowerInvariant() : null
+    };
 
     private bool TryNormalizeThemeAssetReference(ThemeAssetReferenceDto? asset, out ThemeAssetReferenceDto? normalized)
     {
@@ -639,12 +831,40 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
         AddChangedSlot(changedSlots, "panelHeader", previous.PanelSkin.HeaderTexture, current.PanelSkin.HeaderTexture);
         AddChangedSlot(changedSlots, "panelBorder", previous.PanelSkin.BorderTexture, current.PanelSkin.BorderTexture);
 
+        var changedIconSlots = ThemeSlotKeys.Icons
+            .Where(slot => !SlotEquals(previous.Icons.GetValueOrDefault(slot), current.Icons.GetValueOrDefault(slot)))
+            .ToArray();
+        var changedDecorationSlots = ThemeSlotKeys.Decorations
+            .Where(slot => !SlotEquals(previous.Decorations.GetValueOrDefault(slot), current.Decorations.GetValueOrDefault(slot)))
+            .ToArray();
+
         return new Dictionary<string, string?>
         {
             ["backgroundEnabledChanged"] = (previous.Background.Enabled != current.Background.Enabled).ToString(),
             ["panelSkinEnabledChanged"] = (previous.PanelSkin.Enabled != current.PanelSkin.Enabled).ToString(),
-            ["changedAssetSlots"] = changedSlots.Count == 0 ? "none" : string.Join(',', changedSlots)
+            ["changedAssetSlots"] = changedSlots.Count == 0 ? "none" : string.Join(',', changedSlots),
+            ["changedIconSlots"] = changedIconSlots.Length == 0 ? "none" : string.Join(',', changedIconSlots),
+            ["changedDecorationSlots"] = changedDecorationSlots.Length == 0 ? "none" : string.Join(',', changedDecorationSlots)
         };
+    }
+
+    private static bool SlotEquals(SiteThemeIconSlotDto? previous, SiteThemeIconSlotDto? current)
+    {
+        if (previous is null || current is null)
+        {
+            return previous is null && current is null;
+        }
+
+        return previous.Enabled == current.Enabled
+            && string.Equals(previous.Asset?.AssetId, current.Asset?.AssetId, StringComparison.Ordinal)
+            && previous.Opacity == current.Opacity
+            && previous.Scale == current.Scale
+            && previous.OffsetX == current.OffsetX
+            && previous.OffsetY == current.OffsetY
+            && (previous is not SiteThemeDecorationSlotDto previousDecoration
+                || current is not SiteThemeDecorationSlotDto currentDecoration
+                || (string.Equals(previousDecoration.Alignment, currentDecoration.Alignment, StringComparison.Ordinal)
+                    && string.Equals(previousDecoration.Corner, currentDecoration.Corner, StringComparison.Ordinal)));
     }
 
     private static void AddChangedSlot(ICollection<string> slots, string slot, ThemeAssetReferenceDto? previous, ThemeAssetReferenceDto? current)

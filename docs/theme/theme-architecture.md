@@ -16,11 +16,19 @@ No remote URL or arbitrary CSS value is accepted. The configuration stores only 
 
 `panelSkin` supports optional background, existing-header, and border textures, background opacity, texture opacity, radius override, and shadow strength. Opt-in generic modifier classes cover primary Problem, Challenge, Team, Leaderboard/Season, Help, Account, Security Audit, modal/table, and login surfaces. A header texture applies only where a header region already exists; it does not add DOM. Disabled or missing values do not emit overrides.
 
+## Icon and decoration slots
+
+`icons` and `decorations` extend the same Appearance JSON. Icon keys are a centralized controlled registry for Problem, Challenge, Leaderboard, Team, Submission, Help, Profile, Chat, Git, Season, and Reward. A shared `ThemeIcon` renders a managed asset only when the assignment is enabled and the image loaded successfully; otherwise the existing component, text, SVG, or symbol remains unchanged. The fixed slot box and `object-fit: contain` prevent source dimensions from changing layout, and custom images are decorative (`aria-hidden`) so the existing link or button accessible name remains authoritative.
+
+Decoration keys are the generic semantic surfaces PageHeader, CardHeader, PanelCorner, and EmptyState. Controlled opacity, scale, offset, alignment, and corner values become scoped ThemeProvider variables and opt-in modifiers. Decorations are non-interactive, never replace empty-state text, and are omitted entirely when disabled, unassigned, or missing on disk.
+
+Root editing continues to use one local Appearance draft for Background, Panel, Icons, and Decorations. Upload and assignment are separate: one asset may be selected by multiple slots. The lightweight asset library lists thumbnail, type, size, and logical `UsedBy` references without exposing filesystem paths.
+
 ## Asset lifecycle and persistence
 
 PNG, JPEG, and WebP files up to 5 MiB pass the shared `ThemeImage` secure upload policy, including filename, MIME, signature, and size checks. SVG is rejected. Files are written atomically under configured `Storage:ThemeAssetsRoot` and served at `/theme-assets`; absolute disk paths are never returned.
 
-Replacement uploads the new asset before appearance save. V1 retains detached assets as cleanup candidates rather than risking deletion before a successful configuration update. Explicit deletion is Root-only, root-confined, generated-name-only, and blocked while the asset is referenced.
+Replacement uploads the new asset before appearance save. V1 retains detached assets as cleanup candidates rather than risking deletion before a successful configuration update. Explicit deletion is Root-only, root-confined, generated-name-only, and blocked while the asset is referenced by Background, Panel, Icon, or Decoration configuration.
 
 For production configure:
 
@@ -38,4 +46,4 @@ Upload or save failure leaves the active appearance unchanged. Missing/deleted a
 
 ## Future extension
 
-Icon, decoration, mascot, preset, and import/export capabilities are intentionally deferred. Future slots must reuse the same Root authority, secure asset reference, persistence, audit, and exact-default fallback contracts.
+Mascot support is deferred to THEME-10G. Presets and import/export are deferred to THEME-10H. Both must reuse the same Root authority, secure asset reference, persistence, audit, and exact-default fallback contracts; custom CSS, JavaScript, and HTML remain outside the Theme contract.

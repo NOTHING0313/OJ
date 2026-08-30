@@ -2,6 +2,8 @@ import { type ChangeEvent, type CSSProperties, type ReactNode, useEffect, useMem
 import {
   createDefaultPageBackground,
   createDefaultSiteAppearance,
+  deleteThemeAsset,
+  listThemeAssets,
   normalizeSiteAppearance,
   resolveSiteAssetUrl,
   sitePageOptions,
@@ -13,11 +15,20 @@ import {
   type SitePageBackground,
   type SitePageKey,
   type SiteThemeBackground,
+  type SiteThemeDecorationSlot,
+  type SiteThemeIconSlot,
+  type ThemeAssetLibraryItem,
   type ThemeAssetReference
 } from "../api/siteSettingsApi";
 import { uploadImage } from "../api/uploadsApi";
 import { normalizeUploadedImagePath } from "../utils/uploadedImageUrl";
 import { useTheme } from "../theme/ThemeContext";
+import {
+  themeDecorationSlotOptions,
+  themeIconSlotOptions,
+  type ThemeDecorationSlot,
+  type ThemeIconSlot
+} from "../theme/themeSlots";
 
 interface SettingSliderProps {
   label: string;
@@ -39,7 +50,7 @@ interface SettingsSwitchProps {
 }
 
 type VisualSettingsTab = "text" | "panel" | "navigation" | "presets";
-type ThemeAssetSlot = "background" | "panelBackground" | "panelHeader" | "panelBorder";
+type ThemeAssetSlot = "background" | "panelBackground" | "panelHeader" | "panelBorder" | `icon:${ThemeIconSlot}` | `decoration:${ThemeDecorationSlot}`;
 
 export function AdminSiteSettingsPage() {
   const { siteAppearance, reloadSiteAppearance, currentTheme } = useTheme();
@@ -51,6 +62,7 @@ export function AdminSiteSettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadingThemeSlot, setUploadingThemeSlot] = useState<ThemeAssetSlot | null>(null);
+  const [themeAssets, setThemeAssets] = useState<ThemeAssetLibraryItem[]>([]);
   const [visualTab, setVisualTab] = useState<VisualSettingsTab>("text");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -59,6 +71,10 @@ export function AdminSiteSettingsPage() {
     setInitialConfig(normalized);
     setDraftConfig(normalizeSiteAppearance(normalized));
   }, [siteAppearance]);
+
+  useEffect(() => {
+    void refreshThemeAssets();
+  }, []);
 
   const isDirty = useMemo(
     () => JSON.stringify(initialConfig) !== JSON.stringify(draftConfig),
@@ -89,6 +105,22 @@ export function AdminSiteSettingsPage() {
     setDraftConfig((current) => ({ ...current, panelSkin: { ...current.panelSkin, ...patch } }));
   }
 
+  function updateIconSlot(slot: ThemeIconSlot, value: SiteThemeIconSlot | null) {
+    setDraftConfig((current) => ({ ...current, icons: { ...current.icons, [slot]: value } }));
+  }
+
+  function updateDecorationSlot(slot: ThemeDecorationSlot, value: SiteThemeDecorationSlot | null) {
+    setDraftConfig((current) => ({ ...current, decorations: { ...current.decorations, [slot]: value } }));
+  }
+
+  async function refreshThemeAssets() {
+    try {
+      setThemeAssets(await listThemeAssets());
+    } catch {
+      setThemeAssets([]);
+    }
+  }
+
   async function handleThemeAssetUpload(slot: ThemeAssetSlot, file: File) {
     setUploadingThemeSlot(slot);
     setError(null);
@@ -97,6 +129,7 @@ export function AdminSiteSettingsPage() {
       const asset = await uploadThemeAsset(file);
       const reference = { assetId: asset.assetId, url: asset.url };
       applyThemeAsset(slot, reference);
+      await refreshThemeAssets();
       setNotice("主题图片已安全上传并加入本地草稿，请保存配置后启用。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "主题图片上传失败。");
@@ -110,6 +143,26 @@ export function AdminSiteSettingsPage() {
     if (slot === "panelBackground") updatePanelSkin({ backgroundTexture: asset });
     if (slot === "panelHeader") updatePanelSkin({ headerTexture: asset });
     if (slot === "panelBorder") updatePanelSkin({ borderTexture: asset });
+    if (slot.startsWith("icon:")) {
+      const key = slot.slice("icon:".length) as ThemeIconSlot;
+      updateIconSlot(key, asset ? createIconAssignment(asset) : null);
+    }
+    if (slot.startsWith("decoration:")) {
+      const key = slot.slice("decoration:".length) as ThemeDecorationSlot;
+      updateDecorationSlot(key, asset ? createDecorationAssignment(asset) : null);
+    }
+  }
+
+  async function handleDeleteThemeAsset(assetId: string) {
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteThemeAsset(assetId);
+      await refreshThemeAssets();
+      setNotice("未被引用的主题资源已删除。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "主题资源删除失败。");
+    }
   }
 
   function updateSelectedPage(patch: Partial<SitePageBackground>) {
@@ -184,6 +237,16 @@ export function AdminSiteSettingsPage() {
     setNotice("已恢复默认 Panel 草稿，保存后生效。");
   }
 
+  function handleResetIcons() {
+    setDraftConfig((current) => ({ ...current, icons: {} }));
+    setNotice("已恢复默认图标草稿，保存后生效。");
+  }
+
+  function handleResetDecorations() {
+    setDraftConfig((current) => ({ ...current, decorations: {} }));
+    setNotice("已清除 Decoration 草稿，保存后生效。");
+  }
+
   async function handleSubmit() {
     setIsSaving(true);
     setError(null);
@@ -194,6 +257,7 @@ export function AdminSiteSettingsPage() {
       setInitialConfig(updated);
       setDraftConfig(normalizeSiteAppearance(updated));
       await reloadSiteAppearance();
+      await refreshThemeAssets();
       setNotice("站点外观配置已保存。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "站点背景配置保存失败。");
@@ -274,6 +338,72 @@ export function AdminSiteSettingsPage() {
                 <SettingSlider label="阴影强度" value={draftConfig.panelSkin.shadowStrength ?? 0.18} valueLabel={(draftConfig.panelSkin.shadowStrength ?? 0.18).toFixed(2)} min={0} max={1} step={0.05} disabled={isSaving} onChange={(shadowStrength) => updatePanelSkin({ shadowStrength })} />
                 <p className="appearance-contrast-note">纹理可能降低文字可读性；建议保持较低纹理强度。</p>
                 <button className="button site-settings-reset-button" type="button" disabled={isSaving} onClick={handleResetPanelSkin}>恢复默认 Panel</button>
+              </div>
+            </details>
+
+            <details className="site-settings-theme-section">
+              <summary>Icons</summary>
+              <div className="site-settings-theme-section-body">
+                <p className="site-settings-section-note">仅覆盖已分配 Slot；未设置时继续渲染当前原有图标或文本。</p>
+                <div className="site-settings-slot-list">
+                  {themeIconSlotOptions.map(({ key, label }) => (
+                    <ThemeSlotEditor
+                      key={key}
+                      label={label}
+                      value={draftConfig.icons[key] ?? null}
+                      assets={themeAssets}
+                      busy={uploadingThemeSlot === `icon:${key}`}
+                      disabled={isSaving || uploadingThemeSlot !== null}
+                      onChange={(value) => updateIconSlot(key, value)}
+                      onUpload={(file) => handleThemeAssetUpload(`icon:${key}`, file)}
+                    />
+                  ))}
+                </div>
+                <p className="appearance-contrast-note">透明 PNG / WebP 更适合图标；JPEG 可用，但通常不适合透明边缘。</p>
+                <button className="button site-settings-reset-button" type="button" disabled={isSaving} onClick={handleResetIcons}>全部恢复默认图标</button>
+              </div>
+            </details>
+
+            <details className="site-settings-theme-section">
+              <summary>Decorations</summary>
+              <div className="site-settings-theme-section-body">
+                <p className="site-settings-section-note">Decoration 只增强现有通用表面，不创建交互元素，也不替代 Empty State 文字。</p>
+                <div className="site-settings-slot-list">
+                  {themeDecorationSlotOptions.map(({ key, label }) => (
+                    <ThemeDecorationEditor
+                      key={key}
+                      slot={key}
+                      label={label}
+                      value={draftConfig.decorations[key] ?? null}
+                      assets={themeAssets}
+                      busy={uploadingThemeSlot === `decoration:${key}`}
+                      disabled={isSaving || uploadingThemeSlot !== null}
+                      onChange={(value) => updateDecorationSlot(key, value)}
+                      onUpload={(file) => handleThemeAssetUpload(`decoration:${key}`, file)}
+                    />
+                  ))}
+                </div>
+                <button className="button site-settings-reset-button" type="button" disabled={isSaving} onClick={handleResetDecorations}>清除全部 Decoration</button>
+              </div>
+            </details>
+
+            <details className="site-settings-theme-section">
+              <summary>Theme Asset Library</summary>
+              <div className="site-settings-theme-section-body">
+                {themeAssets.length === 0 ? <div className="compact-empty">暂无 Theme Asset</div> : (
+                  <div className="site-settings-asset-library">
+                    {themeAssets.map((asset) => {
+                      const usedBy = [...new Set([...asset.usedBy, ...getDraftAssetUsages(draftConfig, asset.assetId)])];
+                      return (
+                        <article key={asset.assetId}>
+                          <img src={resolveSiteAssetUrl(asset.url)} alt="主题资源缩略图" />
+                          <div><strong>{asset.assetId}</strong><span>{asset.contentType} · {formatBytes(asset.size)}</span><small>Used By: {usedBy.length > 0 ? usedBy.join(", ") : "未引用"}</small></div>
+                          <button className="button site-settings-danger-button" type="button" disabled={isSaving || usedBy.length > 0} onClick={() => void handleDeleteThemeAsset(asset.assetId)}>删除</button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </details>
 
@@ -653,6 +783,147 @@ function ThemeAssetField({
       </div>
     </div>
   );
+}
+
+function ThemeSlotEditor({
+  label,
+  value,
+  assets,
+  busy,
+  disabled,
+  onChange,
+  onUpload
+}: {
+  label: string;
+  value: SiteThemeIconSlot | null;
+  assets: ThemeAssetLibraryItem[];
+  busy: boolean;
+  disabled: boolean;
+  onChange: (value: SiteThemeIconSlot | null) => void;
+  onUpload: (file: File) => Promise<void>;
+}) {
+  const assetUrl = resolveSiteAssetUrl(value?.asset?.url);
+
+  return (
+    <article className="site-settings-slot-editor">
+      <div className="site-settings-slot-heading">
+        <div className="site-settings-slot-preview">{assetUrl ? <img src={assetUrl} alt={`${label}当前预览`} style={buildSlotPreviewStyle(value)} /> : <span>Default</span>}</div>
+        <div><strong>{label}</strong><small>{value?.asset ? value.asset.assetId : "使用当前默认 UI"}</small></div>
+        <label className="site-settings-slot-enabled"><input type="checkbox" checked={Boolean(value?.enabled)} disabled={disabled || !value?.asset} onChange={(event) => value && onChange({ ...value, enabled: event.target.checked })} />启用</label>
+      </div>
+      <div className="site-settings-slot-actions">
+        <select value={value?.asset?.assetId ?? ""} disabled={disabled} onChange={(event) => {
+          const asset = assets.find((item) => item.assetId === event.target.value);
+          onChange(asset ? { ...(value ?? createIconAssignment(toReference(asset))), asset: toReference(asset), enabled: true } : null);
+        }}>
+          <option value="">选择已有资源</option>
+          {assets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.assetId} · {formatBytes(asset.size)}</option>)}
+        </select>
+        <label className={`button${disabled ? " disabled" : ""}`}>{busy ? "上传中..." : "上传并分配"}<input className="visually-hidden-file" type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} onChange={(event) => { const file = event.target.files?.[0]; if (file) void onUpload(file); event.target.value = ""; }} /></label>
+        <button className="button site-settings-danger-button" type="button" disabled={disabled || !value} onClick={() => onChange(null)}>恢复默认</button>
+      </div>
+      {value && <SlotNumericControls value={value} disabled={disabled} onChange={(patch) => onChange({ ...value, ...patch })} />}
+    </article>
+  );
+}
+
+function ThemeDecorationEditor({
+  slot,
+  label,
+  value,
+  assets,
+  busy,
+  disabled,
+  onChange,
+  onUpload
+}: {
+  slot: ThemeDecorationSlot;
+  label: string;
+  value: SiteThemeDecorationSlot | null;
+  assets: ThemeAssetLibraryItem[];
+  busy: boolean;
+  disabled: boolean;
+  onChange: (value: SiteThemeDecorationSlot | null) => void;
+  onUpload: (file: File) => Promise<void>;
+}) {
+  const assetUrl = resolveSiteAssetUrl(value?.asset?.url);
+
+  return (
+    <article className="site-settings-slot-editor">
+      <div className="site-settings-slot-heading">
+        <div className="site-settings-slot-preview decoration">{assetUrl ? <img src={assetUrl} alt={`${label}当前预览`} style={buildSlotPreviewStyle(value)} /> : <span>None</span>}</div>
+        <div><strong>{label}</strong><small>{value?.asset ? value.asset.assetId : "不显示 Decoration"}</small></div>
+        <label className="site-settings-slot-enabled"><input type="checkbox" checked={Boolean(value?.enabled)} disabled={disabled || !value?.asset} onChange={(event) => value && onChange({ ...value, enabled: event.target.checked })} />启用</label>
+      </div>
+      <div className="site-settings-slot-actions">
+        <select value={value?.asset?.assetId ?? ""} disabled={disabled} onChange={(event) => {
+          const asset = assets.find((item) => item.assetId === event.target.value);
+          onChange(asset ? { ...(value ?? createDecorationAssignment(toReference(asset))), asset: toReference(asset), enabled: true } : null);
+        }}>
+          <option value="">选择已有资源</option>
+          {assets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.assetId} · {formatBytes(asset.size)}</option>)}
+        </select>
+        <label className={`button${disabled ? " disabled" : ""}`}>{busy ? "上传中..." : "上传并分配"}<input className="visually-hidden-file" type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} onChange={(event) => { const file = event.target.files?.[0]; if (file) void onUpload(file); event.target.value = ""; }} /></label>
+        <button className="button site-settings-danger-button" type="button" disabled={disabled || !value} onClick={() => onChange(null)}>移除 Override</button>
+      </div>
+      {value && <>
+        <SlotNumericControls value={value} disabled={disabled} onChange={(patch) => onChange({ ...value, ...patch })} />
+        <div className="site-settings-slot-options">
+          {slot !== "panelCorner" && <label>对齐<select value={value.alignment ?? "end"} disabled={disabled} onChange={(event) => onChange({ ...value, alignment: event.target.value as SiteThemeDecorationSlot["alignment"] })}><option value="start">Start</option><option value="center">Center</option><option value="end">End</option></select></label>}
+          {slot === "panelCorner" && <label>角落<select value={value.corner ?? "top-right"} disabled={disabled} onChange={(event) => onChange({ ...value, corner: event.target.value as SiteThemeDecorationSlot["corner"] })}><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-left">Bottom Left</option><option value="bottom-right">Bottom Right</option></select></label>}
+        </div>
+      </>}
+    </article>
+  );
+}
+
+function SlotNumericControls({ value, disabled, onChange }: { value: SiteThemeIconSlot; disabled: boolean; onChange: (patch: Partial<SiteThemeIconSlot>) => void }) {
+  return (
+    <div className="site-settings-slot-options">
+      <label>Opacity<input type="number" min={0} max={1} step={0.05} value={value.opacity ?? 1} disabled={disabled} onChange={(event) => onChange({ opacity: Number(event.target.value) })} /></label>
+      <label>Scale<input type="number" min={0.5} max={2} step={0.05} value={value.scale ?? 1} disabled={disabled} onChange={(event) => onChange({ scale: Number(event.target.value) })} /></label>
+      <label>Offset X<input type="number" min={-64} max={64} step={1} value={value.offsetX ?? 0} disabled={disabled} onChange={(event) => onChange({ offsetX: Number(event.target.value) })} /></label>
+      <label>Offset Y<input type="number" min={-64} max={64} step={1} value={value.offsetY ?? 0} disabled={disabled} onChange={(event) => onChange({ offsetY: Number(event.target.value) })} /></label>
+    </div>
+  );
+}
+
+function createIconAssignment(asset: ThemeAssetReference): SiteThemeIconSlot {
+  return { enabled: true, asset, opacity: 1, scale: 1, offsetX: 0, offsetY: 0 };
+}
+
+function createDecorationAssignment(asset: ThemeAssetReference): SiteThemeDecorationSlot {
+  return { ...createIconAssignment(asset), alignment: "end", corner: "top-right" };
+}
+
+function toReference(asset: ThemeAssetLibraryItem): ThemeAssetReference {
+  return { assetId: asset.assetId, url: asset.url };
+}
+
+function buildSlotPreviewStyle(value: SiteThemeIconSlot | SiteThemeDecorationSlot | null) {
+  return {
+    opacity: value?.opacity ?? 1,
+    transform: `translate(${value?.offsetX ?? 0}px, ${value?.offsetY ?? 0}px) scale(${value?.scale ?? 1})`
+  } as CSSProperties;
+}
+
+function formatBytes(size: number) {
+  return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
+}
+
+function getDraftAssetUsages(appearance: SiteAppearance, assetId: string) {
+  const usages: string[] = [];
+  if (appearance.background.asset?.assetId === assetId) usages.push("background");
+  if (appearance.panelSkin.backgroundTexture?.assetId === assetId) usages.push("panelBackground");
+  if (appearance.panelSkin.headerTexture?.assetId === assetId) usages.push("panelHeader");
+  if (appearance.panelSkin.borderTexture?.assetId === assetId) usages.push("panelBorder");
+  for (const [slot, assignment] of Object.entries(appearance.icons)) {
+    if (assignment?.asset?.assetId === assetId) usages.push(`icon:${slot}`);
+  }
+  for (const [slot, assignment] of Object.entries(appearance.decorations)) {
+    if (assignment?.asset?.assetId === assetId) usages.push(`decoration:${slot}`);
+  }
+  return usages;
 }
 
 function AppearanceTokenPreview({ theme, style }: { theme: SiteAppearanceTheme; style: CSSProperties }) {

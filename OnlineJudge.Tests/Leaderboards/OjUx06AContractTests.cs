@@ -4,8 +4,8 @@ public sealed class OjUx06AContractTests
 {
     public static TheoryData<string, string> RequiredContracts => new()
     {
-        { "frontend/src/AppLayout.tsx", "<NavLink to=\"/problems\">题目</NavLink>" },
-        { "frontend/src/AppLayout.tsx", "<NavLink to=\"/challenges\">挑战</NavLink>" },
+        { "frontend/src/AppLayout.tsx", "<NavLink to=\"/problems\"><ThemeIcon slot=\"problem\" />题目</NavLink>" },
+        { "frontend/src/AppLayout.tsx", "<NavLink to=\"/challenges\"><ThemeIcon slot=\"challenge\" />挑战</NavLink>" },
         { "frontend/src/AppLayout.tsx", "hasPublicLeaderboard" },
         { "frontend/src/AppLayout.tsx", "management-menu" },
         { "frontend/src/AppLayout.tsx", "内容管理" },

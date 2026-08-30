@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { getCurrentSeasonPublicSummary } from "./api/leaderboardsApi";
 import { canManageContent, isRoot, useAuth } from "./auth/AuthContext";
 import { SiteFooter } from "./components/SiteFooter";
+import { ThemeIcon } from "./components/ThemeIcon";
 import { ThemeQuickSwitch } from "./components/ThemeQuickSwitch";
 
 export function AppLayout() {
@@ -34,13 +35,13 @@ export function AppLayout() {
           <span>虚幻工作室网上答题平台</span>
         </NavLink>
         <nav className="nav-links" aria-label="Main navigation">
-          <NavLink to="/problems">题目</NavLink>
-          <NavLink to="/challenges">挑战</NavLink>
-          {(canManageContent(role) || hasPublicLeaderboard) && <NavLink to="/leaderboards">榜单</NavLink>}
-          {isAuthenticated && <NavLink to="/teams">战队</NavLink>}
-          {isAuthenticated && <NavLink to="/submissions/my">我的提交</NavLink>}
-          {isAuthenticated && <NavLink to="/help">帮助</NavLink>}
-          {isAuthenticated && <NavLink to="/profile/me">个人中心</NavLink>}
+          <NavLink to="/problems"><ThemeIcon slot="problem" />题目</NavLink>
+          <NavLink to="/challenges"><ThemeIcon slot="challenge" />挑战</NavLink>
+          {(canManageContent(role) || hasPublicLeaderboard) && <NavLink to="/leaderboards"><ThemeIcon slot="leaderboard" />榜单</NavLink>}
+          {isAuthenticated && <NavLink to="/teams"><ThemeIcon slot="team" />战队</NavLink>}
+          {isAuthenticated && <NavLink to="/submissions/my"><ThemeIcon slot="submission" />我的提交</NavLink>}
+          {isAuthenticated && <NavLink to="/help"><ThemeIcon slot="help" />帮助</NavLink>}
+          {isAuthenticated && <NavLink to="/profile/me"><ThemeIcon slot="profile" />个人中心</NavLink>}
           {canManageContent(role) && (
             <details className="management-menu">
               <summary>管理</summary>
@@ -48,8 +49,8 @@ export function AppLayout() {
                 <strong>内容管理</strong>
                 <NavLink to="/admin/problems">题目管理</NavLink>
                 <NavLink to="/admin/challenges">挑战管理</NavLink>
-                <strong>竞赛管理</strong>
-                <NavLink to="/admin/leaderboard-seasons">榜单管理</NavLink>
+                <strong><ThemeIcon slot="reward" />竞赛管理</strong>
+                <NavLink to="/admin/leaderboard-seasons"><ThemeIcon slot="season" />榜单管理</NavLink>
                 <NavLink to="/admin/teams">战队管理</NavLink>
                 {isRoot(role) && <strong>系统管理</strong>}
                 {isRoot(role) && <NavLink to="/admin/submissions">提交管理</NavLink>}

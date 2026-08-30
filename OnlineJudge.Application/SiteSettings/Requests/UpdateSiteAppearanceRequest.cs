@@ -11,4 +11,8 @@ public class UpdateSiteAppearanceRequest
     public SiteThemeBackgroundDto Background { get; set; } = new();
 
     public SitePanelSkinDto PanelSkin { get; set; } = new();
+
+    public Dictionary<string, SiteThemeIconSlotDto?> Icons { get; set; } = new();
+
+    public Dictionary<string, SiteThemeDecorationSlotDto?> Decorations { get; set; } = new();
 }

@@ -37,6 +37,8 @@ public class SiteSettingsServiceTests
         Assert.Null(result.Value.Background.Asset);
         Assert.False(result.Value.PanelSkin.Enabled);
         Assert.Null(result.Value.PanelSkin.BackgroundTexture);
+        Assert.Empty(result.Value.Icons);
+        Assert.Empty(result.Value.Decorations);
     }
 
     [Fact]
@@ -325,6 +327,97 @@ public class SiteSettingsServiceTests
         Assert.True(result.IsFailure);
     }
 
+    [Theory]
+    [InlineData("unknown", true)]
+    [InlineData("Problem", true)]
+    [InlineData("unknown", false)]
+    [InlineData("PageHeader", false)]
+    public async Task UpdateSiteAppearance_RejectsUnknownThemeSlots(string slot, bool icon)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        if (icon) request.Icons[slot] = null;
+        else request.Decorations[slot] = null;
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+        Assert.Contains("Unknown theme", result.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(-0.01, 1, 0, 0)]
+    [InlineData(1.01, 1, 0, 0)]
+    [InlineData(1, 0.49, 0, 0)]
+    [InlineData(1, 2.01, 0, 0)]
+    [InlineData(1, 1, -65, 0)]
+    [InlineData(1, 1, 0, 65)]
+    public async Task UpdateSiteAppearance_RejectsOutOfRangeSlotValues(double opacity, double scale, double offsetX, double offsetY)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        request.Icons["problem"] = new SiteThemeIconSlotDto { Opacity = opacity, Scale = scale, OffsetX = offsetX, OffsetY = offsetY };
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Theory]
+    [InlineData("left", "top-right")]
+    [InlineData("end", "center")]
+    public async Task UpdateSiteAppearance_RejectsUnsupportedDecorationPlacement(string alignment, string corner)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        request.Decorations["panelCorner"] = new SiteThemeDecorationSlotDto { Alignment = alignment, Corner = corner };
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Theory]
+    [InlineData("https://example.com/icon.png")]
+    [InlineData("/theme-assets/not-managed.png")]
+    public async Task UpdateSiteAppearance_RejectsRemoteOrUnmanagedSlotAsset(string url)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        request.Icons["problem"] = new SiteThemeIconSlotDto
+        {
+            Enabled = true,
+            Asset = new ThemeAssetReferenceDto { AssetId = "not-managed.png", Url = url }
+        };
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Fact]
+    public async Task Root_CanAssignOneAssetToMultipleSlotsAndPreserveExistingThemeNodes()
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        var assetId = $"{Guid.NewGuid():N}.webp";
+        var asset = new ThemeAssetReferenceDto { AssetId = assetId, Url = $"/theme-assets/{assetId}" };
+        request.Background = new SiteThemeBackgroundDto { Enabled = true, Asset = asset };
+        request.PanelSkin = new SitePanelSkinDto { Enabled = true, Radius = 10 };
+        request.Icons["problem"] = new SiteThemeIconSlotDto { Enabled = true, Asset = asset, Opacity = 0.9, Scale = 1.1 };
+        request.Icons["leaderboard"] = new SiteThemeIconSlotDto { Enabled = true, Asset = asset };
+        request.Decorations["pageHeader"] = new SiteThemeDecorationSlotDto { Enabled = true, Asset = asset, Alignment = "end", Corner = "top-right" };
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(assetId, result.Value!.Background.Asset!.AssetId);
+        Assert.True(result.Value.PanelSkin.Enabled);
+        Assert.Equal(assetId, result.Value.Icons["problem"]!.Asset!.AssetId);
+        Assert.Equal(assetId, result.Value.Icons["leaderboard"]!.Asset!.AssetId);
+        Assert.Equal(assetId, result.Value.Decorations["pageHeader"]!.Asset!.AssetId);
+    }
+
     [Fact]
     public async Task Root_CanSaveGenericThemeAndAuditContainsOnlySafeChangeMetadata()
     {
@@ -355,7 +448,7 @@ public class SiteSettingsServiceTests
         Assert.True(result.Value.PanelSkin.Enabled);
         var record = Assert.Single(audit.Records);
         Assert.Equal(SecurityAuditActions.SiteAppearanceUpdated, record.Action);
-        Assert.Equal(["backgroundEnabledChanged", "changedAssetSlots", "panelSkinEnabledChanged"], record.Metadata!.Keys.Order());
+        Assert.Equal(["backgroundEnabledChanged", "changedAssetSlots", "changedDecorationSlots", "changedIconSlots", "panelSkinEnabledChanged"], record.Metadata!.Keys.Order());
         Assert.DoesNotContain(assetId, string.Join('|', record.Metadata.Values), StringComparison.Ordinal);
     }
 

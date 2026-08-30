@@ -206,6 +206,92 @@ public sealed class GlobalAppearanceCoverageTests
     }
 
     [Fact]
+    public void ThemeSlotRegistries_AreCentralizedAndContainRequiredGenericSlots()
+    {
+        var registry = Read("frontend", "src", "theme", "themeSlots.ts");
+        var backendRegistry = Read("OnlineJudge.Application", "SiteSettings", "ThemeSlotKeys.cs");
+
+        foreach (var slot in new[] { "problem", "challenge", "leaderboard", "team", "submission", "help", "profile", "chat", "git", "season", "reward" })
+        {
+            Assert.Contains($"key: \"{slot}\"", registry, StringComparison.Ordinal);
+            Assert.Contains($"\"{slot}\"", backendRegistry, StringComparison.Ordinal);
+        }
+
+        foreach (var slot in new[] { "pageHeader", "cardHeader", "panelCorner", "emptyState" })
+        {
+            Assert.Contains($"key: \"{slot}\"", registry, StringComparison.Ordinal);
+            Assert.Contains($"\"{slot}\"", backendRegistry, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("Anime", registry, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ThemeIcon_PreservesDefaultRendererLayoutAndAccessibilityContract()
+    {
+        var component = Read("frontend", "src", "components", "ThemeIcon.tsx");
+        var layout = Read("frontend", "src", "AppLayout.tsx");
+        var styles = Styles();
+
+        Assert.Contains("return <>{fallback}</>", component, StringComparison.Ordinal);
+        Assert.Contains("availableThemeAssetUrls.has(url)", component, StringComparison.Ordinal);
+        Assert.Contains("aria-hidden=\"true\"", component, StringComparison.Ordinal);
+        Assert.Contains("object-fit: contain", styles, StringComparison.Ordinal);
+        Assert.Contains("width: 20px", styles, StringComparison.Ordinal);
+        Assert.Contains("<ThemeIcon slot=\"problem\" />题目", layout, StringComparison.Ordinal);
+        Assert.Contains("<ThemeIcon slot=\"help\" />帮助", layout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Decorations_AreSharedNonInteractiveLayersWithRequiredCoverage()
+    {
+        var context = Read("frontend", "src", "theme", "ThemeContext.tsx");
+        var styles = Styles();
+
+        Assert.Contains("buildDecorationStyle", context, StringComparison.Ordinal);
+        Assert.Contains("theme-decoration-page-header", styles, StringComparison.Ordinal);
+        Assert.Contains("theme-decoration-card-header", styles, StringComparison.Ordinal);
+        Assert.Contains("theme-decoration-panel-corner", styles, StringComparison.Ordinal);
+        Assert.Contains("theme-decoration-empty-state", styles, StringComparison.Ordinal);
+        Assert.Contains("pointer-events: none", styles, StringComparison.Ordinal);
+        Assert.Contains(".problem-content", styles, StringComparison.Ordinal);
+        Assert.Contains(".challenge-card", styles, StringComparison.Ordinal);
+        Assert.Contains(".team-chat-workspace", styles, StringComparison.Ordinal);
+        Assert.Contains(".leaderboard-v2-feature-card", styles, StringComparison.Ordinal);
+        Assert.Contains(".help-document-panel", styles, StringComparison.Ordinal);
+        Assert.Contains(".admin-panel", styles, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RootEditor_UsesOneAppearanceDraftForSlotsPickerReuseAndReset()
+    {
+        var page = Read("frontend", "src", "pages", "AdminSiteSettingsPage.tsx");
+        var api = Read("frontend", "src", "api", "siteSettingsApi.ts");
+
+        Assert.Contains("draftConfig.icons", page, StringComparison.Ordinal);
+        Assert.Contains("draftConfig.decorations", page, StringComparison.Ordinal);
+        Assert.Contains("Theme Asset Library", page, StringComparison.Ordinal);
+        Assert.Contains("listThemeAssets", page, StringComparison.Ordinal);
+        Assert.Contains("handleResetIcons", page, StringComparison.Ordinal);
+        Assert.Contains("handleResetDecorations", page, StringComparison.Ordinal);
+        Assert.Contains("...current, icons:", page, StringComparison.Ordinal);
+        Assert.Contains("...current, decorations:", page, StringComparison.Ordinal);
+        Assert.Contains("background:", api, StringComparison.Ordinal);
+        Assert.Contains("panelSkin:", api, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MissingSlotAssets_DoNotRenderBrokenImagesOrRetryLoops()
+    {
+        var component = Read("frontend", "src", "components", "ThemeIcon.tsx");
+        var context = Read("frontend", "src", "theme", "ThemeContext.tsx");
+
+        Assert.Contains("!availableThemeAssetUrls.has(url)", component, StringComparison.Ordinal);
+        Assert.Contains("image.onload", context, StringComparison.Ordinal);
+        Assert.DoesNotContain("setInterval", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CoverageLayer_DoesNotAddFixedPrimaryAccent()
     {
         Assert.DoesNotContain("#6e7bff", CoverageStyles(), StringComparison.OrdinalIgnoreCase);

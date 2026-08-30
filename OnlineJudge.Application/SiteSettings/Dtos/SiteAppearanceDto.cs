@@ -9,6 +9,10 @@ public class SiteAppearanceDto
     public SiteThemeBackgroundDto Background { get; set; } = new();
 
     public SitePanelSkinDto PanelSkin { get; set; } = new();
+
+    public Dictionary<string, SiteThemeIconSlotDto?> Icons { get; set; } = new();
+
+    public Dictionary<string, SiteThemeDecorationSlotDto?> Decorations { get; set; } = new();
 }
 
 public class SiteThemeBackgroundDto
@@ -67,6 +71,33 @@ public class ThemeAssetDto : ThemeAssetReferenceDto
     public string ContentType { get; set; } = string.Empty;
 
     public long Size { get; set; }
+}
+
+public class ThemeAssetLibraryItemDto : ThemeAssetDto
+{
+    public IReadOnlyList<string> UsedBy { get; set; } = [];
+}
+
+public class SiteThemeIconSlotDto
+{
+    public bool Enabled { get; set; }
+
+    public ThemeAssetReferenceDto? Asset { get; set; }
+
+    public double? Opacity { get; set; }
+
+    public double? Scale { get; set; }
+
+    public double? OffsetX { get; set; }
+
+    public double? OffsetY { get; set; }
+}
+
+public class SiteThemeDecorationSlotDto : SiteThemeIconSlotDto
+{
+    public string? Alignment { get; set; }
+
+    public string? Corner { get; set; }
 }
 
 public class SiteAppearanceThemeDto

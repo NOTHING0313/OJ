@@ -14,6 +14,23 @@ public sealed class ThemeAssetsController(IThemeAssetService themeAssetService, 
     private const long MaxFileSize = 5L * 1024 * 1024;
     private const long MaxRequestSize = MaxFileSize + 1024 * 1024;
 
+    [HttpGet]
+    public async Task<IActionResult> List(CancellationToken cancellationToken)
+    {
+        if (currentUser.Role is not { } role)
+        {
+            return Unauthorized();
+        }
+
+        var result = await themeAssetService.ListAsync(role, cancellationToken);
+        if (result.IsFailure)
+        {
+            return result.ErrorMessage == "Forbidden." ? Forbid() : BadRequest(result.ErrorMessage);
+        }
+
+        return Ok(result.Value);
+    }
+
     [RiskRateLimit(RateLimitPolicies.Upload)]
     [HttpPost]
     [Consumes("multipart/form-data")]

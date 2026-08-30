@@ -16,6 +16,41 @@ public sealed class ThemeAssetService(
 {
     private const string AssetUrlPrefix = "/theme-assets/";
 
+    public async Task<Result<IReadOnlyList<ThemeAssetLibraryItemDto>>> ListAsync(UserRole currentUserRole, CancellationToken cancellationToken = default)
+    {
+        if (currentUserRole != UserRole.Root)
+        {
+            return Result<IReadOnlyList<ThemeAssetLibraryItemDto>>.Failure("Forbidden.");
+        }
+
+        var appearance = await siteSettingsService.GetAppearanceAsync(cancellationToken);
+        if (appearance.IsFailure || appearance.Value is null)
+        {
+            return Result<IReadOnlyList<ThemeAssetLibraryItemDto>>.Failure("Theme appearance could not be read.");
+        }
+
+        if (!Directory.Exists(storagePaths.ThemeAssetsRoot))
+        {
+            return Result<IReadOnlyList<ThemeAssetLibraryItemDto>>.Success([]);
+        }
+
+        var assets = Directory.EnumerateFiles(storagePaths.ThemeAssetsRoot, "*", SearchOption.TopDirectoryOnly)
+            .Select(path => new FileInfo(path))
+            .Where(file => IsManagedAssetId(file.Name))
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Select(file => new ThemeAssetLibraryItemDto
+            {
+                AssetId = file.Name,
+                Url = AssetUrlPrefix + file.Name,
+                ContentType = GetContentType(file.Extension.ToLowerInvariant()),
+                Size = file.Length,
+                UsedBy = GetReferences(appearance.Value, file.Name)
+            })
+            .ToArray();
+
+        return Result<IReadOnlyList<ThemeAssetLibraryItemDto>>.Success(assets);
+    }
+
     public async Task<Result<ThemeAssetDto>> UploadAsync(UserRole currentUserRole, string originalFileName, string declaredContentType, long declaredLength, Stream content, CancellationToken cancellationToken = default)
     {
         if (currentUserRole != UserRole.Root)
@@ -75,7 +110,7 @@ public sealed class ThemeAssetService(
             return Result.Failure("Theme appearance could not be read.");
         }
 
-        if (IsReferenced(appearance.Value, assetId))
+        if (GetReferences(appearance.Value, assetId).Count > 0)
         {
             return Result.Failure("Theme asset is currently referenced.");
         }
@@ -88,12 +123,33 @@ public sealed class ThemeAssetService(
         return Result.Success();
     }
 
-    private static bool IsReferenced(SiteAppearanceDto appearance, string assetId)
+    private static IReadOnlyList<string> GetReferences(SiteAppearanceDto appearance, string assetId)
     {
-        return string.Equals(appearance.Background.Asset?.AssetId, assetId, StringComparison.Ordinal)
-            || string.Equals(appearance.PanelSkin.BackgroundTexture?.AssetId, assetId, StringComparison.Ordinal)
-            || string.Equals(appearance.PanelSkin.HeaderTexture?.AssetId, assetId, StringComparison.Ordinal)
-            || string.Equals(appearance.PanelSkin.BorderTexture?.AssetId, assetId, StringComparison.Ordinal);
+        var references = new List<string>();
+        AddReference(references, "background", appearance.Background.Asset, assetId);
+        AddReference(references, "panelBackground", appearance.PanelSkin.BackgroundTexture, assetId);
+        AddReference(references, "panelHeader", appearance.PanelSkin.HeaderTexture, assetId);
+        AddReference(references, "panelBorder", appearance.PanelSkin.BorderTexture, assetId);
+
+        foreach (var (slot, assignment) in appearance.Icons)
+        {
+            AddReference(references, $"icon:{slot}", assignment?.Asset, assetId);
+        }
+
+        foreach (var (slot, assignment) in appearance.Decorations)
+        {
+            AddReference(references, $"decoration:{slot}", assignment?.Asset, assetId);
+        }
+
+        return references;
+    }
+
+    private static void AddReference(ICollection<string> references, string slot, ThemeAssetReferenceDto? asset, string assetId)
+    {
+        if (string.Equals(asset?.AssetId, assetId, StringComparison.Ordinal))
+        {
+            references.Add(slot);
+        }
     }
 
     private static bool IsManagedAssetId(string assetId)

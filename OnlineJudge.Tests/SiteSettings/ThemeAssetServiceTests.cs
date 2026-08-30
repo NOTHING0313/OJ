@@ -49,6 +49,19 @@ public sealed class ThemeAssetServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData(UserRole.Answerer)]
+    [InlineData(UserRole.ProblemSetter)]
+    public async Task NonRootAssetLibrary_IsForbidden(UserRole role)
+    {
+        await using var db = CreateDb();
+        var (service, _) = CreateService(db);
+
+        var result = await service.ListAsync(role);
+
+        Assert.Equal("Forbidden.", result.ErrorMessage);
+    }
+
+    [Theory]
     [InlineData("theme.svg", "image/svg+xml")]
     [InlineData("theme.png", "image/png")]
     public async Task Upload_RejectsSvgAndForgedImages(string fileName, string contentType)
@@ -113,6 +126,55 @@ public sealed class ThemeAssetServiceTests : IDisposable
 
         Assert.Equal("Theme asset is currently referenced.", result.ErrorMessage);
         Assert.True(File.Exists(paths.ResolveThemeAssetPath(assetId)));
+    }
+
+    [Fact]
+    public async Task AssetLibrary_ReportsMultiSlotReuseAndDeleteRemainsProtected()
+    {
+        await using var db = CreateDb();
+        var (service, paths, appearanceService) = CreateServiceWithAppearance(db);
+        var assetId = $"{Guid.NewGuid():N}.webp";
+        Directory.CreateDirectory(paths.ThemeAssetsRoot);
+        await File.WriteAllBytesAsync(paths.ResolveThemeAssetPath(assetId), WebP());
+        var asset = new ThemeAssetReferenceDto { AssetId = assetId, Url = $"/theme-assets/{assetId}" };
+        var request = new UpdateSiteAppearanceRequest
+        {
+            Icons = new Dictionary<string, SiteThemeIconSlotDto?>
+            {
+                ["problem"] = new() { Enabled = true, Asset = asset },
+                ["leaderboard"] = new() { Enabled = true, Asset = asset }
+            },
+            Decorations = new Dictionary<string, SiteThemeDecorationSlotDto?>
+            {
+                ["pageHeader"] = new() { Enabled = true, Asset = asset, Alignment = "end" }
+            }
+        };
+
+        Assert.True((await appearanceService.UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root)).IsSuccess);
+        var library = await service.ListAsync(UserRole.Root);
+        var item = Assert.Single(library.Value!);
+
+        Assert.Equal(assetId, item.AssetId);
+        Assert.Equal(["icon:problem", "icon:leaderboard", "decoration:pageHeader"], item.UsedBy);
+        Assert.Equal("Theme asset is currently referenced.", (await service.DeleteAsync(UserRole.Root, assetId)).ErrorMessage);
+    }
+
+    [Fact]
+    public async Task AssetLibrary_ExcludesNonManagedFilesAndReturnsNoDiskPath()
+    {
+        await using var db = CreateDb();
+        var (service, paths) = CreateService(db);
+        Directory.CreateDirectory(paths.ThemeAssetsRoot);
+        var assetId = $"{Guid.NewGuid():N}.png";
+        await File.WriteAllBytesAsync(paths.ResolveThemeAssetPath(assetId), Png());
+        await File.WriteAllTextAsync(Path.Combine(paths.ThemeAssetsRoot, "notes.txt"), "not an asset");
+
+        var result = await service.ListAsync(UserRole.Root);
+
+        var asset = Assert.Single(result.Value!);
+        Assert.Equal(assetId, asset.AssetId);
+        Assert.Empty(asset.UsedBy);
+        Assert.DoesNotContain(paths.ThemeAssetsRoot, System.Text.Json.JsonSerializer.Serialize(asset), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

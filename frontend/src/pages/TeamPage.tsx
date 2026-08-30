@@ -9,6 +9,7 @@ import {
   type TeamInvitationDto, type TeamProjectAuditDto, type TeamProjectDto
 } from "../api/teamsApi";
 import { useAuth } from "../auth/AuthContext";
+import { ThemeIcon } from "../components/ThemeIcon";
 
 const MAX_CHAT_LENGTH = 2000;
 
@@ -329,7 +330,7 @@ export function TeamPage() {
       {error && <div className="alert error">{error}</div>}
       <div className="team-workspace-layout">
         <main className="team-chat-workspace">
-          <nav className="team-workspace-tabs" aria-label="战队工作区"><button className="active" type="button">聊天</button>{team.projects.map((project) => <button key={project.id} type="button" onClick={() => navigate(`/teams/${team.id}/projects/${project.id}/history`)}>{project.name}</button>)}</nav>
+          <nav className="team-workspace-tabs" aria-label="战队工作区"><button className="active" type="button"><ThemeIcon slot="chat" />聊天</button>{team.projects.map((project) => <button key={project.id} type="button" onClick={() => navigate(`/teams/${team.id}/projects/${project.id}/history`)}><ThemeIcon slot="git" />{project.name}</button>)}</nav>
           {announcements.length > 0 && <div className="team-announcements">{announcements.map((announcement) => <button key={announcement.challengeId} type="button" onClick={() => navigate(`/challenges/${announcement.challengeId}`)}><span><small>挑战</small><strong>{announcement.title}</strong></span><span><b>{announcementStatus(announcement.status)}</b><small>截止 {new Date(announcement.endAt).toLocaleString()}</small></span><em>查看挑战</em></button>)}</div>}
           <div className="team-chat-viewport" ref={chatViewportRef} onScroll={handleChatScroll}>
             {chatHasMore && <button className="team-load-history" type="button" onClick={() => void loadOlderMessages()}>加载更早消息</button>}

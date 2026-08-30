@@ -30,7 +30,7 @@ public class HelpCenterFrontendContractTests
         Assert.Contains("path=\"/help/:slug\"", main, StringComparison.Ordinal);
         Assert.Contains("path=\"/help/manage\"", main, StringComparison.Ordinal);
         Assert.Contains("allowedRoles={[2, 3]}", main, StringComparison.Ordinal);
-        Assert.Contains("to=\"/help\">帮助", layout, StringComparison.Ordinal);
+        Assert.Contains("to=\"/help\"><ThemeIcon slot=\"help\" />帮助", layout, StringComparison.Ordinal);
         Assert.Contains("canManage && <Link className=\"button\" to=\"/help/manage\">文档管理</Link>", reader, StringComparison.Ordinal);
     }
 

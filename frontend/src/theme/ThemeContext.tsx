@@ -15,6 +15,7 @@ import {
   type SitePageBackground,
   type SitePageKey
 } from "../api/siteSettingsApi";
+import { themeDecorationSlotOptions } from "./themeSlots";
 
 export type ThemeName = "default" | "mystic-background";
 
@@ -27,6 +28,7 @@ interface ThemeContextValue {
   activePageKey: SitePageKey;
   activeBackground: SitePageBackground | null;
   effectiveBackground: EffectiveBackground | null;
+  availableThemeAssetUrls: ReadonlySet<string>;
   reloadSiteAppearance: () => Promise<void>;
   reloadUserAppearance: () => Promise<void>;
   updateUserAppearanceLocal: (appearance: UserAppearance | null) => void;
@@ -111,6 +113,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const panelBackgroundUrl = useAvailableAssetUrl(siteAppearance.panelSkin.enabled ? siteAppearance.panelSkin.backgroundTexture?.url : null);
   const panelHeaderUrl = useAvailableAssetUrl(siteAppearance.panelSkin.enabled ? siteAppearance.panelSkin.headerTexture?.url : null);
   const panelBorderUrl = useAvailableAssetUrl(siteAppearance.panelSkin.enabled ? siteAppearance.panelSkin.borderTexture?.url : null);
+  const slotAssetUrls = useMemo(() => [
+    ...Object.values(siteAppearance.icons),
+    ...Object.values(siteAppearance.decorations)
+  ].flatMap((slot) => slot?.enabled && slot.asset?.url ? [slot.asset.url] : []), [siteAppearance.icons, siteAppearance.decorations]);
+  const availableThemeAssetUrls = useAvailableAssetUrls(slotAssetUrls);
   const usesGenericBackground = Boolean(genericBackgroundUrl && siteAppearance.background.enabled);
   const effectiveBackground = usesGenericBackground ? null : legacyBackground;
   const activeBackground = effectiveBackground;
@@ -133,10 +140,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         "--oj-nav-active": siteAppearance.theme.navActiveColor,
         "--oj-font-family": resolveFontFamily(siteAppearance.theme.fontPreset)
       } : {}),
-    ...buildPanelSkinStyle(siteAppearance.panelSkin, panelBackgroundUrl, panelHeaderUrl, panelBorderUrl)
+    ...buildPanelSkinStyle(siteAppearance.panelSkin, panelBackgroundUrl, panelHeaderUrl, panelBorderUrl),
+    ...buildDecorationStyle(siteAppearance, availableThemeAssetUrls)
   } as CSSProperties;
   const panelSkinActive = siteAppearance.panelSkin.enabled && hasPanelSkinStyle(siteAppearance.panelSkin, panelBackgroundUrl, panelHeaderUrl, panelBorderUrl);
   const panelSkinClassName = buildPanelSkinClassName(siteAppearance.panelSkin, panelBackgroundUrl, panelHeaderUrl, panelBorderUrl);
+  const decorationClassName = buildDecorationClassName(siteAppearance, availableThemeAssetUrls);
 
   const value = useMemo<ThemeContextValue>(() => ({
     currentTheme,
@@ -147,15 +156,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     activePageKey,
     activeBackground,
     effectiveBackground,
+    availableThemeAssetUrls,
     reloadSiteAppearance,
     reloadUserAppearance,
     updateUserAppearanceLocal: setUserAppearance
-  }), [currentTheme, siteAppearance, userAppearance, activePageKey, activeBackground, effectiveBackground]);
+  }), [currentTheme, siteAppearance, userAppearance, activePageKey, activeBackground, effectiveBackground, availableThemeAssetUrls]);
 
   return (
     <ThemeContext.Provider value={value}>
       <AppBackground pathname={location.pathname} hasCustomWallpaper={Boolean(backgroundUrl && (usesGenericBackground || effectiveBackground))} />
-      <div className={`site-theme-content${usesGenericBackground ? " theme-generic-background-active" : ""}${panelSkinActive ? ` ${panelSkinClassName}` : ""}`} style={Object.keys(contentStyle).length > 0 ? contentStyle : undefined}>
+      <div className={`site-theme-content${usesGenericBackground ? " theme-generic-background-active" : ""}${panelSkinActive ? ` ${panelSkinClassName}` : ""}${decorationClassName ? ` ${decorationClassName}` : ""}`} style={Object.keys(contentStyle).length > 0 ? contentStyle : undefined}>
         {backgroundUrl && (usesGenericBackground || effectiveBackground) && (
           <div className="site-theme-background">
             <div
@@ -203,6 +213,40 @@ function useAvailableAssetUrl(url: string | null | undefined) {
   return available;
 }
 
+function useAvailableAssetUrls(urls: string[]) {
+  const key = [...new Set(urls.map((url) => resolveSiteAssetUrl(url)).filter(Boolean))].sort().join("|");
+  const [available, setAvailable] = useState<ReadonlySet<string>>(() => new Set());
+
+  useEffect(() => {
+    const resolvedUrls = key ? key.split("|") : [];
+    if (resolvedUrls.length === 0) {
+      setAvailable(new Set());
+      return;
+    }
+
+    let active = true;
+    const next = new Set<string>();
+    const images = resolvedUrls.map((url) => {
+      const image = new Image();
+      image.onload = () => {
+        if (!active) return;
+        next.add(url);
+        setAvailable(new Set(next));
+      };
+      image.src = url;
+      return image;
+    });
+
+    setAvailable(new Set());
+    return () => {
+      active = false;
+      for (const image of images) image.onload = null;
+    };
+  }, [key]);
+
+  return available;
+}
+
 function buildGenericBackgroundStyle(appearance: SiteAppearance) {
   const background = appearance.background;
   const style: CSSProperties = {
@@ -243,6 +287,43 @@ function buildPanelSkinClassName(panelSkin: SitePanelSkin, backgroundUrl?: strin
   if (panelSkin.radius != null) classes.push("theme-panel-radius");
   if (panelSkin.shadowStrength != null) classes.push("theme-panel-shadow");
   return classes.join(" ");
+}
+
+function buildDecorationStyle(appearance: SiteAppearance, availableUrls: ReadonlySet<string>) {
+  const style: Record<string, string> = {};
+  for (const { key } of themeDecorationSlotOptions) {
+    const slot = appearance.decorations[key];
+    const url = resolveSiteAssetUrl(slot?.asset?.url);
+    if (!slot?.enabled || !url || !availableUrls.has(url)) continue;
+    const cssKey = toKebabCase(key);
+    style[`--theme-decoration-${cssKey}-image`] = `url("${url}")`;
+    style[`--theme-decoration-${cssKey}-opacity`] = String(slot.opacity ?? 1);
+    style[`--theme-decoration-${cssKey}-scale`] = String(slot.scale ?? 1);
+    style[`--theme-decoration-${cssKey}-offset-x`] = `${slot.offsetX ?? 0}px`;
+    style[`--theme-decoration-${cssKey}-offset-y`] = `${slot.offsetY ?? 0}px`;
+    if (key !== "panelCorner") {
+      const alignment = slot.alignment ?? "end";
+      style[`--theme-decoration-${cssKey}-anchor`] = alignment === "start" ? "0%" : alignment === "center" ? "50%" : "100%";
+      style[`--theme-decoration-${cssKey}-translate`] = alignment === "start" ? "0%" : alignment === "center" ? "-50%" : "-100%";
+    }
+  }
+  return style;
+}
+
+function buildDecorationClassName(appearance: SiteAppearance, availableUrls: ReadonlySet<string>) {
+  const classes: string[] = [];
+  for (const { key } of themeDecorationSlotOptions) {
+    const slot = appearance.decorations[key];
+    const url = resolveSiteAssetUrl(slot?.asset?.url);
+    if (!slot?.enabled || !url || !availableUrls.has(url)) continue;
+    classes.push(`theme-decoration-${toKebabCase(key)}`);
+    if (key === "panelCorner") classes.push(`theme-decoration-panel-corner-${slot.corner ?? "top-right"}`);
+  }
+  return classes.join(" ");
+}
+
+function toKebabCase(value: string) {
+  return value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
 
 export function useTheme() {
