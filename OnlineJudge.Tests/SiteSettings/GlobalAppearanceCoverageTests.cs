@@ -275,7 +275,7 @@ public sealed class GlobalAppearanceCoverageTests
         Assert.Contains("history.present", page, StringComparison.Ordinal);
         Assert.Contains("draft.icons", page, StringComparison.Ordinal);
         Assert.Contains("draft.decorations", page, StringComparison.Ordinal);
-        Assert.Contains("Theme Asset Library", page, StringComparison.Ordinal);
+        Assert.Contains("主题素材库", page, StringComparison.Ordinal);
         Assert.Contains("listThemeAssets", page, StringComparison.Ordinal);
         Assert.Contains("resetThemeSurface", page, StringComparison.Ordinal);
         Assert.Contains("createDefaultSiteAppearance", page, StringComparison.Ordinal);
@@ -362,7 +362,7 @@ public sealed class GlobalAppearanceCoverageTests
         {
             Assert.Contains(marker, model, StringComparison.Ordinal);
         }
-        foreach (var marker in new[] { "Unsaved Changes", "Current Saved", "Default", "Save & Apply", "Reset Section", "Reset Entire Theme" })
+        foreach (var marker in new[] { "有未保存修改", "已保存版本", "系统默认", "保存并应用全站", "恢复当前区域默认值", "恢复整个默认主题" })
         {
             Assert.Contains(marker, workbench, StringComparison.Ordinal);
         }
@@ -376,15 +376,15 @@ public sealed class GlobalAppearanceCoverageTests
     {
         var workbench = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
 
-        Assert.Contains("Property Inspector", workbench, StringComparison.Ordinal);
+        Assert.Contains("aria-label=\"属性设置\"", workbench, StringComparison.Ordinal);
         Assert.Contains("type=\"range\"", workbench, StringComparison.Ordinal);
         Assert.Contains("type=\"number\"", workbench, StringComparison.Ordinal);
         Assert.Contains("type=\"color\"", workbench, StringComparison.Ordinal);
         Assert.Contains("#RRGGBB", workbench, StringComparison.Ordinal);
         Assert.Contains("onDrop", workbench, StringComparison.Ordinal);
         Assert.Contains("uploadThemeAsset", workbench, StringComparison.Ordinal);
-        Assert.Contains("SecureUploadValidator", workbench, StringComparison.Ordinal);
-        Assert.Contains("Used By", workbench, StringComparison.Ordinal);
+        Assert.Contains("服务器会进行安全检查", workbench, StringComparison.Ordinal);
+        Assert.Contains("引用位置", workbench, StringComparison.Ordinal);
     }
 
     [Fact]
