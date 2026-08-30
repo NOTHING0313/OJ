@@ -46,4 +46,6 @@ Upload or save failure leaves the active appearance unchanged. Missing/deleted a
 
 ## Future extension
 
-Mascot support is deferred to THEME-10G. Presets and import/export are deferred to THEME-10H. Both must reuse the same Root authority, secure asset reference, persistence, audit, and exact-default fallback contracts; custom CSS, JavaScript, and HTML remain outside the Theme contract.
+The visual editor is a Root-only management workbench over this same contract; its preview, selection, comparison, and undo history are local session state and are never persisted. See `visual-theme-editor.md`.
+
+There is no mascot, Live2D, Spine, mouse-follow character, or mascot asset-slot requirement. Presets and import/export remain separate future work. Any later extension must reuse the same Root authority, secure asset reference, persistence, audit, and exact-default fallback contracts; custom CSS, JavaScript, and HTML remain outside the Theme contract.

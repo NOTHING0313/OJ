@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./AppLayout";
@@ -8,7 +8,6 @@ import { AdminChallengeEditorPage } from "./pages/AdminChallengeEditorPage";
 import { AdminChallengeListPage } from "./pages/AdminChallengeListPage";
 import { AdminChallengeTaskEditorPage } from "./pages/AdminChallengeTaskEditorPage";
 import { AdminSubmissionsPage } from "./pages/AdminSubmissionsPage";
-import { AdminSiteSettingsPage } from "./pages/AdminSiteSettingsPage";
 import { AdminProblemEditorPage } from "./pages/AdminProblemEditorPage";
 import { AdminProblemListPage } from "./pages/AdminProblemListPage";
 import { AdminTestCaseEditorPage } from "./pages/AdminTestCaseEditorPage";
@@ -49,6 +48,8 @@ import { HelpCenterPage } from "./pages/HelpCenterPage";
 import { HelpDocumentManagePage } from "./pages/HelpDocumentManagePage";
 import { HelpDocumentEditorPage } from "./pages/HelpDocumentEditorPage";
 import "./styles.css";
+
+const AdminSiteSettingsPage = lazy(() => import("./pages/AdminSiteSettingsPage"));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -265,7 +266,9 @@ createRoot(document.getElementById("root")!).render(
               path="/admin/site-settings"
               element={(
                 <ProtectedRoute allowedRoles={[3]}>
-                  <AdminSiteSettingsPage />
+                  <Suspense fallback={<div className="state-line">正在加载 Visual Theme Editor...</div>}>
+                    <AdminSiteSettingsPage />
+                  </Suspense>
                 </ProtectedRoute>
               )}
             />

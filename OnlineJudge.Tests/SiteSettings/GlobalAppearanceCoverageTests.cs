@@ -101,23 +101,26 @@ public sealed class GlobalAppearanceCoverageTests
     }
 
     [Theory]
-    [InlineData("Button")]
-    [InlineData("Input")]
-    [InlineData("Card")]
-    [InlineData("Table")]
-    [InlineData("Badge")]
-    [InlineData("Toggle preview")]
-    [InlineData("Link")]
-    [InlineData("const themed = true;")]
+    [InlineData("theme-editor-preview-nav")]
+    [InlineData("page-header")]
+    [InlineData("content-block")]
+    [InlineData("button")]
+    [InlineData("input")]
+    [InlineData("theme-editor-badge")]
+    [InlineData("table")]
+    [InlineData("<code>")]
+    [InlineData("empty-state")]
+    [InlineData("DraftIcon")]
+    [InlineData("decoration.pageHeader")]
     public void AppearancePreview_CoversRepresentativeComponents(string marker)
     {
-        Assert.Contains(marker, Read("frontend", "src", "pages", "AdminSiteSettingsPage.tsx"), StringComparison.Ordinal);
+        Assert.Contains(marker, Read("frontend", "src", "components", "theme-editor", "ThemeEditorPreview.tsx"), StringComparison.Ordinal);
     }
 
     [Fact]
     public void AppearancePreview_WarnsAboutLowContrast()
     {
-        var page = Read("frontend", "src", "pages", "AdminSiteSettingsPage.tsx");
+        var page = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
 
         Assert.Contains("getContrastWarnings", page, StringComparison.Ordinal);
         Assert.Contains("contrastRatio", page, StringComparison.Ordinal);
@@ -137,7 +140,7 @@ public sealed class GlobalAppearanceCoverageTests
     [Fact]
     public void SavedTheme_PropagatesWithoutPageReload()
     {
-        var page = Read("frontend", "src", "pages", "AdminSiteSettingsPage.tsx");
+        var page = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
 
         Assert.Contains("await reloadSiteAppearance()", page, StringComparison.Ordinal);
         Assert.DoesNotContain("window.location.reload", page, StringComparison.Ordinal);
@@ -192,14 +195,14 @@ public sealed class GlobalAppearanceCoverageTests
     [Fact]
     public void RootEditor_UsesLocalDraftUploadPreviewSaveDiscardAndDefaultReset()
     {
-        var page = Read("frontend", "src", "pages", "AdminSiteSettingsPage.tsx");
+        var page = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
         var api = Read("frontend", "src", "api", "siteSettingsApi.ts");
 
         Assert.Contains("uploadThemeAsset", page, StringComparison.Ordinal);
-        Assert.Contains("BackgroundPreview", page, StringComparison.Ordinal);
+        Assert.Contains("ThemeEditorPreview", page, StringComparison.Ordinal);
         Assert.Contains("handleDiscard", page, StringComparison.Ordinal);
-        Assert.Contains("handleResetGenericBackground", page, StringComparison.Ordinal);
-        Assert.Contains("handleResetPanelSkin", page, StringComparison.Ordinal);
+        Assert.Contains("handleResetSection", page, StringComparison.Ordinal);
+        Assert.Contains("handleResetAll", page, StringComparison.Ordinal);
         Assert.Contains("/api/site-settings/theme-assets", api, StringComparison.Ordinal);
         Assert.DoesNotContain("http://", api, StringComparison.Ordinal);
         Assert.DoesNotContain("https://", api, StringComparison.Ordinal);
@@ -265,19 +268,161 @@ public sealed class GlobalAppearanceCoverageTests
     [Fact]
     public void RootEditor_UsesOneAppearanceDraftForSlotsPickerReuseAndReset()
     {
-        var page = Read("frontend", "src", "pages", "AdminSiteSettingsPage.tsx");
+        var page = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
+        var model = Read("frontend", "src", "components", "theme-editor", "themeEditorModel.ts");
         var api = Read("frontend", "src", "api", "siteSettingsApi.ts");
 
-        Assert.Contains("draftConfig.icons", page, StringComparison.Ordinal);
-        Assert.Contains("draftConfig.decorations", page, StringComparison.Ordinal);
+        Assert.Contains("history.present", page, StringComparison.Ordinal);
+        Assert.Contains("draft.icons", page, StringComparison.Ordinal);
+        Assert.Contains("draft.decorations", page, StringComparison.Ordinal);
         Assert.Contains("Theme Asset Library", page, StringComparison.Ordinal);
         Assert.Contains("listThemeAssets", page, StringComparison.Ordinal);
-        Assert.Contains("handleResetIcons", page, StringComparison.Ordinal);
-        Assert.Contains("handleResetDecorations", page, StringComparison.Ordinal);
-        Assert.Contains("...current, icons:", page, StringComparison.Ordinal);
-        Assert.Contains("...current, decorations:", page, StringComparison.Ordinal);
+        Assert.Contains("resetThemeSurface", page, StringComparison.Ordinal);
+        Assert.Contains("createDefaultSiteAppearance", page, StringComparison.Ordinal);
+        Assert.Contains("ThemeEditorHistoryLimit = 50", model, StringComparison.Ordinal);
         Assert.Contains("background:", api, StringComparison.Ordinal);
         Assert.Contains("panelSkin:", api, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("login")]
+    [InlineData("problem")]
+    [InlineData("challenge")]
+    [InlineData("team")]
+    [InlineData("leaderboard")]
+    [InlineData("season")]
+    [InlineData("help")]
+    [InlineData("account")]
+    [InlineData("security-audit")]
+    public void VisualEditor_PageSelectorUsesSyntheticControlledSamples(string page)
+    {
+        var model = Read("frontend", "src", "components", "theme-editor", "themeEditorModel.ts");
+        var preview = Read("frontend", "src", "components", "theme-editor", "ThemeEditorPreview.tsx");
+
+        Assert.Contains($"key: \"{page}\"", model, StringComparison.Ordinal);
+        Assert.DoesNotContain("fetch(", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("iframe", preview, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("desktop", "1120")]
+    [InlineData("tablet", "768")]
+    [InlineData("mobile", "375")]
+    public void VisualEditor_ViewportPresetsChangeCanvasWidthOnly(string viewport, string width)
+    {
+        var model = Read("frontend", "src", "components", "theme-editor", "themeEditorModel.ts");
+
+        Assert.Contains($"key: \"{viewport}\"", model, StringComparison.Ordinal);
+        Assert.Contains($"width: {width}", model, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("global.background")]
+    [InlineData("global.colors")]
+    [InlineData("page.background")]
+    [InlineData("panel.primary")]
+    [InlineData("panel.header")]
+    [InlineData("panel.border")]
+    [InlineData("icon.problem")]
+    [InlineData("decoration.pageHeader")]
+    [InlineData("decoration.cardHeader")]
+    [InlineData("decoration.panelCorner")]
+    [InlineData("decoration.emptyState")]
+    public void VisualEditor_SurfaceRegistryIsControlledAndSearchable(string surface)
+    {
+        var model = Read("frontend", "src", "components", "theme-editor", "themeEditorModel.ts");
+        var workbench = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
+
+        if (surface.StartsWith("icon.", StringComparison.Ordinal))
+        {
+            Assert.Contains("id: `icon.${key}`", model, StringComparison.Ordinal);
+            Assert.Contains($"key: \"{surface["icon.".Length..]}\"", Read("frontend", "src", "theme", "themeSlots.ts"), StringComparison.Ordinal);
+        }
+        else if (surface.StartsWith("decoration.", StringComparison.Ordinal))
+        {
+            Assert.Contains("id: `decoration.${key}`", model, StringComparison.Ordinal);
+            Assert.Contains($"key: \"{surface["decoration.".Length..]}\"", Read("frontend", "src", "theme", "themeSlots.ts"), StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Contains(surface, model, StringComparison.Ordinal);
+        }
+        Assert.Contains("surfaceSearch", workbench, StringComparison.Ordinal);
+        Assert.DoesNotContain("XPath", model, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("querySelector", model, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VisualEditor_HistoryCompareDirtySaveDiscardAndResetRemainLocalUntilSave()
+    {
+        var model = Read("frontend", "src", "components", "theme-editor", "themeEditorModel.ts");
+        var workbench = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
+
+        foreach (var marker in new[] { "undo", "redo", "begin-gesture", "end-gesture", "gestureStart", "discard", "save-success", "ThemeEditorHistoryLimit = 50" })
+        {
+            Assert.Contains(marker, model, StringComparison.Ordinal);
+        }
+        foreach (var marker in new[] { "Unsaved Changes", "Current Saved", "Default", "Save & Apply", "Reset Section", "Reset Entire Theme" })
+        {
+            Assert.Contains(marker, workbench, StringComparison.Ordinal);
+        }
+        Assert.Equal(1, Count(workbench, "updateSiteAppearance("));
+        Assert.DoesNotContain("localStorage", model, StringComparison.Ordinal);
+        Assert.DoesNotContain("localStorage", workbench, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VisualEditor_PropertyInspectorProvidesAccessiblePairedControlsAndSecureAssetDropZone()
+    {
+        var workbench = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
+
+        Assert.Contains("Property Inspector", workbench, StringComparison.Ordinal);
+        Assert.Contains("type=\"range\"", workbench, StringComparison.Ordinal);
+        Assert.Contains("type=\"number\"", workbench, StringComparison.Ordinal);
+        Assert.Contains("type=\"color\"", workbench, StringComparison.Ordinal);
+        Assert.Contains("#RRGGBB", workbench, StringComparison.Ordinal);
+        Assert.Contains("onDrop", workbench, StringComparison.Ordinal);
+        Assert.Contains("uploadThemeAsset", workbench, StringComparison.Ordinal);
+        Assert.Contains("SecureUploadValidator", workbench, StringComparison.Ordinal);
+        Assert.Contains("Used By", workbench, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VisualEditor_IsRootProtectedAndRouteLevelLazyLoaded()
+    {
+        var main = Read("frontend", "src", "main.tsx");
+        var layout = Read("frontend", "src", "AppLayout.tsx");
+
+        Assert.Contains("lazy(() => import(\"./pages/AdminSiteSettingsPage\"))", main, StringComparison.Ordinal);
+        Assert.Contains("<Suspense", main, StringComparison.Ordinal);
+        Assert.Contains("path=\"/admin/site-settings\"", main, StringComparison.Ordinal);
+        Assert.Contains("allowedRoles={[3]}", main, StringComparison.Ordinal);
+        Assert.Contains("isRoot(role) && <NavLink to=\"/admin/site-settings\"", layout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VisualEditor_AddsNoThemeApiMigrationOrUnsafeCustomizationSurface()
+    {
+        var workbench = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
+        var preview = Read("frontend", "src", "components", "theme-editor", "ThemeEditorPreview.tsx");
+
+        Assert.DoesNotContain("customCss", workbench, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("dangerouslySetInnerHTML", workbench, StringComparison.Ordinal);
+        Assert.DoesNotContain("dangerouslySetInnerHTML", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("eval(", workbench, StringComparison.Ordinal);
+        Assert.DoesNotContain("selector", workbench, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void VisualEditor_HasNoMascotRequirementOrImplementation()
+    {
+        var workbench = Read("frontend", "src", "components", "theme-editor", "ThemeEditorWorkbench.tsx");
+        var model = Read("frontend", "src", "components", "theme-editor", "themeEditorModel.ts");
+
+        Assert.DoesNotContain("mascot", workbench, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("mascot", model, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Live2D", workbench, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Spine", workbench, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -307,6 +452,8 @@ public sealed class GlobalAppearanceCoverageTests
     }
 
     private static string Styles() => Read("frontend", "src", "styles.css");
+
+    private static int Count(string value, string marker) => value.Split(marker, StringSplitOptions.None).Length - 1;
 
     private static string Read(params string[] parts) =>
         File.ReadAllText(Path.Combine(parts.Prepend(ProjectRoot()).ToArray()));

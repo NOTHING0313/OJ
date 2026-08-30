@@ -1,0 +1,245 @@
+import { type CSSProperties, type PointerEvent, useEffect, useState } from "react";
+import {
+  createDefaultPageBackground,
+  resolveSiteAssetUrl,
+  type SiteAppearance,
+  type SitePageKey,
+  type SiteThemeIconSlot
+} from "../../api/siteSettingsApi";
+import { themeDecorationSlotOptions, type ThemeIconSlot } from "../../theme/themeSlots";
+import {
+  type ThemeEditorMode,
+  type ThemeEditorPreviewPage,
+  type ThemeEditorSurfaceId,
+  type ThemeEditorViewport
+} from "./themeEditorModel";
+
+interface ThemeEditorPreviewProps {
+  appearance: SiteAppearance;
+  page: ThemeEditorPreviewPage;
+  pageBackgroundKey: SitePageKey;
+  viewport: ThemeEditorViewport;
+  mode: ThemeEditorMode;
+  selectedSurface: ThemeEditorSurfaceId;
+  onSelect: (surface: ThemeEditorSurfaceId) => void;
+  onBackgroundPositionChange: (positionX: number, positionY: number) => void;
+  onGestureStart: () => void;
+  onGestureEnd: () => void;
+}
+
+export function ThemeEditorPreview({ appearance, page, pageBackgroundKey, viewport, mode, selectedSurface, onSelect, onBackgroundPositionChange, onGestureStart, onGestureEnd }: ThemeEditorPreviewProps) {
+  const genericBackground = appearance.background;
+  const pageBackground = appearance.pages[pageBackgroundKey] ?? createDefaultPageBackground();
+  const genericUrl = genericBackground.enabled ? resolveSiteAssetUrl(genericBackground.asset?.url) : undefined;
+  const pageUrl = !genericUrl && pageBackground.enabled ? resolveSiteAssetUrl(pageBackground.imageUrl) : undefined;
+  const backgroundUrl = genericUrl ?? pageUrl;
+  const themeStyle = buildPreviewThemeStyle(appearance);
+  const modifierClasses = buildPreviewModifierClasses(appearance);
+  const selectedClass = mode === "select" ? ` is-selecting selected-${selectedSurface.replace(/\./g, "-")}` : "";
+
+  function select(surface: ThemeEditorSurfaceId) {
+    if (mode === "select") onSelect(surface);
+  }
+
+  function handleFocalPointer(event: PointerEvent<HTMLDivElement>) {
+    if (mode !== "select" || selectedSurface !== "global.background" || !genericUrl) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    onBackgroundPositionChange(
+      clamp(((event.clientX - bounds.left) / bounds.width) * 100, 0, 100),
+      clamp(((event.clientY - bounds.top) / bounds.height) * 100, 0, 100)
+    );
+  }
+
+  return (
+    <div className={`theme-editor-canvas viewport-${viewport}${selectedClass}`} style={{ maxWidth: `${viewport === "desktop" ? 1120 : viewport === "tablet" ? 768 : 375}px` }}>
+      <div className={`theme-editor-preview-site ${modifierClasses}`} style={themeStyle} onClick={() => select("global.background")}>
+        {backgroundUrl && <div className="theme-editor-preview-background" style={genericUrl ? {
+          backgroundImage: `url("${genericUrl}")`,
+          backgroundPosition: `${genericBackground.positionX ?? 50}% ${genericBackground.positionY ?? 50}%`,
+          backgroundSize: genericBackground.sizeMode ?? "cover",
+          backgroundRepeat: genericBackground.repeat ?? "no-repeat",
+          filter: `blur(${genericBackground.blur ?? 0}px) brightness(${genericBackground.brightness ?? 100}%)`
+        } : {
+          backgroundImage: `url("${pageUrl}")`,
+          backgroundPosition: `${pageBackground.positionX}% ${pageBackground.positionY}%`,
+          backgroundSize: `${pageBackground.scale * 100}% auto`
+        }} />}
+        {backgroundUrl && <div className="theme-editor-preview-background-overlay" style={{
+          background: genericUrl
+            ? hexToRgba(genericBackground.overlayColor ?? "#000000", genericBackground.overlayOpacity ?? 0)
+            : `rgba(0, 0, 0, ${pageBackground.overlayOpacity ?? appearance.theme.backgroundOverlayOpacity})`
+        }} />}
+        <header className="theme-editor-preview-nav" onClick={(event) => event.stopPropagation()}>
+          <strong>UNREAL STUDIO</strong>
+          <nav>
+            <span data-surface="icon.problem" onClick={() => select("icon.problem")}><DraftIcon slot="problem" appearance={appearance} />题目</span>
+            <span><DraftIcon slot="challenge" appearance={appearance} />挑战</span>
+            <span><DraftIcon slot="leaderboard" appearance={appearance} />榜单</span>
+            <span><DraftIcon slot="team" appearance={appearance} />战队</span>
+          </nav>
+        </header>
+        <main className="theme-editor-preview-page" onClick={(event) => event.stopPropagation()}>
+          <PreviewPageHeader page={page} onSelect={() => select("decoration.pageHeader")} />
+          <PreviewComposition page={page} appearance={appearance} onSelect={select} />
+        </main>
+        {genericUrl && mode === "select" && selectedSurface === "global.background" && (
+          <div
+            className="theme-editor-focal-zone"
+            role="slider"
+            tabIndex={0}
+            aria-label="背景焦点位置"
+            aria-valuetext={`${Math.round(genericBackground.positionX ?? 50)}, ${Math.round(genericBackground.positionY ?? 50)}`}
+            onPointerDown={(event) => { onGestureStart(); event.currentTarget.setPointerCapture(event.pointerId); handleFocalPointer(event); }}
+            onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) handleFocalPointer(event); }}
+            onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); onGestureEnd(); }}
+            onPointerCancel={onGestureEnd}
+          >
+            <span style={{ left: `${genericBackground.positionX ?? 50}%`, top: `${genericBackground.positionY ?? 50}%` }} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PreviewPageHeader({ page, onSelect }: { page: ThemeEditorPreviewPage; onSelect: () => void }) {
+  const labels: Record<ThemeEditorPreviewPage, [string, string, string]> = {
+    login: ["AUTHENTICATION", "欢迎回来", "进入工作室"],
+    problem: ["PROBLEMS", "题目列表", "查看当前可用题目并提交代码"],
+    challenge: ["CHALLENGE", "挑战中心", "完成任务并推进挑战进度"],
+    team: ["TEAM WORKSPACE", "战队空间", "协作、讨论与项目进度"],
+    leaderboard: ["LEADERBOARD", "排行榜", "查看赛季积分与排名"],
+    season: ["SEASON", "赛季管理", "管理挑战、题目与奖励规则"],
+    help: ["HELP CENTER", "帮助中心", "阅读平台使用与规则说明"],
+    account: ["ACCOUNT", "账号设置", "管理个人资料与安全选项"],
+    "security-audit": ["SECURITY", "安全审计", "查看不可变安全事件记录"]
+  };
+  const [eyebrow, title, description] = labels[page];
+  return <div className="page-header theme-editor-surface" data-surface="decoration.pageHeader" onClick={onSelect}><div><span className="theme-editor-preview-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{description}</p></div><button className="button primary" type="button">主要操作</button></div>;
+}
+
+function PreviewComposition({ page, appearance, onSelect }: { page: ThemeEditorPreviewPage; appearance: SiteAppearance; onSelect: (surface: ThemeEditorSurfaceId) => void }) {
+  if (page === "login") return <div className="theme-editor-preview-login"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header" onClick={(event) => { event.stopPropagation(); onSelect("panel.header"); }}><strong>账号登录</strong></div><label>账号 / 邮箱<input value="UnrealStudio" readOnly /></label><label>密码<input value="••••••••" readOnly /></label><button className="button primary" type="button">进入工作室</button></section></div>;
+  if (page === "leaderboard") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><strong>TOP 3</strong></div><div className="theme-editor-podium"><b>02</b><b>01</b><b>03</b></div></section><PreviewTable onSelect={onSelect} /></div>;
+  if (page === "team") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="chat" appearance={appearance} /><strong>战队聊天</strong></div><p>保持沟通，推进当前项目。</p><button className="button" type="button"><DraftIcon slot="git" appearance={appearance} />Git 项目</button></section><EmptyPreview onSelect={onSelect} /></div>;
+  if (page === "help") return <div className="theme-editor-preview-help"><aside className="content-block"><strong>目录</strong><span>快速开始</span><span>提交与判题</span></aside><article className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><strong>快速开始</strong></div><p>选择题目、编写代码，然后提交到判题系统。</p><pre><code>const themed = true;</code></pre></article></div>;
+  if (page === "account") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><strong>个人资料</strong><label>用户名<input value="UnrealStudio" readOnly /></label><button className="button primary" type="button">保存资料</button></section><section className="content-block"><strong>安全设置</strong><p>密码与会话状态保持安全。</p><span className="theme-editor-badge">已启用</span></section></div>;
+  if (page === "security-audit") return <PreviewTable onSelect={onSelect} security />;
+  if (page === "season") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="season" appearance={appearance} /><strong>2026 秋季赛</strong></div><p>Scheduled · 3 Problems</p><button className="button primary" type="button"><DraftIcon slot="reward" appearance={appearance} />奖励设置</button></section><PreviewTable onSelect={onSelect} /></div>;
+  if (page === "challenge") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="challenge" appearance={appearance} /><strong>算法挑战</strong></div><p>4 个任务 · 当前进度 75%</p><div className="theme-editor-progress"><span /></div></section><EmptyPreview onSelect={onSelect} /></div>;
+  return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header" onClick={(event) => { event.stopPropagation(); onSelect("panel.header"); }}><DraftIcon slot="problem" appearance={appearance} /><strong>两数之和</strong><span className="theme-editor-badge">100 分</span></div><p>给定两个整数，返回它们的和。</p><pre><code>int add(int a, int b)</code></pre><button className="button primary" type="button">提交代码</button></section><PreviewTable onSelect={onSelect} /></div>;
+}
+
+function PreviewTable({ onSelect, security = false }: { onSelect: (surface: ThemeEditorSurfaceId) => void; security?: boolean }) {
+  return <div className="table-wrap theme-editor-surface" onClick={() => onSelect("panel.border")}><table><thead><tr><th>{security ? "事件" : "名称"}</th><th>状态</th><th>时间</th></tr></thead><tbody><tr><td>{security ? "SiteAppearance.Updated" : "示例记录"}</td><td><span className="theme-editor-badge">PASS</span></td><td>16:05</td></tr><tr><td>{security ? "User.Login" : "第二条记录"}</td><td>Ready</td><td>16:03</td></tr></tbody></table></div>;
+}
+
+function EmptyPreview({ onSelect }: { onSelect: (surface: ThemeEditorSurfaceId) => void }) {
+  return <div className="empty-state theme-editor-surface" onClick={() => onSelect("decoration.emptyState")}><strong>暂无更多内容</strong><p>新的数据将在这里显示。</p></div>;
+}
+
+function DraftIcon({ slot, appearance }: { slot: ThemeIconSlot; appearance: SiteAppearance }) {
+  const assignment = appearance.icons[slot];
+  const url = resolveSiteAssetUrl(assignment?.asset?.url);
+  return assignment?.enabled && url ? <PreviewImage assignment={assignment} url={url} /> : null;
+}
+
+function PreviewImage({ assignment, url }: { assignment: SiteThemeIconSlot; url: string }) {
+  const [available, setAvailable] = useState(true);
+
+  useEffect(() => setAvailable(true), [url]);
+
+  if (!available) return null;
+  return <span className="theme-icon-slot" aria-hidden="true"><img src={url} alt="" onError={() => setAvailable(false)} style={{ opacity: assignment.opacity ?? 1, transform: `translate(${assignment.offsetX ?? 0}px, ${assignment.offsetY ?? 0}px) scale(${assignment.scale ?? 1})` }} /></span>;
+}
+
+function buildPreviewThemeStyle(appearance: SiteAppearance) {
+  const theme = appearance.theme;
+  const style: Record<string, string> = {
+    "--site-panel-opacity": String(theme.panelOpacity),
+    "--site-panel-blur": `${theme.panelBlur}px`,
+    "--site-panel-color": theme.panelColor,
+    "--oj-panel-bg": hexToRgba(theme.panelColor, theme.panelOpacity),
+    "--oj-input-bg": hexToRgba(theme.panelColor, Math.min(theme.panelOpacity + 0.08, 0.98)),
+    "--oj-panel-border": `rgba(255, 255, 255, ${theme.panelBorderOpacity})`,
+    "--oj-text-primary": theme.textPrimaryColor,
+    "--oj-text-secondary": theme.textSecondaryColor,
+    "--oj-text-muted": theme.textMutedColor,
+    "--oj-accent": theme.accentColor,
+    "--oj-nav-bg": hexToRgba("#05080F", theme.navOpacity),
+    "--oj-nav-blur": `${theme.navBlur}px`,
+    "--oj-nav-text": theme.navTextColor,
+    "--oj-nav-active": theme.navActiveColor,
+    "--oj-font-family": resolvePreviewFont(theme.fontPreset)
+  };
+  const panel = appearance.panelSkin;
+  if (panel.enabled) {
+    const background = resolveSiteAssetUrl(panel.backgroundTexture?.url);
+    const header = resolveSiteAssetUrl(panel.headerTexture?.url);
+    const border = resolveSiteAssetUrl(panel.borderTexture?.url);
+    const opacity = panel.textureOpacity ?? 0.15;
+    if (background) style["--theme-panel-bg-layer"] = `linear-gradient(rgba(5, 6, 8, ${1 - opacity}), rgba(5, 6, 8, ${1 - opacity})), url("${background}")`;
+    if (header) style["--theme-panel-header-layer"] = `linear-gradient(rgba(5, 6, 8, ${1 - opacity}), rgba(5, 6, 8, ${1 - opacity})), url("${header}")`;
+    if (border) style["--theme-panel-border-image"] = `url("${border}")`;
+    if (panel.backgroundOpacity != null) style["--theme-panel-bg-color"] = `color-mix(in srgb, var(--oj-panel-bg) ${panel.backgroundOpacity * 100}%, transparent)`;
+    if (panel.radius != null) style["--theme-panel-radius"] = `${panel.radius}px`;
+    if (panel.shadowStrength != null) style["--theme-panel-shadow"] = `0 18px 48px rgba(0, 0, 0, ${panel.shadowStrength})`;
+  }
+  for (const { key } of themeDecorationSlotOptions) {
+    const slot = appearance.decorations[key];
+    const url = resolveSiteAssetUrl(slot?.asset?.url);
+    if (!slot?.enabled || !url) continue;
+    const cssKey = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    style[`--theme-decoration-${cssKey}-image`] = `url("${url}")`;
+    style[`--theme-decoration-${cssKey}-opacity`] = String(slot.opacity ?? 1);
+    style[`--theme-decoration-${cssKey}-scale`] = String(slot.scale ?? 1);
+    style[`--theme-decoration-${cssKey}-offset-x`] = `${slot.offsetX ?? 0}px`;
+    style[`--theme-decoration-${cssKey}-offset-y`] = `${slot.offsetY ?? 0}px`;
+    if (key !== "panelCorner") {
+      const alignment = slot.alignment ?? "end";
+      style[`--theme-decoration-${cssKey}-anchor`] = alignment === "start" ? "0%" : alignment === "center" ? "50%" : "100%";
+      style[`--theme-decoration-${cssKey}-translate`] = alignment === "start" ? "0%" : alignment === "center" ? "-50%" : "-100%";
+    }
+  }
+  return style as CSSProperties;
+}
+
+function buildPreviewModifierClasses(appearance: SiteAppearance) {
+  const classes: string[] = [];
+  const panel = appearance.panelSkin;
+  if (panel.enabled) {
+    classes.push("theme-panel-skin");
+    if (panel.backgroundTexture) classes.push("theme-panel-bg-texture");
+    if (panel.headerTexture) classes.push("theme-panel-header-texture");
+    if (panel.borderTexture) classes.push("theme-panel-border-texture");
+    if (panel.backgroundOpacity != null) classes.push("theme-panel-bg-opacity");
+    if (panel.radius != null) classes.push("theme-panel-radius");
+    if (panel.shadowStrength != null) classes.push("theme-panel-shadow");
+  }
+  for (const { key } of themeDecorationSlotOptions) {
+    const slot = appearance.decorations[key];
+    if (!slot?.enabled || !slot.asset) continue;
+    const cssKey = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    classes.push(`theme-decoration-${cssKey}`);
+    if (key === "panelCorner") classes.push(`theme-decoration-panel-corner-${slot.corner ?? "top-right"}`);
+  }
+  return classes.join(" ");
+}
+
+function hexToRgba(hex: string, opacity: number) {
+  const value = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : "#000000";
+  const red = Number.parseInt(value.slice(1, 3), 16);
+  const green = Number.parseInt(value.slice(3, 5), 16);
+  const blue = Number.parseInt(value.slice(5, 7), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+function resolvePreviewFont(preset: SiteAppearance["theme"]["fontPreset"]) {
+  if (preset === "readable") return '"Noto Sans SC", "Microsoft YaHei", sans-serif';
+  if (preset === "mono") return '"JetBrains Mono", Consolas, monospace';
+  return 'Inter, "Segoe UI", "Microsoft YaHei", sans-serif';
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}

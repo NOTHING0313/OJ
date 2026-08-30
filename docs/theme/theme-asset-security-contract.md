@@ -4,7 +4,7 @@ Theme assets are an optional site-level customization surface. The current site 
 
 - Root is the only authority that may select or enable a site-wide Theme.
 - ProblemSetter and Answerer roles cannot change the active site-wide Theme.
-- Backgrounds, panel background/header/border textures, icon slots, and decoration slots use the shared `ISecureUploadValidator` foundation. Future mascot assets must use the same validation boundary when introduced.
+- Backgrounds, panel background/header/border textures, icon slots, and decoration slots use the shared `ISecureUploadValidator` foundation. The project has no mascot asset requirement.
 - V1 image assets are limited to PNG, JPEG, and WebP with matching extension, declared MIME type, and file signature.
 - SVG, custom CSS, custom JavaScript, and custom HTML are not accepted Theme asset formats.
 - Custom assets are optional. Missing or rejected assets must not alter the existing background, panels, cards, navigation, icons, or appearance tokens.
