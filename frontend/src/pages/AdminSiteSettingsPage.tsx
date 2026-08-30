@@ -6,10 +6,14 @@ import {
   resolveSiteAssetUrl,
   sitePageOptions,
   updateSiteAppearance,
+  uploadThemeAsset,
   type SiteAppearance,
   type SiteAppearanceTheme,
+  type SitePanelSkin,
   type SitePageBackground,
-  type SitePageKey
+  type SitePageKey,
+  type SiteThemeBackground,
+  type ThemeAssetReference
 } from "../api/siteSettingsApi";
 import { uploadImage } from "../api/uploadsApi";
 import { normalizeUploadedImagePath } from "../utils/uploadedImageUrl";
@@ -35,6 +39,7 @@ interface SettingsSwitchProps {
 }
 
 type VisualSettingsTab = "text" | "panel" | "navigation" | "presets";
+type ThemeAssetSlot = "background" | "panelBackground" | "panelHeader" | "panelBorder";
 
 export function AdminSiteSettingsPage() {
   const { siteAppearance, reloadSiteAppearance, currentTheme } = useTheme();
@@ -45,6 +50,7 @@ export function AdminSiteSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadingThemeSlot, setUploadingThemeSlot] = useState<ThemeAssetSlot | null>(null);
   const [visualTab, setVisualTab] = useState<VisualSettingsTab>("text");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -73,6 +79,37 @@ export function AdminSiteSettingsPage() {
 
   function updateTheme(patch: Partial<SiteAppearanceTheme>) {
     setDraftConfig((current) => ({ ...current, theme: { ...current.theme, ...patch } }));
+  }
+
+  function updateGenericBackground(patch: Partial<SiteThemeBackground>) {
+    setDraftConfig((current) => ({ ...current, background: { ...current.background, ...patch } }));
+  }
+
+  function updatePanelSkin(patch: Partial<SitePanelSkin>) {
+    setDraftConfig((current) => ({ ...current, panelSkin: { ...current.panelSkin, ...patch } }));
+  }
+
+  async function handleThemeAssetUpload(slot: ThemeAssetSlot, file: File) {
+    setUploadingThemeSlot(slot);
+    setError(null);
+    setNotice(null);
+    try {
+      const asset = await uploadThemeAsset(file);
+      const reference = { assetId: asset.assetId, url: asset.url };
+      applyThemeAsset(slot, reference);
+      setNotice("主题图片已安全上传并加入本地草稿，请保存配置后启用。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "主题图片上传失败。");
+    } finally {
+      setUploadingThemeSlot(null);
+    }
+  }
+
+  function applyThemeAsset(slot: ThemeAssetSlot, asset: ThemeAssetReference | null) {
+    if (slot === "background") updateGenericBackground({ asset });
+    if (slot === "panelBackground") updatePanelSkin({ backgroundTexture: asset });
+    if (slot === "panelHeader") updatePanelSkin({ headerTexture: asset });
+    if (slot === "panelBorder") updatePanelSkin({ borderTexture: asset });
   }
 
   function updateSelectedPage(patch: Partial<SitePageBackground>) {
@@ -137,6 +174,16 @@ export function AdminSiteSettingsPage() {
     setNotice("已恢复当前页面的默认背景草稿，保存后生效。");
   }
 
+  function handleResetGenericBackground() {
+    updateGenericBackground(createDefaultSiteAppearance().background);
+    setNotice("已恢复默认背景草稿，保存后生效。");
+  }
+
+  function handleResetPanelSkin() {
+    updatePanelSkin(createDefaultSiteAppearance().panelSkin);
+    setNotice("已恢复默认 Panel 草稿，保存后生效。");
+  }
+
   async function handleSubmit() {
     setIsSaving(true);
     setError(null);
@@ -147,7 +194,7 @@ export function AdminSiteSettingsPage() {
       setInitialConfig(updated);
       setDraftConfig(normalizeSiteAppearance(updated));
       await reloadSiteAppearance();
-      setNotice("站点背景配置已保存。选择 Root 配置风格的用户刷新后会看到新背景。");
+      setNotice("站点外观配置已保存。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "站点背景配置保存失败。");
     } finally {
@@ -175,6 +222,60 @@ export function AdminSiteSettingsPage() {
                 <p>调整当前页面在 Root 配置风格下使用的背景。</p>
               </div>
             </div>
+
+            <details className="site-settings-theme-section" open>
+              <summary>全站 Background</summary>
+              <div className="site-settings-theme-section-body">
+                <SettingsSwitch
+                  checked={draftConfig.background.enabled}
+                  label="启用全站自定义背景"
+                  description="由 Root 管理；未上传图片时不能启用。"
+                  disabled={isSaving || !draftConfig.background.asset}
+                  onChange={(enabled) => updateGenericBackground({
+                    enabled,
+                    positionX: draftConfig.background.positionX ?? 50,
+                    positionY: draftConfig.background.positionY ?? 50,
+                    sizeMode: draftConfig.background.sizeMode ?? "cover",
+                    repeat: draftConfig.background.repeat ?? "no-repeat",
+                    attachment: draftConfig.background.attachment ?? "scroll",
+                    overlayColor: draftConfig.background.overlayColor ?? "#000000",
+                    overlayOpacity: draftConfig.background.overlayOpacity ?? 0.45,
+                    blur: draftConfig.background.blur ?? 0,
+                    brightness: draftConfig.background.brightness ?? 100
+                  })}
+                />
+                <ThemeAssetField label="背景图片" asset={draftConfig.background.asset} slot="background" busySlot={uploadingThemeSlot} disabled={isSaving} onUpload={handleThemeAssetUpload} onRemove={() => updateGenericBackground({ enabled: false, asset: null })} />
+                <div className="site-settings-theme-grid">
+                  <label>尺寸<select value={draftConfig.background.sizeMode ?? "cover"} disabled={isSaving} onChange={(event) => updateGenericBackground({ sizeMode: event.target.value as SiteThemeBackground["sizeMode"] })}><option value="cover">Cover</option><option value="contain">Contain</option><option value="auto">Auto</option></select></label>
+                  <label>重复<select value={draftConfig.background.repeat ?? "no-repeat"} disabled={isSaving} onChange={(event) => updateGenericBackground({ repeat: event.target.value as SiteThemeBackground["repeat"] })}><option value="no-repeat">不重复</option><option value="repeat">重复</option><option value="repeat-x">横向重复</option><option value="repeat-y">纵向重复</option></select></label>
+                  <label>附着<select value={draftConfig.background.attachment ?? "scroll"} disabled={isSaving} onChange={(event) => updateGenericBackground({ attachment: event.target.value as SiteThemeBackground["attachment"] })}><option value="scroll">Scroll</option><option value="fixed">Fixed</option></select></label>
+                  <ColorSetting label="遮罩颜色" value={draftConfig.background.overlayColor ?? "#000000"} disabled={isSaving} onChange={(overlayColor) => updateGenericBackground({ overlayColor })} />
+                </div>
+                <SettingSlider label="X 位置" value={draftConfig.background.positionX ?? 50} valueLabel={`${draftConfig.background.positionX ?? 50}%`} min={0} max={100} step={1} disabled={isSaving} onChange={(positionX) => updateGenericBackground({ positionX })} />
+                <SettingSlider label="Y 位置" value={draftConfig.background.positionY ?? 50} valueLabel={`${draftConfig.background.positionY ?? 50}%`} min={0} max={100} step={1} disabled={isSaving} onChange={(positionY) => updateGenericBackground({ positionY })} />
+                <SettingSlider label="遮罩" value={draftConfig.background.overlayOpacity ?? 0.45} valueLabel={`${Math.round((draftConfig.background.overlayOpacity ?? 0.45) * 100)}%`} min={0} max={1} step={0.05} disabled={isSaving} onChange={(overlayOpacity) => updateGenericBackground({ overlayOpacity })} />
+                <SettingSlider label="背景模糊" value={draftConfig.background.blur ?? 0} valueLabel={`${draftConfig.background.blur ?? 0}px`} min={0} max={20} step={1} disabled={isSaving} onChange={(blur) => updateGenericBackground({ blur })} />
+                <SettingSlider label="背景亮度" value={draftConfig.background.brightness ?? 100} valueLabel={`${draftConfig.background.brightness ?? 100}%`} min={50} max={150} step={5} disabled={isSaving} onChange={(brightness) => updateGenericBackground({ brightness })} />
+                <p className="appearance-contrast-note">建议使用足够强度的遮罩保证正文可读性。背景无动画，不会影响 reduced-motion。</p>
+                <button className="button site-settings-reset-button" type="button" disabled={isSaving} onClick={handleResetGenericBackground}>恢复默认背景</button>
+              </div>
+            </details>
+
+            <details className="site-settings-theme-section">
+              <summary>全站 Panel Skin</summary>
+              <div className="site-settings-theme-section-body">
+                <SettingsSwitch checked={draftConfig.panelSkin.enabled} label="启用通用 Panel Skin" description="仅作用于现有 Primary Panel，不为页面创建额外 Header。" disabled={isSaving} onChange={(enabled) => updatePanelSkin({ enabled })} />
+                <ThemeAssetField label="Panel 背景纹理" asset={draftConfig.panelSkin.backgroundTexture} slot="panelBackground" busySlot={uploadingThemeSlot} disabled={isSaving} onUpload={handleThemeAssetUpload} onRemove={() => updatePanelSkin({ backgroundTexture: null })} />
+                <ThemeAssetField label="Panel Header 纹理" asset={draftConfig.panelSkin.headerTexture} slot="panelHeader" busySlot={uploadingThemeSlot} disabled={isSaving} onUpload={handleThemeAssetUpload} onRemove={() => updatePanelSkin({ headerTexture: null })} />
+                <ThemeAssetField label="Panel Border 纹理" asset={draftConfig.panelSkin.borderTexture} slot="panelBorder" busySlot={uploadingThemeSlot} disabled={isSaving} onUpload={handleThemeAssetUpload} onRemove={() => updatePanelSkin({ borderTexture: null })} />
+                <SettingSlider label="Panel 背景透明度" value={draftConfig.panelSkin.backgroundOpacity ?? 1} valueLabel={(draftConfig.panelSkin.backgroundOpacity ?? 1).toFixed(2)} min={0} max={1} step={0.05} disabled={isSaving} onChange={(backgroundOpacity) => updatePanelSkin({ backgroundOpacity })} />
+                <SettingSlider label="纹理强度" value={draftConfig.panelSkin.textureOpacity ?? 0.15} valueLabel={(draftConfig.panelSkin.textureOpacity ?? 0.15).toFixed(2)} min={0} max={1} step={0.05} disabled={isSaving} onChange={(textureOpacity) => updatePanelSkin({ textureOpacity })} />
+                <SettingSlider label="圆角" value={draftConfig.panelSkin.radius ?? 8} valueLabel={`${draftConfig.panelSkin.radius ?? 8}px`} min={0} max={32} step={1} disabled={isSaving} onChange={(radius) => updatePanelSkin({ radius })} />
+                <SettingSlider label="阴影强度" value={draftConfig.panelSkin.shadowStrength ?? 0.18} valueLabel={(draftConfig.panelSkin.shadowStrength ?? 0.18).toFixed(2)} min={0} max={1} step={0.05} disabled={isSaving} onChange={(shadowStrength) => updatePanelSkin({ shadowStrength })} />
+                <p className="appearance-contrast-note">纹理可能降低文字可读性；建议保持较低纹理强度。</p>
+                <button className="button site-settings-reset-button" type="button" disabled={isSaving} onClick={handleResetPanelSkin}>恢复默认 Panel</button>
+              </div>
+            </details>
 
             <SettingsSection title="当前页面" description="切换页面不会丢失其他页面尚未保存的草稿。">
               <label className="site-settings-page-select">
@@ -257,7 +358,7 @@ export function AdminSiteSettingsPage() {
               <span className="site-settings-theme-chip">{currentTheme === "mystic-background" ? "Root 风格" : "默认风格"}</span>
             </div>
 
-            <BackgroundPreview value={selectedEditorValue} theme={draftConfig.theme} pageKey={selectedPageKey} />
+            <BackgroundPreview value={selectedEditorValue} theme={draftConfig.theme} background={draftConfig.background} panelSkin={draftConfig.panelSkin} pageKey={selectedPageKey} />
 
             <div className="site-settings-draft-summary">
               <h3>当前状态</h3>
@@ -287,7 +388,7 @@ export function AdminSiteSettingsPage() {
           </div>
           <div className="site-settings-action-buttons">
             <button className="button" type="button" disabled={!isDirty || isSaving} onClick={handleDiscard}>放弃修改</button>
-            <button className="button primary" type="button" disabled={!isDirty || isSaving || isUploading} onClick={handleSubmit}>{isSaving ? "保存中..." : "保存配置"}</button>
+            <button className="button primary" type="button" disabled={!isDirty || isSaving || isUploading || uploadingThemeSlot !== null} onClick={handleSubmit}>{isSaving ? "保存中..." : "保存配置"}</button>
           </div>
         </div>
       </div>
@@ -428,23 +529,56 @@ function PresetButton({ title, description, disabled, onClick }: { title: string
 function BackgroundPreview({
   value,
   theme,
+  background,
+  panelSkin,
   pageKey
 }: {
   value: SitePageBackground & { overlayOpacity: number };
   theme: SiteAppearanceTheme;
+  background: SiteThemeBackground;
+  panelSkin: SitePanelSkin;
   pageKey: SitePageKey;
 }) {
   const previewUrl = resolveSiteAssetUrl(value.imageUrl);
-  const previewStyle: CSSProperties = value.enabled && previewUrl ? {
+  const genericPreviewUrl = resolveSiteAssetUrl(background.asset?.url);
+  const useGenericBackground = Boolean(background.enabled && genericPreviewUrl);
+  const previewStyle: CSSProperties = useGenericBackground ? {
+    backgroundImage: `url("${genericPreviewUrl}")`,
+    backgroundPosition: `${background.positionX ?? 50}% ${background.positionY ?? 50}%`,
+    backgroundSize: background.sizeMode ?? "cover",
+    backgroundRepeat: background.repeat ?? "no-repeat",
+    filter: `blur(${background.blur ?? 0}px) brightness(${background.brightness ?? 100}%)`
+  } : value.enabled && previewUrl ? {
     backgroundImage: `url("${previewUrl}")`,
     backgroundPosition: `${value.positionX}% ${value.positionY}%`,
     backgroundSize: `${value.scale * 100}% auto`
   } : {};
+  const panelTextureUrl = resolveSiteAssetUrl(panelSkin.backgroundTexture?.url);
+  const panelHeaderUrl = resolveSiteAssetUrl(panelSkin.headerTexture?.url);
+  const panelBorderUrl = resolveSiteAssetUrl(panelSkin.borderTexture?.url);
+  const textureOpacity = panelSkin.textureOpacity ?? 0.15;
   const panelStyle: CSSProperties = {
-    background: hexToRgba(theme.panelColor, theme.panelOpacity),
+    backgroundColor: hexToRgba(theme.panelColor, panelSkin.enabled ? panelSkin.backgroundOpacity ?? theme.panelOpacity : theme.panelOpacity),
+    backgroundImage: panelSkin.enabled && panelTextureUrl
+      ? `linear-gradient(rgba(5, 6, 8, ${1 - textureOpacity}), rgba(5, 6, 8, ${1 - textureOpacity})), url("${panelTextureUrl}")`
+      : undefined,
+    backgroundSize: panelSkin.enabled && panelTextureUrl ? "cover" : undefined,
     borderColor: `rgba(255, 255, 255, ${theme.panelBorderOpacity})`,
+    borderImageSource: panelSkin.enabled && panelBorderUrl ? `url("${panelBorderUrl}")` : undefined,
+    borderImageSlice: panelSkin.enabled && panelBorderUrl ? 30 : undefined,
+    borderImageWidth: panelSkin.enabled && panelBorderUrl ? 1 : undefined,
+    borderImageRepeat: panelSkin.enabled && panelBorderUrl ? "round" : undefined,
+    borderRadius: panelSkin.enabled && panelSkin.radius != null ? `${panelSkin.radius}px` : undefined,
+    boxShadow: panelSkin.enabled && panelSkin.shadowStrength != null ? `0 18px 48px rgba(0, 0, 0, ${panelSkin.shadowStrength})` : undefined,
     backdropFilter: `blur(${theme.panelBlur}px)`
   };
+  const previewShellStyle = {
+    color: theme.textPrimaryColor,
+    fontFamily: resolvePreviewFont(theme.fontPreset),
+    "--theme-preview-header-layer": panelSkin.enabled && panelHeaderUrl
+      ? `linear-gradient(rgba(5, 6, 8, ${1 - textureOpacity}), rgba(5, 6, 8, ${1 - textureOpacity})), url("${panelHeaderUrl}")`
+      : "none"
+  } as CSSProperties;
   const tokenPreviewStyle = {
     "--oj-panel-bg": hexToRgba(theme.panelColor, theme.panelOpacity),
     "--oj-input-bg": hexToRgba(theme.panelColor, Math.min(theme.panelOpacity + 0.08, 0.98)),
@@ -467,9 +601,12 @@ function BackgroundPreview({
         <p>只预览当前页面内容区域，不重复模拟站点顶部导航；结构与文案尽量对齐真实页面。</p>
       </div>
 
-      <div className={value.enabled ? "site-settings-preview-card active site-settings-preview-card-v3" : "site-settings-preview-card site-settings-preview-card-v3"} style={previewStyle}>
-        <div className="site-settings-preview-overlay" style={{ background: `rgba(0, 0, 0, ${value.enabled ? value.overlayOpacity : 0})` }} />
-        <div className="site-settings-preview-shell site-settings-preview-shell-v3" style={{ color: theme.textPrimaryColor, fontFamily: resolvePreviewFont(theme.fontPreset) }}>
+      <div className={useGenericBackground || value.enabled ? "site-settings-preview-card active site-settings-preview-card-v3" : "site-settings-preview-card site-settings-preview-card-v3"}>
+        <div className="site-settings-preview-theme-background" style={previewStyle} />
+        <div className="site-settings-preview-overlay" style={{ background: useGenericBackground
+          ? hexToRgba(background.overlayColor ?? "#000000", background.overlayOpacity ?? 0)
+          : `rgba(0, 0, 0, ${value.enabled ? value.overlayOpacity : 0})` }} />
+        <div className={`site-settings-preview-shell site-settings-preview-shell-v3${panelSkin.enabled ? " theme-preview-panel-enabled" : ""}`} style={previewShellStyle}>
 
           <main className="site-settings-preview-page site-settings-preview-page-v3">
             <PreviewPageContent pageKey={pageKey} theme={theme} panelStyle={panelStyle} />
@@ -479,6 +616,42 @@ function BackgroundPreview({
 
       <AppearanceTokenPreview theme={theme} style={tokenPreviewStyle} />
     </section>
+  );
+}
+
+function ThemeAssetField({
+  label,
+  asset,
+  slot,
+  busySlot,
+  disabled,
+  onUpload,
+  onRemove
+}: {
+  label: string;
+  asset: ThemeAssetReference | null;
+  slot: ThemeAssetSlot;
+  busySlot: ThemeAssetSlot | null;
+  disabled: boolean;
+  onUpload: (slot: ThemeAssetSlot, file: File) => Promise<void>;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="site-settings-theme-asset-field">
+      <div><strong>{label}</strong><span>{asset ? getFileName(asset.url) : "未设置"}</span></div>
+      {asset && <img src={resolveSiteAssetUrl(asset.url)} alt={`${label}预览`} />}
+      <div className="site-settings-image-actions">
+        <label className={`button${disabled || busySlot !== null ? " disabled" : ""}`}>
+          {busySlot === slot ? "上传中..." : "上传图片"}
+          <input className="visually-hidden-file" type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled || busySlot !== null} onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void onUpload(slot, file);
+            event.target.value = "";
+          }} />
+        </label>
+        <button className="button site-settings-danger-button" type="button" disabled={disabled || !asset} onClick={onRemove}>移除引用</button>
+      </div>
+    </div>
   );
 }
 

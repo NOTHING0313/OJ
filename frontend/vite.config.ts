@@ -13,6 +13,10 @@ export default defineConfig({
       "/uploads": {
         target: "http://localhost:5101",
         changeOrigin: true
+      },
+      "/theme-assets": {
+        target: "http://localhost:5101",
+        changeOrigin: true
       }
     }
   }

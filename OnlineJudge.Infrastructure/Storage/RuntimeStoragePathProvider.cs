@@ -8,13 +8,19 @@ public interface IRuntimeStoragePathProvider
 
     string ChallengeFilesRoot { get; }
 
+    string ThemeAssetsRoot { get; }
+
     string ResolveUploadImagePath(string storedFileName);
 
     string ResolveChallengeFilePath(string storedFileName);
 
+    string ResolveThemeAssetPath(string storedFileName);
+
     Task<long> WriteUploadImageAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default);
 
     Task<long> WriteChallengeFileAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default);
+
+    Task<long> WriteThemeAssetAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default);
 }
 
 public sealed class RuntimeStoragePathProvider : IRuntimeStoragePathProvider
@@ -23,25 +29,31 @@ public sealed class RuntimeStoragePathProvider : IRuntimeStoragePathProvider
         : this(
             ResolveApiContentRoot(),
             configuration[$"{RuntimeStorageOptions.SectionName}:UploadImagesRoot"],
-            configuration[$"{RuntimeStorageOptions.SectionName}:ChallengeFilesRoot"])
+            configuration[$"{RuntimeStorageOptions.SectionName}:ChallengeFilesRoot"],
+            configuration[$"{RuntimeStorageOptions.SectionName}:ThemeAssetsRoot"])
     {
     }
 
-    public RuntimeStoragePathProvider(string contentRootPath, string? uploadImagesRoot = null, string? challengeFilesRoot = null)
+    public RuntimeStoragePathProvider(string contentRootPath, string? uploadImagesRoot = null, string? challengeFilesRoot = null, string? themeAssetsRoot = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentRootPath);
         var contentRoot = Path.GetFullPath(contentRootPath);
         UploadImagesRoot = ResolveRoot(uploadImagesRoot, Path.Combine(contentRoot, "wwwroot", "uploads", "images"));
         ChallengeFilesRoot = ResolveRoot(challengeFilesRoot, Path.Combine(contentRoot, "App_Data", "challenge-file-submissions"));
+        ThemeAssetsRoot = ResolveRoot(themeAssetsRoot, GetDefaultThemeAssetsRoot(contentRoot));
     }
 
     public string UploadImagesRoot { get; }
 
     public string ChallengeFilesRoot { get; }
 
+    public string ThemeAssetsRoot { get; }
+
     public string ResolveUploadImagePath(string storedFileName) => ResolveFile(UploadImagesRoot, storedFileName);
 
     public string ResolveChallengeFilePath(string storedFileName) => ResolveFile(ChallengeFilesRoot, storedFileName);
+
+    public string ResolveThemeAssetPath(string storedFileName) => ResolveFile(ThemeAssetsRoot, storedFileName);
 
     public Task<long> WriteUploadImageAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default) =>
         WriteAtomicallyAsync(UploadImagesRoot, ResolveUploadImagePath(storedFileName), content, maxBytes, cancellationToken);
@@ -49,11 +61,22 @@ public sealed class RuntimeStoragePathProvider : IRuntimeStoragePathProvider
     public Task<long> WriteChallengeFileAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default) =>
         WriteAtomicallyAsync(ChallengeFilesRoot, ResolveChallengeFilePath(storedFileName), content, maxBytes, cancellationToken);
 
+    public Task<long> WriteThemeAssetAsync(string storedFileName, Stream content, long maxBytes, CancellationToken cancellationToken = default) =>
+        WriteAtomicallyAsync(ThemeAssetsRoot, ResolveThemeAssetPath(storedFileName), content, maxBytes, cancellationToken);
+
     public static RuntimeStoragePathProvider CreateDevelopmentDefault() => new(ResolveApiContentRoot());
 
     private static string ResolveRoot(string? configuredRoot, string defaultRoot)
     {
         return Path.GetFullPath(string.IsNullOrWhiteSpace(configuredRoot) ? defaultRoot : configuredRoot);
+    }
+
+    private static string GetDefaultThemeAssetsRoot(string contentRoot)
+    {
+        var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return string.IsNullOrWhiteSpace(localApplicationData)
+            ? Path.Combine(contentRoot, "App_Data", "theme-assets")
+            : Path.Combine(localApplicationData, "OnlineJudge", "theme-assets");
     }
 
     private static string ResolveFile(string root, string storedFileName)

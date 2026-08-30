@@ -14,7 +14,8 @@ public sealed class SecurityAuditWriter(
 {
     private static readonly HashSet<string> AllowedMetadataKeys = new(StringComparer.Ordinal)
     {
-        "oldRole", "newRole", "seasonStateBefore", "seasonStateAfter", "testCaseCountDelta"
+        "oldRole", "newRole", "seasonStateBefore", "seasonStateAfter", "testCaseCountDelta",
+        "backgroundEnabledChanged", "panelSkinEnabledChanged", "changedAssetSlots"
     };
 
     public void Stage(SecurityAuditRecord record) => dbContext.SecurityAuditLogs.Add(CreateEntity(record));

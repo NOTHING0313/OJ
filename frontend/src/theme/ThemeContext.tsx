@@ -11,6 +11,7 @@ import {
   getSiteAppearance,
   resolveSiteAssetUrl,
   type SiteAppearance,
+  type SitePanelSkin,
   type SitePageBackground,
   type SitePageKey
 } from "../api/siteSettingsApi";
@@ -102,13 +103,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   const activePageKey = resolvePageThemeKey(location.pathname);
-  const effectiveBackground = currentTheme === "mystic-background"
+  const legacyBackground = currentTheme === "mystic-background"
     ? resolveEffectiveBackground(userAppearance, siteAppearance, activePageKey)
     : null;
+  const genericBackgroundUrl = useAvailableAssetUrl(siteAppearance.background.enabled ? siteAppearance.background.asset?.url : null);
+  const legacyBackgroundUrl = useAvailableAssetUrl(legacyBackground?.imageUrl);
+  const panelBackgroundUrl = useAvailableAssetUrl(siteAppearance.panelSkin.enabled ? siteAppearance.panelSkin.backgroundTexture?.url : null);
+  const panelHeaderUrl = useAvailableAssetUrl(siteAppearance.panelSkin.enabled ? siteAppearance.panelSkin.headerTexture?.url : null);
+  const panelBorderUrl = useAvailableAssetUrl(siteAppearance.panelSkin.enabled ? siteAppearance.panelSkin.borderTexture?.url : null);
+  const usesGenericBackground = Boolean(genericBackgroundUrl && siteAppearance.background.enabled);
+  const effectiveBackground = usesGenericBackground ? null : legacyBackground;
   const activeBackground = effectiveBackground;
-  const backgroundUrl = resolveSiteAssetUrl(effectiveBackground?.imageUrl);
-  const contentStyle = currentTheme === "mystic-background"
-    ? {
+  const backgroundUrl = usesGenericBackground ? genericBackgroundUrl : legacyBackgroundUrl;
+  const contentStyle = {
+    ...(currentTheme === "mystic-background" ? {
         "--site-panel-opacity": String(siteAppearance.theme.panelOpacity),
         "--site-panel-blur": `${siteAppearance.theme.panelBlur}px`,
         "--site-panel-color": siteAppearance.theme.panelColor,
@@ -124,8 +132,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         "--oj-nav-text": siteAppearance.theme.navTextColor,
         "--oj-nav-active": siteAppearance.theme.navActiveColor,
         "--oj-font-family": resolveFontFamily(siteAppearance.theme.fontPreset)
-      } as CSSProperties
-    : undefined;
+      } : {}),
+    ...buildPanelSkinStyle(siteAppearance.panelSkin, panelBackgroundUrl, panelHeaderUrl, panelBorderUrl)
+  } as CSSProperties;
+  const panelSkinActive = siteAppearance.panelSkin.enabled && hasPanelSkinStyle(siteAppearance.panelSkin, panelBackgroundUrl, panelHeaderUrl, panelBorderUrl);
+  const panelSkinClassName = buildPanelSkinClassName(siteAppearance.panelSkin, panelBackgroundUrl, panelHeaderUrl, panelBorderUrl);
 
   const value = useMemo<ThemeContextValue>(() => ({
     currentTheme,
@@ -143,22 +154,95 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ThemeContext.Provider value={value}>
-      {backgroundUrl && effectiveBackground && (
-        <div
-          className="site-theme-background"
-          style={{
-            backgroundImage: `url("${backgroundUrl}")`,
-            backgroundPosition: `${effectiveBackground.positionX}% ${effectiveBackground.positionY}%`,
-            backgroundSize: `${effectiveBackground.scale * 100}% auto`
-          }}
-        >
-          <div style={{ background: `rgba(0, 0, 0, ${effectiveBackground.overlayOpacity})` }} />
-        </div>
-      )}
-      <AppBackground pathname={location.pathname} hasCustomWallpaper={Boolean(backgroundUrl && effectiveBackground)} />
-      <div className="site-theme-content" style={contentStyle}>{children}</div>
+      <AppBackground pathname={location.pathname} hasCustomWallpaper={Boolean(backgroundUrl && (usesGenericBackground || effectiveBackground))} />
+      <div className={`site-theme-content${usesGenericBackground ? " theme-generic-background-active" : ""}${panelSkinActive ? ` ${panelSkinClassName}` : ""}`} style={Object.keys(contentStyle).length > 0 ? contentStyle : undefined}>
+        {backgroundUrl && (usesGenericBackground || effectiveBackground) && (
+          <div className="site-theme-background">
+            <div
+              className="site-theme-background-image"
+              style={usesGenericBackground
+                ? buildGenericBackgroundStyle(siteAppearance)
+                : {
+                    backgroundImage: `url("${backgroundUrl}")`,
+                    backgroundPosition: `${effectiveBackground!.positionX}% ${effectiveBackground!.positionY}%`,
+                    backgroundSize: `${effectiveBackground!.scale * 100}% auto`
+                  }}
+            />
+            <div
+              className="site-theme-background-overlay"
+              style={usesGenericBackground
+                ? { background: hexToRgba(siteAppearance.background.overlayColor ?? "#000000", siteAppearance.background.overlayOpacity ?? 0) }
+                : { background: `rgba(0, 0, 0, ${effectiveBackground!.overlayOpacity})` }}
+            />
+          </div>
+        )}
+        {children}
+      </div>
     </ThemeContext.Provider>
   );
+}
+
+function useAvailableAssetUrl(url: string | null | undefined) {
+  const resolved = resolveSiteAssetUrl(url);
+  const [available, setAvailable] = useState<string | undefined>();
+
+  useEffect(() => {
+    if (!resolved) {
+      setAvailable(undefined);
+      return;
+    }
+
+    let active = true;
+    const image = new Image();
+    image.onload = () => { if (active) setAvailable(resolved); };
+    image.onerror = () => { if (active) setAvailable(undefined); };
+    image.src = resolved;
+    return () => { active = false; };
+  }, [resolved]);
+
+  return available;
+}
+
+function buildGenericBackgroundStyle(appearance: SiteAppearance) {
+  const background = appearance.background;
+  const style: CSSProperties = {
+    backgroundImage: `url("${resolveSiteAssetUrl(background.asset?.url)}")`
+  };
+  if (background.positionX != null || background.positionY != null) style.backgroundPosition = `${background.positionX ?? 50}% ${background.positionY ?? 50}%`;
+  if (background.sizeMode) style.backgroundSize = background.sizeMode;
+  if (background.repeat) style.backgroundRepeat = background.repeat;
+  if (background.attachment) style.backgroundAttachment = background.attachment;
+  if (background.blur != null || background.brightness != null) style.filter = `blur(${background.blur ?? 0}px) brightness(${background.brightness ?? 100}%)`;
+  return style;
+}
+
+function buildPanelSkinStyle(panelSkin: SitePanelSkin, backgroundUrl?: string, headerUrl?: string, borderUrl?: string) {
+  if (!panelSkin.enabled) return {};
+  const style: Record<string, string> = {};
+  const textureOpacity = panelSkin.textureOpacity ?? 0.15;
+  if (backgroundUrl) style["--theme-panel-bg-layer"] = `linear-gradient(rgba(5, 6, 8, ${1 - textureOpacity}), rgba(5, 6, 8, ${1 - textureOpacity})), url("${backgroundUrl}")`;
+  if (headerUrl) style["--theme-panel-header-layer"] = `linear-gradient(rgba(5, 6, 8, ${1 - textureOpacity}), rgba(5, 6, 8, ${1 - textureOpacity})), url("${headerUrl}")`;
+  if (borderUrl) style["--theme-panel-border-image"] = `url("${borderUrl}")`;
+  if (panelSkin.backgroundOpacity != null) style["--theme-panel-bg-color"] = `color-mix(in srgb, var(--oj-panel-bg) ${panelSkin.backgroundOpacity * 100}%, transparent)`;
+  if (panelSkin.radius != null) style["--theme-panel-radius"] = `${panelSkin.radius}px`;
+  if (panelSkin.shadowStrength != null) style["--theme-panel-shadow"] = `0 18px 48px rgba(0, 0, 0, ${panelSkin.shadowStrength})`;
+  return style;
+}
+
+function hasPanelSkinStyle(panelSkin: SitePanelSkin, backgroundUrl?: string, headerUrl?: string, borderUrl?: string) {
+  return Boolean(backgroundUrl || headerUrl || borderUrl
+    || panelSkin.backgroundOpacity != null || panelSkin.radius != null || panelSkin.shadowStrength != null);
+}
+
+function buildPanelSkinClassName(panelSkin: SitePanelSkin, backgroundUrl?: string, headerUrl?: string, borderUrl?: string) {
+  const classes = ["theme-panel-skin"];
+  if (backgroundUrl) classes.push("theme-panel-bg-texture");
+  if (headerUrl) classes.push("theme-panel-header-texture");
+  if (borderUrl) classes.push("theme-panel-border-texture");
+  if (panelSkin.backgroundOpacity != null) classes.push("theme-panel-bg-opacity");
+  if (panelSkin.radius != null) classes.push("theme-panel-radius");
+  if (panelSkin.shadowStrength != null) classes.push("theme-panel-shadow");
+  return classes.join(" ");
 }
 
 export function useTheme() {

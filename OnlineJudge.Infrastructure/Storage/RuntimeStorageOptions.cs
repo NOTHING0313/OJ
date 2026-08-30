@@ -7,4 +7,6 @@ public sealed class RuntimeStorageOptions
     public string? UploadImagesRoot { get; set; }
 
     public string? ChallengeFilesRoot { get; set; }
+
+    public string? ThemeAssetsRoot { get; set; }
 }

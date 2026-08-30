@@ -113,6 +113,7 @@ public static class DependencyInjection
         services.AddScoped<ISeasonScoreService, SeasonScoreService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ISiteSettingsService, SiteSettingsService>();
+        services.AddScoped<IThemeAssetService, ThemeAssetService>();
         services.AddScoped<IHelpDocumentService, HelpDocumentService>();
         services.AddScoped<ISubmissionService, SubmissionService>();
         services.AddScoped<IAuthService, AuthService>();

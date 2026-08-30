@@ -16,6 +16,44 @@ export type SitePageKey =
   | "submissions";
 
 export type SiteFontPreset = "system" | "readable" | "mono";
+export type ThemeBackgroundSizeMode = "cover" | "contain" | "auto";
+export type ThemeBackgroundRepeat = "no-repeat" | "repeat" | "repeat-x" | "repeat-y";
+export type ThemeBackgroundAttachment = "scroll" | "fixed";
+
+export interface ThemeAssetReference {
+  assetId: string;
+  url: string;
+}
+
+export interface ThemeAsset extends ThemeAssetReference {
+  contentType: string;
+  size: number;
+}
+
+export interface SiteThemeBackground {
+  enabled: boolean;
+  asset: ThemeAssetReference | null;
+  positionX: number | null;
+  positionY: number | null;
+  sizeMode: ThemeBackgroundSizeMode | null;
+  repeat: ThemeBackgroundRepeat | null;
+  attachment: ThemeBackgroundAttachment | null;
+  overlayColor: string | null;
+  overlayOpacity: number | null;
+  blur: number | null;
+  brightness: number | null;
+}
+
+export interface SitePanelSkin {
+  enabled: boolean;
+  backgroundTexture: ThemeAssetReference | null;
+  headerTexture: ThemeAssetReference | null;
+  borderTexture: ThemeAssetReference | null;
+  backgroundOpacity: number | null;
+  textureOpacity: number | null;
+  radius: number | null;
+  shadowStrength: number | null;
+}
 
 export interface SiteAppearanceTheme {
   backgroundEnabled: boolean;
@@ -47,6 +85,8 @@ export interface SitePageBackground {
 export interface SiteAppearance {
   theme: SiteAppearanceTheme;
   pages: Record<string, SitePageBackground>;
+  background: SiteThemeBackground;
+  panelSkin: SitePanelSkin;
 }
 
 export type UpdateSiteAppearanceRequest = SiteAppearance;
@@ -73,6 +113,16 @@ export function updateSiteAppearance(payload: UpdateSiteAppearanceRequest) {
     method: "PUT",
     body: JSON.stringify(normalizeSiteAppearance(payload))
   }).then(normalizeSiteAppearance);
+}
+
+export function uploadThemeAsset(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return request<ThemeAsset>("/api/site-settings/theme-assets", { method: "POST", body });
+}
+
+export function deleteThemeAsset(assetId: string) {
+  return request<void>(`/api/site-settings/theme-assets/${encodeURIComponent(assetId)}`, { method: "DELETE" });
 }
 
 export function createDefaultPageBackground(): SitePageBackground {
@@ -111,7 +161,30 @@ export function createDefaultSiteAppearance(): SiteAppearance {
       navActiveColor: "#F2F4F8",
       fontPreset: "system"
     },
-    pages
+    pages,
+    background: {
+      enabled: false,
+      asset: null,
+      positionX: null,
+      positionY: null,
+      sizeMode: null,
+      repeat: null,
+      attachment: null,
+      overlayColor: null,
+      overlayOpacity: null,
+      blur: null,
+      brightness: null
+    },
+    panelSkin: {
+      enabled: false,
+      backgroundTexture: null,
+      headerTexture: null,
+      borderTexture: null,
+      backgroundOpacity: null,
+      textureOpacity: null,
+      radius: null,
+      shadowStrength: null
+    }
   };
 }
 
@@ -146,6 +219,33 @@ export function normalizeSiteAppearance(value: SiteAppearance | any): SiteAppear
     navTextColor: readColor(value.theme?.navTextColor, "#D9DEE9"),
     navActiveColor: readColor(value.theme?.navActiveColor, "#F2F4F8"),
     fontPreset: readFontPreset(value.theme?.fontPreset)
+  };
+
+  const background = value.background ?? {};
+  fallback.background = {
+    enabled: Boolean(background.enabled),
+    asset: readThemeAsset(background.asset),
+    positionX: readOptionalBoundedNumber(background.positionX, 0, 100),
+    positionY: readOptionalBoundedNumber(background.positionY, 0, 100),
+    sizeMode: readBackgroundSizeMode(background.sizeMode),
+    repeat: readBackgroundRepeat(background.repeat),
+    attachment: readBackgroundAttachment(background.attachment),
+    overlayColor: background.overlayColor == null ? null : readColor(background.overlayColor, "#000000"),
+    overlayOpacity: readOptionalBoundedNumber(background.overlayOpacity, 0, 1),
+    blur: readOptionalBoundedNumber(background.blur, 0, 20),
+    brightness: readOptionalBoundedNumber(background.brightness, 50, 150)
+  };
+
+  const panelSkin = value.panelSkin ?? {};
+  fallback.panelSkin = {
+    enabled: Boolean(panelSkin.enabled),
+    backgroundTexture: readThemeAsset(panelSkin.backgroundTexture),
+    headerTexture: readThemeAsset(panelSkin.headerTexture),
+    borderTexture: readThemeAsset(panelSkin.borderTexture),
+    backgroundOpacity: readOptionalBoundedNumber(panelSkin.backgroundOpacity, 0, 1),
+    textureOpacity: readOptionalBoundedNumber(panelSkin.textureOpacity, 0, 1),
+    radius: readOptionalBoundedNumber(panelSkin.radius, 0, 32),
+    shadowStrength: readOptionalBoundedNumber(panelSkin.shadowStrength, 0, 1)
   };
 
   for (const { key } of sitePageOptions) {
@@ -190,6 +290,30 @@ function readNumber(value: unknown, fallback: number) {
 function readBoundedNumber(value: unknown, fallback: number, min: number, max: number) {
   const number = readNumber(value, fallback);
   return number >= min && number <= max ? number : fallback;
+}
+
+function readOptionalBoundedNumber(value: unknown, min: number, max: number) {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : null;
+}
+
+function readThemeAsset(value: unknown): ThemeAssetReference | null {
+  if (!value || typeof value !== "object") return null;
+  const asset = value as { assetId?: unknown; url?: unknown };
+  if (typeof asset.assetId !== "string" || !/^[0-9a-f]{32}\.(png|jpg|webp)$/.test(asset.assetId)) return null;
+  const url = `/theme-assets/${asset.assetId}`;
+  return asset.url === url ? { assetId: asset.assetId, url } : null;
+}
+
+function readBackgroundSizeMode(value: unknown): ThemeBackgroundSizeMode | null {
+  return value === "cover" || value === "contain" || value === "auto" ? value : null;
+}
+
+function readBackgroundRepeat(value: unknown): ThemeBackgroundRepeat | null {
+  return value === "no-repeat" || value === "repeat" || value === "repeat-x" || value === "repeat-y" ? value : null;
+}
+
+function readBackgroundAttachment(value: unknown): ThemeBackgroundAttachment | null {
+  return value === "scroll" || value === "fixed" ? value : null;
 }
 
 function readColor(value: unknown, fallback: string) {

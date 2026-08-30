@@ -85,6 +85,7 @@ await RootAccountSeeder.SeedAsync(app.Services);
 var webRootPath = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 var storagePaths = app.Services.GetRequiredService<IRuntimeStoragePathProvider>();
 Directory.CreateDirectory(storagePaths.UploadImagesRoot);
+Directory.CreateDirectory(storagePaths.ThemeAssetsRoot);
 
 if (app.Environment.IsDevelopment())
 {
@@ -103,6 +104,11 @@ app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(storagePaths.UploadImagesRoot),
     RequestPath = "/uploads/images"
+});
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(storagePaths.ThemeAssetsRoot),
+    RequestPath = "/theme-assets"
 });
 
 if (app.Environment.IsDevelopment())

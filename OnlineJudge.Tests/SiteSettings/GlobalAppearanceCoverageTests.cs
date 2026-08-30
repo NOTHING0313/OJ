@@ -144,6 +144,68 @@ public sealed class GlobalAppearanceCoverageTests
     }
 
     [Fact]
+    public void GenericTheme_DefaultDoesNotAddRenderingLayersOrPanelOverrides()
+    {
+        var context = Read("frontend", "src", "theme", "ThemeContext.tsx");
+        var api = Read("frontend", "src", "api", "siteSettingsApi.ts");
+
+        Assert.Contains("enabled: false", api, StringComparison.Ordinal);
+        Assert.Contains("asset: null", api, StringComparison.Ordinal);
+        Assert.Contains("panelSkin.enabled && hasPanelSkinStyle", context, StringComparison.Ordinal);
+        Assert.Contains("backgroundUrl && (usesGenericBackground || effectiveBackground)", context, StringComparison.Ordinal);
+        Assert.Contains("panelSkinActive ?", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GenericBackground_IsAnIndependentNonInteractiveLayerWithScopedFilters()
+    {
+        var context = Read("frontend", "src", "theme", "ThemeContext.tsx");
+        var styles = Styles();
+
+        Assert.Contains("site-theme-background-image", context, StringComparison.Ordinal);
+        Assert.Contains("site-theme-background-overlay", context, StringComparison.Ordinal);
+        Assert.Contains("style.filter", context, StringComparison.Ordinal);
+        Assert.Contains(".site-theme-background", styles, StringComparison.Ordinal);
+        Assert.Contains("pointer-events: none", styles, StringComparison.Ordinal);
+        Assert.DoesNotContain("body.style.filter", context, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GenericPanelSkin_UsesOptInSharedModifiersAndRequiredCoverage()
+    {
+        var context = Read("frontend", "src", "theme", "ThemeContext.tsx");
+        var styles = Styles();
+
+        Assert.Contains("theme-panel-bg-texture", context, StringComparison.Ordinal);
+        Assert.Contains("theme-panel-header-texture", context, StringComparison.Ordinal);
+        Assert.Contains("theme-panel-border-texture", context, StringComparison.Ordinal);
+        Assert.Contains(".problem-content", styles, StringComparison.Ordinal);
+        Assert.Contains(".challenge-card", styles, StringComparison.Ordinal);
+        Assert.Contains(".team-create-card", styles, StringComparison.Ordinal);
+        Assert.Contains(".leaderboard-table-wrap", styles, StringComparison.Ordinal);
+        Assert.Contains(".help-document-panel", styles, StringComparison.Ordinal);
+        Assert.Contains(".security-audit-table-wrap", styles, StringComparison.Ordinal);
+        Assert.Contains(".auth-studio-card", styles, StringComparison.Ordinal);
+        Assert.Contains(".table-wrap", styles, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RootEditor_UsesLocalDraftUploadPreviewSaveDiscardAndDefaultReset()
+    {
+        var page = Read("frontend", "src", "pages", "AdminSiteSettingsPage.tsx");
+        var api = Read("frontend", "src", "api", "siteSettingsApi.ts");
+
+        Assert.Contains("uploadThemeAsset", page, StringComparison.Ordinal);
+        Assert.Contains("BackgroundPreview", page, StringComparison.Ordinal);
+        Assert.Contains("handleDiscard", page, StringComparison.Ordinal);
+        Assert.Contains("handleResetGenericBackground", page, StringComparison.Ordinal);
+        Assert.Contains("handleResetPanelSkin", page, StringComparison.Ordinal);
+        Assert.Contains("/api/site-settings/theme-assets", api, StringComparison.Ordinal);
+        Assert.DoesNotContain("http://", api, StringComparison.Ordinal);
+        Assert.DoesNotContain("https://", api, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CoverageLayer_DoesNotAddFixedPrimaryAccent()
     {
         Assert.DoesNotContain("#6e7bff", CoverageStyles(), StringComparison.OrdinalIgnoreCase);

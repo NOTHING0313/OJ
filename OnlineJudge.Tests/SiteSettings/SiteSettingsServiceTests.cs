@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OnlineJudge.Application.SiteSettings.Dtos;
 using OnlineJudge.Application.SiteSettings.Requests;
+using OnlineJudge.Application.SecurityAudit;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
@@ -32,6 +33,10 @@ public class SiteSettingsServiceTests
         Assert.Equal("system", result.Value.Theme.FontPreset);
         Assert.Contains("global", result.Value.Pages.Keys);
         Assert.Contains("file-task", result.Value.Pages.Keys);
+        Assert.False(result.Value.Background.Enabled);
+        Assert.Null(result.Value.Background.Asset);
+        Assert.False(result.Value.PanelSkin.Enabled);
+        Assert.Null(result.Value.PanelSkin.BackgroundTexture);
     }
 
     [Fact]
@@ -255,6 +260,105 @@ public class SiteSettingsServiceTests
         Assert.Equal("/uploads/images/old.png", result.Value.Pages["global"].ImageUrl);
     }
 
+    [Theory]
+    [InlineData("stretch", "no-repeat", "scroll")]
+    [InlineData("cover", "space", "scroll")]
+    [InlineData("cover", "no-repeat", "local")]
+    public async Task UpdateSiteAppearance_RejectsUnsupportedBackgroundModes(string sizeMode, string repeat, string attachment)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        request.Background = new SiteThemeBackgroundDto { SizeMode = sizeMode, Repeat = repeat, Attachment = attachment };
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Theory]
+    [InlineData(-1, 50)]
+    [InlineData(101, 50)]
+    [InlineData(50, -1)]
+    [InlineData(50, 101)]
+    public async Task UpdateSiteAppearance_RejectsOutOfRangeGenericBackgroundPosition(double positionX, double positionY)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        request.Background = new SiteThemeBackgroundDto { PositionX = positionX, PositionY = positionY };
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.Equal("Theme background position must be between 0 and 100.", result.ErrorMessage);
+    }
+
+    [Theory]
+    [InlineData(-1, 100)]
+    [InlineData(21, 100)]
+    [InlineData(0, 49)]
+    [InlineData(0, 151)]
+    public async Task UpdateSiteAppearance_RejectsOutOfRangeBackgroundEffects(double blur, double brightness)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        request.Background = new SiteThemeBackgroundDto { Blur = blur, Brightness = brightness };
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Theory]
+    [InlineData(-0.01, null, null)]
+    [InlineData(1.01, null, null)]
+    [InlineData(null, -1.0, null)]
+    [InlineData(null, 33.0, null)]
+    [InlineData(null, null, -0.01)]
+    [InlineData(null, null, 1.01)]
+    public async Task UpdateSiteAppearance_RejectsOutOfRangePanelSkin(double? opacity, double? radius, double? shadow)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = CreateRequest();
+        request.PanelSkin = new SitePanelSkinDto { BackgroundOpacity = opacity, Radius = radius, ShadowStrength = shadow };
+
+        var result = await new SiteSettingsService(dbContext).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsFailure);
+    }
+
+    [Fact]
+    public async Task Root_CanSaveGenericThemeAndAuditContainsOnlySafeChangeMetadata()
+    {
+        await using var dbContext = CreateDbContext();
+        var audit = new CapturingAuditWriter();
+        var request = CreateRequest();
+        var assetId = $"{Guid.NewGuid():N}.png";
+        request.Background = new SiteThemeBackgroundDto
+        {
+            Enabled = true,
+            Asset = new ThemeAssetReferenceDto { AssetId = assetId, Url = $"/theme-assets/{assetId}" },
+            PositionX = 42,
+            PositionY = 58,
+            SizeMode = "cover",
+            Repeat = "no-repeat",
+            Attachment = "fixed",
+            OverlayColor = "#101820",
+            OverlayOpacity = 0.45,
+            Blur = 4,
+            Brightness = 90
+        };
+        request.PanelSkin = new SitePanelSkinDto { Enabled = true, BackgroundOpacity = 0.8, TextureOpacity = 0.2, Radius = 12, ShadowStrength = 0.3 };
+
+        var result = await new SiteSettingsService(dbContext, audit).UpdateAppearanceAsync(request, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("cover", result.Value!.Background.SizeMode);
+        Assert.True(result.Value.PanelSkin.Enabled);
+        var record = Assert.Single(audit.Records);
+        Assert.Equal(SecurityAuditActions.SiteAppearanceUpdated, record.Action);
+        Assert.Equal(["backgroundEnabledChanged", "changedAssetSlots", "panelSkinEnabledChanged"], record.Metadata!.Keys.Order());
+        Assert.DoesNotContain(assetId, string.Join('|', record.Metadata.Values), StringComparison.Ordinal);
+    }
+
     private static UpdateSiteAppearanceRequest CreateRequest(string pageImageUrl = "/uploads/images/background.png")
     {
         return new UpdateSiteAppearanceRequest
@@ -307,5 +411,18 @@ public class SiteSettingsServiceTests
             .Options;
 
         return new OnlineJudgeDbContext(options);
+    }
+
+    private sealed class CapturingAuditWriter : ISecurityAuditWriter
+    {
+        public List<SecurityAuditRecord> Records { get; } = [];
+
+        public void Stage(SecurityAuditRecord record) => Records.Add(record);
+
+        public Task WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default)
+        {
+            Records.Add(record);
+            return Task.CompletedTask;
+        }
     }
 }

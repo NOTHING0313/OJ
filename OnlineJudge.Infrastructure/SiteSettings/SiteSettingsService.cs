@@ -8,13 +8,15 @@ using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
 using OnlineJudge.Application.SecurityAudit;
+using OnlineJudge.Infrastructure.Storage;
 
 namespace OnlineJudge.Infrastructure.SiteSettings;
 
-public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditWriter? auditWriter = null) : ISiteSettingsService
+public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditWriter? auditWriter = null, IRuntimeStoragePathProvider? storagePaths = null) : ISiteSettingsService
 {
     private const string AppearanceKey = "appearance";
     private const string UploadImagePrefix = "/uploads/images/";
+    private const string ThemeAssetPrefix = "/theme-assets/";
 
     private static readonly string[] SupportedPageKeys =
     [
@@ -74,6 +76,26 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             return Result<SiteAppearanceDto>.Failure(validationError);
         }
 
+        validationError = ValidateBackground(request.Background);
+        if (validationError is not null)
+        {
+            return Result<SiteAppearanceDto>.Failure(validationError);
+        }
+
+        validationError = ValidatePanelSkin(request.PanelSkin);
+        if (validationError is not null)
+        {
+            return Result<SiteAppearanceDto>.Failure(validationError);
+        }
+
+        if (!TryNormalizeThemeAssetReference(request.Background.Asset, out var backgroundAsset)
+            || !TryNormalizeThemeAssetReference(request.PanelSkin.BackgroundTexture, out var panelBackgroundAsset)
+            || !TryNormalizeThemeAssetReference(request.PanelSkin.HeaderTexture, out var panelHeaderAsset)
+            || !TryNormalizeThemeAssetReference(request.PanelSkin.BorderTexture, out var panelBorderAsset))
+        {
+            return Result<SiteAppearanceDto>.Failure("Theme assets must use server-managed same-origin references.");
+        }
+
         var appearance = CreateDefaultAppearance();
         appearance.Theme = new SiteAppearanceThemeDto
         {
@@ -92,6 +114,31 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             NavTextColor = request.Theme.NavTextColor,
             NavActiveColor = request.Theme.NavActiveColor,
             FontPreset = request.Theme.FontPreset
+        };
+        appearance.Background = new SiteThemeBackgroundDto
+        {
+            Enabled = request.Background.Enabled,
+            Asset = backgroundAsset,
+            PositionX = request.Background.PositionX,
+            PositionY = request.Background.PositionY,
+            SizeMode = request.Background.SizeMode?.ToLowerInvariant(),
+            Repeat = request.Background.Repeat?.ToLowerInvariant(),
+            Attachment = request.Background.Attachment?.ToLowerInvariant(),
+            OverlayColor = request.Background.OverlayColor?.ToUpperInvariant(),
+            OverlayOpacity = request.Background.OverlayOpacity,
+            Blur = request.Background.Blur,
+            Brightness = request.Background.Brightness
+        };
+        appearance.PanelSkin = new SitePanelSkinDto
+        {
+            Enabled = request.PanelSkin.Enabled,
+            BackgroundTexture = panelBackgroundAsset,
+            HeaderTexture = panelHeaderAsset,
+            BorderTexture = panelBorderAsset,
+            BackgroundOpacity = request.PanelSkin.BackgroundOpacity,
+            TextureOpacity = request.PanelSkin.TextureOpacity,
+            Radius = request.PanelSkin.Radius,
+            ShadowStrength = request.PanelSkin.ShadowStrength
         };
 
         foreach (var pageKey in SupportedPageKeys)
@@ -125,6 +172,7 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
         var value = JsonSerializer.Serialize(appearance, JsonOptions);
         var setting = await dbContext.SiteSettings
             .FirstOrDefaultAsync(item => item.Key == AppearanceKey, cancellationToken);
+        var previousAppearance = ReadAppearanceOrDefault(setting?.Value);
 
         if (setting is null)
         {
@@ -140,7 +188,11 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
         setting.UpdatedAt = DateTimeOffset.UtcNow;
         setting.UpdatedByUserId = currentUserId;
 
-        auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.SiteAppearanceUpdated, "SiteAppearance", AppearanceKey));
+        auditWriter?.Stage(new SecurityAuditRecord(
+            SecurityAuditActions.SiteAppearanceUpdated,
+            "SiteAppearance",
+            AppearanceKey,
+            Metadata: BuildAuditMetadata(previousAppearance, appearance)));
         await dbContext.SaveChangesAsync(cancellationToken);
         return Result<SiteAppearanceDto>.Success(appearance);
     }
@@ -211,7 +263,9 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
                 NavTextColor = "#D9DEE9",
                 NavActiveColor = "#F2F4F8",
                 FontPreset = "system"
-            }
+            },
+            Background = new SiteThemeBackgroundDto(),
+            PanelSkin = new SitePanelSkinDto()
         };
 
         foreach (var pageKey in SupportedPageKeys)
@@ -263,6 +317,35 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
             NavTextColor = IsHexColor(appearance.Theme.NavTextColor) ? appearance.Theme.NavTextColor.ToUpperInvariant() : "#D9DEE9",
             NavActiveColor = IsHexColor(appearance.Theme.NavActiveColor) ? appearance.Theme.NavActiveColor.ToUpperInvariant() : "#F2F4F8",
             FontPreset = IsFontPreset(appearance.Theme.FontPreset) ? appearance.Theme.FontPreset : "system"
+        };
+
+        var background = appearance.Background ?? new SiteThemeBackgroundDto();
+        normalized.Background = new SiteThemeBackgroundDto
+        {
+            Enabled = background.Enabled,
+            Asset = NormalizeThemeAssetReference(background.Asset),
+            PositionX = background.PositionX is >= 0 and <= 100 ? background.PositionX : null,
+            PositionY = background.PositionY is >= 0 and <= 100 ? background.PositionY : null,
+            SizeMode = IsBackgroundSizeMode(background.SizeMode) ? background.SizeMode!.ToLowerInvariant() : null,
+            Repeat = IsBackgroundRepeat(background.Repeat) ? background.Repeat!.ToLowerInvariant() : null,
+            Attachment = IsBackgroundAttachment(background.Attachment) ? background.Attachment!.ToLowerInvariant() : null,
+            OverlayColor = IsHexColor(background.OverlayColor) ? background.OverlayColor!.ToUpperInvariant() : null,
+            OverlayOpacity = background.OverlayOpacity is >= 0 and <= 1 ? background.OverlayOpacity : null,
+            Blur = background.Blur is >= 0 and <= 20 ? background.Blur : null,
+            Brightness = background.Brightness is >= 50 and <= 150 ? background.Brightness : null
+        };
+
+        var panelSkin = appearance.PanelSkin ?? new SitePanelSkinDto();
+        normalized.PanelSkin = new SitePanelSkinDto
+        {
+            Enabled = panelSkin.Enabled,
+            BackgroundTexture = NormalizeThemeAssetReference(panelSkin.BackgroundTexture),
+            HeaderTexture = NormalizeThemeAssetReference(panelSkin.HeaderTexture),
+            BorderTexture = NormalizeThemeAssetReference(panelSkin.BorderTexture),
+            BackgroundOpacity = panelSkin.BackgroundOpacity is >= 0 and <= 1 ? panelSkin.BackgroundOpacity : null,
+            TextureOpacity = panelSkin.TextureOpacity is >= 0 and <= 1 ? panelSkin.TextureOpacity : null,
+            Radius = panelSkin.Radius is >= 0 and <= 32 ? panelSkin.Radius : null,
+            ShadowStrength = panelSkin.ShadowStrength is >= 0 and <= 1 ? panelSkin.ShadowStrength : null
         };
 
         foreach (var pageKey in SupportedPageKeys)
@@ -389,6 +472,76 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
         return null;
     }
 
+    private static string? ValidateBackground(SiteThemeBackgroundDto background)
+    {
+        if (background.Enabled && background.Asset is null)
+        {
+            return "An enabled theme background requires an uploaded asset.";
+        }
+
+        if (background.PositionX is < 0 or > 100 || background.PositionY is < 0 or > 100)
+        {
+            return "Theme background position must be between 0 and 100.";
+        }
+
+        if (background.SizeMode is not null && !IsBackgroundSizeMode(background.SizeMode))
+        {
+            return "Unsupported theme background size mode.";
+        }
+
+        if (background.Repeat is not null && !IsBackgroundRepeat(background.Repeat))
+        {
+            return "Unsupported theme background repeat mode.";
+        }
+
+        if (background.Attachment is not null && !IsBackgroundAttachment(background.Attachment))
+        {
+            return "Unsupported theme background attachment mode.";
+        }
+
+        if (background.OverlayColor is not null && !IsHexColor(background.OverlayColor))
+        {
+            return "Theme background overlay color must use #RRGGBB format.";
+        }
+
+        if (background.OverlayOpacity is < 0 or > 1)
+        {
+            return "Theme background overlay opacity must be between 0 and 1.";
+        }
+
+        if (background.Blur is < 0 or > 20)
+        {
+            return "Theme background blur must be between 0 and 20.";
+        }
+
+        if (background.Brightness is < 50 or > 150)
+        {
+            return "Theme background brightness must be between 50 and 150.";
+        }
+
+        return null;
+    }
+
+    private static string? ValidatePanelSkin(SitePanelSkinDto panelSkin)
+    {
+        if (panelSkin.BackgroundOpacity is < 0 or > 1 || panelSkin.TextureOpacity is < 0 or > 1)
+        {
+            return "Panel skin opacity must be between 0 and 1.";
+        }
+
+        if (panelSkin.Radius is < 0 or > 32)
+        {
+            return "Panel skin radius must be between 0 and 32.";
+        }
+
+        if (panelSkin.ShadowStrength is < 0 or > 1)
+        {
+            return "Panel skin shadow strength must be between 0 and 1.";
+        }
+
+        return null;
+    }
+
     private static bool IsHexColor(string? color)
     {
         return color is { Length: 7 }
@@ -399,6 +552,107 @@ public class SiteSettingsService(OnlineJudgeDbContext dbContext, ISecurityAuditW
     private static bool IsFontPreset(string? preset)
     {
         return preset is "system" or "readable" or "mono";
+    }
+
+    private static bool IsBackgroundSizeMode(string? value) => value?.ToLowerInvariant() is "cover" or "contain" or "auto";
+
+    private static bool IsBackgroundRepeat(string? value) => value?.ToLowerInvariant() is "no-repeat" or "repeat" or "repeat-x" or "repeat-y";
+
+    private static bool IsBackgroundAttachment(string? value) => value?.ToLowerInvariant() is "scroll" or "fixed";
+
+    private bool TryNormalizeThemeAssetReference(ThemeAssetReferenceDto? asset, out ThemeAssetReferenceDto? normalized)
+    {
+        normalized = NormalizeThemeAssetReference(asset);
+        if (asset is null)
+        {
+            return true;
+        }
+
+        if (normalized is null)
+        {
+            return false;
+        }
+
+        if (storagePaths is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            return File.Exists(storagePaths.ResolveThemeAssetPath(normalized.AssetId));
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
+    }
+
+    private static ThemeAssetReferenceDto? NormalizeThemeAssetReference(ThemeAssetReferenceDto? asset)
+    {
+        if (asset is null || !IsManagedThemeAssetId(asset.AssetId))
+        {
+            return null;
+        }
+
+        var expectedUrl = ThemeAssetPrefix + asset.AssetId;
+        return string.Equals(asset.Url, expectedUrl, StringComparison.Ordinal)
+            ? new ThemeAssetReferenceDto { AssetId = asset.AssetId, Url = expectedUrl }
+            : null;
+    }
+
+    private static bool IsManagedThemeAssetId(string? assetId)
+    {
+        if (string.IsNullOrWhiteSpace(assetId))
+        {
+            return false;
+        }
+
+        var extension = Path.GetExtension(assetId);
+        return assetId.Length is >= 36 and <= 37
+            && Guid.TryParseExact(Path.GetFileNameWithoutExtension(assetId), "N", out _)
+            && extension is ".png" or ".jpg" or ".webp";
+    }
+
+    private static SiteAppearanceDto ReadAppearanceOrDefault(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return CreateDefaultAppearance();
+        }
+
+        try
+        {
+            return ReadAppearance(json);
+        }
+        catch (JsonException)
+        {
+            return CreateDefaultAppearance();
+        }
+    }
+
+    private static IReadOnlyDictionary<string, string?> BuildAuditMetadata(SiteAppearanceDto previous, SiteAppearanceDto current)
+    {
+        var changedSlots = new List<string>();
+        AddChangedSlot(changedSlots, "background", previous.Background.Asset, current.Background.Asset);
+        AddChangedSlot(changedSlots, "panelBackground", previous.PanelSkin.BackgroundTexture, current.PanelSkin.BackgroundTexture);
+        AddChangedSlot(changedSlots, "panelHeader", previous.PanelSkin.HeaderTexture, current.PanelSkin.HeaderTexture);
+        AddChangedSlot(changedSlots, "panelBorder", previous.PanelSkin.BorderTexture, current.PanelSkin.BorderTexture);
+
+        return new Dictionary<string, string?>
+        {
+            ["backgroundEnabledChanged"] = (previous.Background.Enabled != current.Background.Enabled).ToString(),
+            ["panelSkinEnabledChanged"] = (previous.PanelSkin.Enabled != current.PanelSkin.Enabled).ToString(),
+            ["changedAssetSlots"] = changedSlots.Count == 0 ? "none" : string.Join(',', changedSlots)
+        };
+    }
+
+    private static void AddChangedSlot(ICollection<string> slots, string slot, ThemeAssetReferenceDto? previous, ThemeAssetReferenceDto? current)
+    {
+        if (!string.Equals(previous?.AssetId, current?.AssetId, StringComparison.Ordinal))
+        {
+            slots.Add(slot);
+        }
     }
 
     private static bool TryNormalizeUploadedImagePath(string? url, string? requestHost, out string? normalizedPath)

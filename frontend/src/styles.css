@@ -58,15 +58,27 @@ body {
 .site-theme-background {
   position: fixed;
   inset: 0;
-  z-index: 0;
-  background-position: center;
-  background-repeat: no-repeat;
+  z-index: -1;
+  overflow: hidden;
   pointer-events: none;
 }
 
 .site-theme-background > div {
   position: absolute;
   inset: 0;
+}
+
+.site-theme-background-image {
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.site-theme-background-overlay {
+  pointer-events: none;
+}
+
+.theme-generic-background-active .auth-studio-page {
+  background: transparent;
 }
 
 .site-theme-content {
@@ -6171,6 +6183,126 @@ h2 {
   color: #bdc4ff;
 }
 
+.theme-panel-bg-opacity :is(
+  .admin-metric,
+  .admin-panel,
+  .auth-card,
+  .auth-studio-card,
+  .challenge-card,
+  .challenge-board-panel-v8,
+  .challenge-side-panel,
+  .challenge-progress-card,
+  .content-block,
+  .detail-card,
+  .file-task-main,
+  .file-task-panel,
+  .help-document-panel,
+  .leaderboard-challenge-card,
+  .leaderboard-hub-card,
+  .leaderboard-v2-feature-card,
+  .leaderboard-v2-table-wrap,
+  .leaderboard-table-wrap,
+  .management-state-panel,
+  .problem-content,
+  .sample-card,
+  .security-audit-table-wrap,
+  .submission-state-panel,
+  .submit-panel,
+  .table-wrap,
+  .task-meta-panel,
+  .task-statement,
+  .team-chat-workspace,
+  .team-workspace-sidebar,
+  .team-create-card
+) {
+  background-color: var(--theme-panel-bg-color);
+}
+
+.theme-panel-bg-texture :is(
+  .admin-metric,
+  .admin-panel,
+  .auth-card,
+  .auth-studio-card,
+  .challenge-card,
+  .challenge-board-panel-v8,
+  .challenge-side-panel,
+  .challenge-progress-card,
+  .content-block,
+  .detail-card,
+  .file-task-main,
+  .file-task-panel,
+  .help-document-panel,
+  .leaderboard-challenge-card,
+  .leaderboard-hub-card,
+  .leaderboard-v2-feature-card,
+  .leaderboard-v2-table-wrap,
+  .leaderboard-table-wrap,
+  .management-state-panel,
+  .problem-content,
+  .sample-card,
+  .security-audit-table-wrap,
+  .submission-state-panel,
+  .submit-panel,
+  .table-wrap,
+  .task-meta-panel,
+  .task-statement,
+  .team-chat-workspace,
+  .team-workspace-sidebar,
+  .team-create-card
+) {
+  background-image: var(--theme-panel-bg-layer);
+  background-position: center;
+  background-size: cover;
+}
+
+.theme-panel-radius :is(.admin-metric, .admin-panel, .auth-card, .auth-studio-card, .challenge-card, .challenge-board-panel-v8, .challenge-side-panel, .challenge-progress-card, .content-block, .detail-card, .file-task-main, .file-task-panel, .help-document-panel, .leaderboard-challenge-card, .leaderboard-hub-card, .leaderboard-v2-feature-card, .leaderboard-v2-table-wrap, .leaderboard-table-wrap, .management-state-panel, .problem-content, .sample-card, .security-audit-table-wrap, .submission-state-panel, .submit-panel, .table-wrap, .task-meta-panel, .task-statement, .team-chat-workspace, .team-workspace-sidebar, .team-create-card) {
+  border-radius: var(--theme-panel-radius);
+}
+
+.theme-panel-shadow :is(.admin-metric, .admin-panel, .auth-card, .auth-studio-card, .challenge-card, .challenge-board-panel-v8, .challenge-side-panel, .challenge-progress-card, .content-block, .detail-card, .file-task-main, .file-task-panel, .help-document-panel, .leaderboard-challenge-card, .leaderboard-hub-card, .leaderboard-v2-feature-card, .leaderboard-v2-table-wrap, .leaderboard-table-wrap, .management-state-panel, .problem-content, .sample-card, .security-audit-table-wrap, .submission-state-panel, .submit-panel, .table-wrap, .task-meta-panel, .task-statement, .team-chat-workspace, .team-workspace-sidebar, .team-create-card) {
+  box-shadow: var(--theme-panel-shadow);
+}
+
+.theme-panel-border-texture :is(.admin-metric, .admin-panel, .auth-card, .auth-studio-card, .challenge-card, .challenge-board-panel-v8, .challenge-side-panel, .challenge-progress-card, .content-block, .detail-card, .file-task-main, .file-task-panel, .help-document-panel, .leaderboard-challenge-card, .leaderboard-hub-card, .leaderboard-v2-feature-card, .leaderboard-v2-table-wrap, .leaderboard-table-wrap, .management-state-panel, .problem-content, .sample-card, .security-audit-table-wrap, .submission-state-panel, .submit-panel, .table-wrap, .task-meta-panel, .task-statement, .team-chat-workspace, .team-workspace-sidebar, .team-create-card) {
+  border-image-source: var(--theme-panel-border-image);
+  border-image-slice: 30;
+  border-image-width: 1;
+  border-image-repeat: round;
+}
+
+.theme-panel-header-texture :is(
+  .admin-panel,
+  .auth-studio-card,
+  .challenge-card,
+  .challenge-side-panel,
+  .content-block,
+  .detail-card,
+  .file-task-panel,
+  .help-document-panel,
+  .leaderboard-v2-feature-card,
+  .submit-panel,
+  .table-wrap,
+  .team-chat-workspace,
+  .team-create-card
+) > :is(header, .admin-panel-header, .auth-studio-card-header) {
+  background-image: var(--theme-panel-header-layer, none);
+  background-position: center;
+  background-size: cover;
+}
+
+.theme-panel-header-texture .team-chat-workspace > .team-workspace-tabs,
+.theme-panel-header-texture .team-workspace-sidebar > details > summary {
+  background-image: var(--theme-panel-header-layer, none);
+  background-position: center;
+  background-size: cover;
+}
+
+@media (max-width: 760px) {
+  .site-theme-background-image {
+    background-attachment: scroll !important;
+  }
+}
+
 .management-menu { position: relative; }
 .management-menu summary { padding: 8px 10px; color: var(--oj-text-secondary); cursor: pointer; list-style: none; }
 .management-menu summary::-webkit-details-marker { display: none; }
@@ -10296,6 +10428,94 @@ h2 {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.site-settings-preview-theme-background {
+  position: absolute;
+  inset: -20px;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+.theme-preview-panel-enabled .site-settings-preview-page-header-v4 {
+  background-image: var(--theme-preview-header-layer, none);
+  background-position: center;
+  background-size: cover;
+}
+
+.site-settings-theme-section {
+  border: 1px solid var(--oj-panel-border);
+  border-radius: 8px;
+  background: var(--oj-panel-bg);
+}
+
+.site-settings-theme-section > summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  color: var(--oj-text-primary);
+  font-weight: 700;
+}
+
+.site-settings-theme-section-body {
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid var(--oj-panel-border);
+  padding: 16px;
+}
+
+.site-settings-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.site-settings-theme-grid > label {
+  display: grid;
+  gap: 6px;
+  color: var(--oj-text-secondary);
+  font-size: 0.82rem;
+}
+
+.site-settings-theme-asset-field {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--oj-border-soft);
+  border-radius: 7px;
+  padding: 12px;
+}
+
+.site-settings-theme-asset-field > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--oj-text-secondary);
+}
+
+.site-settings-theme-asset-field > div:first-child span {
+  overflow: hidden;
+  color: var(--oj-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-settings-theme-asset-field img {
+  width: 100%;
+  max-height: 120px;
+  border: 1px solid var(--oj-border-soft);
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.site-settings-theme-asset-field .button.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 760px) {
+  .site-settings-theme-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .site-settings-preview-shell {
