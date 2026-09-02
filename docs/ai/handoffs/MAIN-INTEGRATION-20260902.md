@@ -1,65 +1,132 @@
-# Main Integration Handoff: 2026-09-02
+# OnlineJudge 主分支集成交接报告
 
-## Integration Scope
+## 一、交接结论
 
-- Repository: `E:/Github/OJ`
-- Source branch: `feat/theme-10h-theme-library`
-- Local `main` before integration: `97004bde09d977b2f3df5fb3621949833f2e6559`
-- Remote `origin/main` observed before integration: `97004bde09d977b2f3df5fb3621949833f2e6559`
-- Feature tip before this handoff document: `5409950a1d19bd39a65139d2510be123288d6cd2`
-- Relationship before integration: local `main` is an ancestor of the source branch; the source branch is 28 commits ahead and 0 behind.
-- Integration method: local fast-forward only (`git merge --ff-only`).
-- Push/deployment: not authorized and not performed.
+OnlineJudge 阶段性开发成果已通过本地自动化门禁，并以快进方式完整合入本地 `main`。首次集成仅在本地完成；经用户后续明确授权，全部既有提交与本报告中文优化提交已推送到 `origin/main`。全过程未部署生产环境，也未处理审计报告中列出的后续风险问题。
 
-The integrated history covers the completed OnlineJudge work from hidden judge assets through theme editor production-preview fidelity. The final feature commit adds theme-pack preflight and asset metadata behavior, shared production UI views for deterministic preview reuse, accessible editor dialogs, deterministic preview fixtures, fidelity automation, and aligned static contract tests.
+- 交接日期：`2026-09-02`
+- 仓库：`E:/Github/OJ`
+- 集成来源分支：`feat/theme-10h-theme-library`
+- 集成前本地 `main`：`97004bde09d977b2f3df5fb3621949833f2e6559`
+- 集成前远端 `origin/main`：`97004bde09d977b2f3df5fb3621949833f2e6559`
+- 最终功能提交：`5409950a1d19bd39a65139d2510be123288d6cd2`
+- 完成首次本地交接时的 `main`：`eb713bd665b7aa158e6d1f1ff84bed49dbcbcd89`
+- 合并方式：`git merge --ff-only feat/theme-10h-theme-library`
+- 推送范围：首次集成形成的 29 个提交，以及本报告的中文优化提交
+- 远端推送：已执行普通 Fast-forward Push，未使用 Force Push
+- 生产部署：未执行
 
-## Verification Evidence
+## 二、本次并入范围
 
-- `dotnet build OnlineJudge.sln`: PASS, 0 warnings, 0 errors.
-- Targeted contract tests after correcting shared-view source paths: 97 / 97 PASS.
-- `dotnet test OnlineJudge.sln --no-build`: 937 / 937 PASS, 0 failed, 0 skipped.
-- `frontend/npm run build`: PASS.
-- Frontend warning: the existing Vite chunk-size warning remains (`index` bundle above 500 kB); no dependency or bundling change was made to address it.
-- `dotnet ef migrations has-pending-model-changes --project OnlineJudge.Infrastructure/OnlineJudge.Infrastructure.csproj --startup-project OnlineJudge.Api/OnlineJudge.Api.csproj --no-build`: PASS; no pending model changes.
-- `node scripts/e2e/theme-preview-fidelity.mjs`: PASS for leaderboard, problem detail, and help center. Geometry/style checks passed, preview made zero real API calls, and editor observability checks passed.
-- `git diff --check`: PASS before commit.
-- Generated fidelity screenshots/results are under ignored `artifacts/` and are not part of Git history.
+本次集成包含从隐藏判题资产、内存遥测、测试用例管理、战队与赛季能力，到认证安全、上传与沙箱加固、帮助中心、全局主题系统及可视化主题编辑器的阶段性成果。
 
-## Deferred Risk Backlog
+最后一批主题编辑器成果主要包括：
 
-These items are deliberately not remediated by this integration. A future owner must independently reproduce, prioritize, design, implement, and verify each item before treating it as closed.
+- 主题包导入预检与资源显示名称支持；
+- 榜单、题目详情、帮助中心等生产视图的共享复用；
+- 可访问的主题编辑器对话框与交互；
+- 确定性的预览数据夹具；
+- 生产页面与编辑器预览页面的自动保真验证；
+- 与共享视图结构一致的前端静态契约测试。
 
-### Highest Priority
+本次交接操作只固化既有分支历史、生成交接记录并更新远端 Git 引用，没有修改生产服务器、依赖版本或运行时数据。历史提交中的配置与 Migration 变化均来自此前已经独立验证的功能阶段，不代表本轮新增变更。
 
-1. Judge queue delivery semantics: the database submission transaction and Redis enqueue are separate, while worker consumption uses destructive pop behavior without an acknowledgement/recovery protocol. Review for lost or stranded submissions and introduce a durable recovery design without weakening judge isolation.
-2. Hidden judge asset isolation: hidden inputs are materialized into the contestant execution workspace. Review filesystem ownership and mount/write boundaries so submitted code cannot mutate or disclose hidden assets.
-3. Empty test-suite acceptance: verify whether a problem with zero effective test cases can produce an accepted result. Define and enforce the authoritative behavior in problem validation and judge execution.
+## 三、验证结果
 
-### Additional Security And Operations Work
+| 验证项 | 结果 | 证据 |
+| --- | --- | --- |
+| .NET 调试构建 | PASS | `dotnet build OnlineJudge.sln`，0 个警告 / 0 个错误 |
+| 定向静态契约测试 | PASS | 97 / 97，通过共享视图的真实源码路径验证 |
+| 完整后端测试 | PASS | `dotnet test OnlineJudge.sln --no-build`，937 / 937，0 个失败，0 个跳过 |
+| 前端生产构建 | PASS | `frontend/npm run build` |
+| EF 模型漂移 | PASS | `dotnet ef migrations has-pending-model-changes ... --no-build`，无待生成模型变更 |
+| 主题预览保真门禁 | PASS | 榜单、题目详情、帮助中心的几何和样式检查全部通过，预览页面真实 API 请求数为 0 |
+| 编辑器效果可观察性 | PASS | 100% 缩放、面板四角、边框、阴影、选区轮廓均可验证 |
+| Git 差异格式 | PASS | `git diff --check` |
+| 工作区污染检查 | PASS | 保真截图和结果仅位于被忽略的 `artifacts/`，未进入 Git 历史 |
 
-- Strengthen registration password policy with compatibility and user-migration considerations.
-- Review email/SMS verification consumption for atomicity and replay/concurrency behavior.
-- Add evidence-based input, upload, batch, repository, and resource limits where currently unbounded.
-- Harden production Redis persistence/health checks and complete production TLS/HTTPS work separately from application releases.
-- Prevent CSV formula injection in exported user-controlled fields.
-- Reassess browser token storage (`localStorage`) within a complete authentication threat model.
-- Review shared runtime directory permissions, upload quota/cleanup, and configured/default path consistency.
-- Add a maintained frontend test/lint/CI gate; consider SDK pinning and the .NET 9 support lifecycle.
-- Reduce oversized services/styles and investigate duplicated or oversized frontend bundles only as separately scoped refactors.
+已知但未新增的构建提示：Vite 仍报告主 Bundle 大于 500 kB。该提示不影响本次生产构建通过，本轮未调整依赖或打包策略。
 
-## Safety Boundaries For Follow-up
+## 四、后续最高优先级风险
 
-- Do not weaken SSRF, authorization, sandbox, hidden-test, rate-limit, or audit-log controls to obtain a quick green test.
-- Queue, judge workspace, authentication, persistent storage, and deployment changes require their own architecture and rollback plans.
-- Database migrations, public contracts, Docker/Nginx/TLS, production data, and secrets must not be changed as incidental fixes.
-- Re-run the complete build/test/frontend/EF/diff gates after any risk remediation, plus focused runtime/security tests for the changed boundary.
+以下问题没有在本次集成中修复。后续负责人必须先基于当前 `main` 复现和确认，再分别设计、实施和验证；不得仅凭本报告将其标记为已解决。
 
-## Git And Rollback Notes
+### 1. 判题队列可靠性
 
-- This handoff records a local integration only. `origin/main` remains unchanged until an authorized human push.
-- The source feature branch is retained as a named reference after fast-forward integration.
-- If rollback of the local integration is later requested, use the recorded pre-integration `main` commit as the recovery reference only after explicit authorization; do not reset or rewrite history implicitly.
+- 当前风险：Submission 数据库事务与 Redis 入队不是同一原子操作；Worker 使用破坏性弹出消费，缺少 ACK、重试台账和崩溃恢复协议。
+- 可能影响：提交记录可能处于已创建但未入队、已出队但未完成、异常后无法自动恢复等状态。
+- 后续工作：单独开展队列可靠性设计，明确状态机、幂等键、ACK/Lease、重试、死信和恢复扫描机制。
+- 安全边界：不得为了快速恢复而绕过判题隔离、重复计分保护或 Submission 状态一致性。
 
-## Next Owner
+### 2. 隐藏判题资产隔离
 
-Continue from local `main`, select one deferred risk as a separately scoped task, validate the finding against current code, and submit an independently reviewable change. Do not treat this document as proof that any deferred finding has been fixed.
+- 当前风险：隐藏输入会被物化到参赛代码使用的执行工作区，需要继续确认容器内的可见性、所有权和写权限边界。
+- 可能影响：恶意提交可能尝试读取、篡改或推断隐藏测试资产。
+- 后续工作：复核 Host Workspace、Bind Mount、容器用户、只读挂载和逐用例隔离策略，并执行真实 Docker 攻击面验证。
+- 安全边界：不能只依据静态源码或单元测试声明沙箱隔离已经完成。
+
+### 3. 零测试用例判题约束
+
+- 当前风险：需要确认题目不存在有效测试用例时，是否仍可能产生 Accepted 结果。
+- 可能影响：配置不完整的题目可能被错误判定为通过。
+- 后续工作：明确题目发布、提交入队和 Worker 执行三层中的权威校验位置，并增加服务测试及端到端回归。
+- 安全边界：不得通过前端隐藏或仅依赖管理端提示代替后端权威约束。
+
+## 五、其他待办风险
+
+### 身份认证与业务安全
+
+- 评估并加强注册密码策略，同时考虑已有账号兼容性；
+- 检查邮箱、短信验证码消费的原子性、并发和重放行为；
+- 在完整认证威胁模型下重新评估浏览器 `localStorage` Token 存储；
+- 防止用户可控字段在 CSV 导出时触发公式注入。
+
+### 输入、存储与资源治理
+
+- 为上传、批处理、Repository 操作和高成本请求补充有证据支持的容量限制；
+- 统一运行时目录的配置路径、默认路径、Ownership 与 Permission；
+- 完善上传配额、过期清理、失败回收和备份恢复策略。
+
+### 生产基础设施
+
+- 完善 Redis 持久化、健康检查和故障恢复；
+- 将 HTTPS/TLS 作为独立生产加固任务完成，禁止混入普通应用发布；
+- 继续验证生产 PostgreSQL、Redis、Docker、持久化目录和备份恢复能力。
+
+### 工程质量与可维护性
+
+- 建立稳定的前端测试、Lint 和 CI 门禁；
+- 评估 SDK 固定策略以及 .NET 9 生命周期；
+- 将超大 Service、全局样式和前端重复/超大 Bundle 拆分为独立重构任务，避免与风险修复混杂。
+
+## 六、建议的后续任务拆分
+
+建议按以下顺序分别立项，每项独立审查、验证和回滚：
+
+1. 判题队列可靠性（建议任务代号：`JUDGE-QUEUE-RELIABILITY`）：先解决提交不丢失、可重试和可恢复问题；
+2. 隐藏判题资产隔离（建议任务代号：`JUDGE-ASSET-ISOLATION`）：完成真实 Docker 文件系统攻击面验证与加固；
+3. 零测试用例不变量（建议任务代号：`ZERO-TESTCASE-INVARIANT`）：建立题目发布与判题执行的后端权威约束；
+4. 认证操作原子性（建议任务代号：`AUTH-ATOMICITY`）：处理验证码消费、密码策略与 Token 存储风险；
+5. 生产环境加固（建议任务代号：`PRODUCTION-HARDENING`）：处理 Redis 持久化、目录权限、备份恢复与 TLS；
+6. 前端工程门禁（建议任务代号：`FRONTEND-ENGINEERING-GATE`）：补齐测试、Lint、CI 和 Bundle 治理。
+
+每个任务开始前都应重新检查当前代码，因为本报告只记录 `2026-09-02` 的集成状态，不能替代后续源码事实验证。
+
+## 七、后续修改安全边界
+
+- 不得通过放宽 SSRF、授权、沙箱、隐藏测试、限流或审计日志策略来换取测试通过；
+- 队列、判题工作区、认证、持久化目录和部署配置变更必须分别提供架构说明与回滚方案；
+- 数据库 Migration、公共 API、Docker、Nginx、TLS、生产数据和 Secret 不得作为顺手修改；
+- 每项风险修复后必须重新执行完整 .NET 构建、完整测试、前端生产构建、EF 模型漂移检查和 `git diff --check`；
+- 沙箱与生产基础设施结论必须包含真实运行证据，不能只依赖静态检查。
+
+## 八、Git 与回滚说明
+
+- 本地 `main` 已通过普通 Fast-forward Push 上传到 `origin/main`，未使用 Force Push；
+- 来源分支 `feat/theme-10h-theme-library` 被保留，并与完成交接时的本地 `main` 指向同一提交；
+- 保真验证生成物位于 Git 忽略目录，不属于可发布源码；
+- 如后续确需撤销本地集成，必须先获得明确授权，再以集成前提交 `97004bde09d977b2f3df5fb3621949833f2e6559` 作为恢复参考；禁止隐式 Reset、Rebase 或改写历史。
+
+## 九、交接给后续负责人
+
+后续负责人应从已同步远端的 `main` 开始，一次只选择一个风险问题，先验证发现、再冻结范围与契约，最后提交可独立审查的修复。风险修复和生产部署均不属于本次交接报告优化范围。
