@@ -1,6 +1,6 @@
 import { useTheme } from "../theme/ThemeContext";
 
-export function ThemeQuickSwitch() {
+export function ThemeQuickSwitch({ interactive = true }: { interactive?: boolean }) {
   const { currentTheme, toggleTheme } = useTheme();
   const isRootConfigured = currentTheme === "mystic-background";
   const hint = isRootConfigured
@@ -14,7 +14,7 @@ export function ThemeQuickSwitch() {
       title={hint}
       aria-label={hint}
       aria-pressed={isRootConfigured}
-      onClick={toggleTheme}
+      onClick={interactive ? toggleTheme : undefined}
     >
       <span aria-hidden="true" />
     </button>

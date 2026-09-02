@@ -4,19 +4,19 @@ public sealed class OjUx06AContractTests
 {
     public static TheoryData<string, string> RequiredContracts => new()
     {
-        { "frontend/src/AppLayout.tsx", "<NavLink to=\"/problems\"><ThemeIcon slot=\"problem\" />题目</NavLink>" },
-        { "frontend/src/AppLayout.tsx", "<NavLink to=\"/challenges\"><ThemeIcon slot=\"challenge\" />挑战</NavLink>" },
+        { "frontend/src/components/AppHeaderView.tsx", "renderIcon(\"problem\")}题目" },
+        { "frontend/src/components/AppHeaderView.tsx", "renderIcon(\"challenge\")}挑战" },
         { "frontend/src/AppLayout.tsx", "hasPublicLeaderboard" },
-        { "frontend/src/AppLayout.tsx", "management-menu" },
-        { "frontend/src/AppLayout.tsx", "内容管理" },
-        { "frontend/src/AppLayout.tsx", "竞赛管理" },
-        { "frontend/src/AppLayout.tsx", "系统管理" },
-        { "frontend/src/AppLayout.tsx", "榜单管理" },
+        { "frontend/src/components/AppHeaderView.tsx", "management-menu" },
+        { "frontend/src/components/AppHeaderView.tsx", "内容管理" },
+        { "frontend/src/components/AppHeaderView.tsx", "竞赛管理" },
+        { "frontend/src/components/AppHeaderView.tsx", "系统管理" },
+        { "frontend/src/components/AppHeaderView.tsx", "榜单管理" },
         { "frontend/src/main.tsx", "allowedRoles={[2, 3]}><LeaderboardSeasonHistoryPage" },
         { "frontend/src/pages/AccountCompetitionPage.tsx", "getCurrentSeasonPersonal" },
         { "frontend/src/pages/LeaderboardHomePage.tsx", "boards.length === 0" },
-        { "frontend/src/pages/LeaderboardHomePage.tsx", "hasGlobalBoard" },
-        { "frontend/src/pages/LeaderboardHomePage.tsx", "hasChallengeBoards" },
+        { "frontend/src/components/leaderboards/LeaderboardHomeView.tsx", "hasGlobalBoard" },
+        { "frontend/src/components/leaderboards/LeaderboardHomeView.tsx", "hasChallengeBoards" },
         { "frontend/src/pages/AdminLeaderboardSeasonPage.tsx", "创建并关联挑战" },
         { "frontend/src/pages/AdminLeaderboardSeasonPage.tsx", "选择当前结果" },
         { "frontend/src/pages/AdminLeaderboardSeasonPage.tsx", "批量加入" },
@@ -48,7 +48,7 @@ public sealed class OjUx06AContractTests
     [Fact]
     public void AnswererNavigation_PreservesRequiredOrder()
     {
-        var source = Read("frontend/src/AppLayout.tsx");
+        var source = Read("frontend/src/components/AppHeaderView.tsx");
         var problem = source.IndexOf("to=\"/problems\"", StringComparison.Ordinal);
         var challenge = source.IndexOf("to=\"/challenges\"", problem, StringComparison.Ordinal);
         var leaderboard = source.IndexOf("to=\"/leaderboards\"", StringComparison.Ordinal);
@@ -69,7 +69,7 @@ public sealed class OjUx06AContractTests
     [Fact]
     public void PublicLeaderboard_RemovesLiveBadgeAndHistoryEntry()
     {
-        var home = Read("frontend/src/pages/LeaderboardHomePage.tsx");
+        var home = Read("frontend/src/components/leaderboards/LeaderboardHomeView.tsx");
         var season = Read("frontend/src/pages/SeasonLeaderboardPage.tsx");
         Assert.DoesNotContain("实时榜单", home, StringComparison.Ordinal);
         Assert.DoesNotContain("/leaderboards/history", season, StringComparison.Ordinal);

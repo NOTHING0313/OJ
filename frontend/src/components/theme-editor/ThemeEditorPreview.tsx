@@ -1,4 +1,4 @@
-import { type CSSProperties, type PointerEvent, useEffect, useState } from "react";
+import { type CSSProperties, type PointerEvent, useEffect, useRef, useState } from "react";
 import {
   createDefaultPageBackground,
   resolveSiteAssetUrl,
@@ -7,35 +7,59 @@ import {
   type SiteThemeIconSlot
 } from "../../api/siteSettingsApi";
 import { themeDecorationSlotOptions, type ThemeIconSlot } from "../../theme/themeSlots";
+import { AppHeaderView } from "../AppHeaderView";
+import { AppBackground } from "../backgrounds/AppBackground";
+import { LeaderboardHomeView } from "../leaderboards/LeaderboardHomeView";
+import { HelpCenterView } from "../help/HelpCenterView";
+import { ProblemDetailView } from "../problems/ProblemDetailView";
+import { SiteFooter } from "../SiteFooter";
 import {
   type ThemeEditorMode,
   type ThemeEditorPreviewPage,
+  type ThemeEditorPreviewZoom,
   type ThemeEditorSurfaceId,
   type ThemeEditorViewport
 } from "./themeEditorModel";
+import { helpPreviewFixture, leaderboardPreviewFixture, problemPreviewFixture } from "./themePreviewFixtures";
 
 interface ThemeEditorPreviewProps {
   appearance: SiteAppearance;
   page: ThemeEditorPreviewPage;
   pageBackgroundKey: SitePageKey;
   viewport: ThemeEditorViewport;
+  zoom: ThemeEditorPreviewZoom;
   mode: ThemeEditorMode;
   selectedSurface: ThemeEditorSurfaceId;
+  pulseSurface: ThemeEditorSurfaceId | null;
   onSelect: (surface: ThemeEditorSurfaceId) => void;
   onBackgroundPositionChange: (positionX: number, positionY: number) => void;
   onGestureStart: () => void;
   onGestureEnd: () => void;
 }
 
-export function ThemeEditorPreview({ appearance, page, pageBackgroundKey, viewport, mode, selectedSurface, onSelect, onBackgroundPositionChange, onGestureStart, onGestureEnd }: ThemeEditorPreviewProps) {
+export function ThemeEditorPreview({ appearance, page, pageBackgroundKey, viewport, zoom, mode, selectedSurface, pulseSurface, onSelect, onBackgroundPositionChange, onGestureStart, onGestureEnd }: ThemeEditorPreviewProps) {
+  const previewRef = useRef<HTMLDivElement>(null);
   const genericBackground = appearance.background;
   const pageBackground = appearance.pages[pageBackgroundKey] ?? createDefaultPageBackground();
   const genericUrl = genericBackground.enabled ? resolveSiteAssetUrl(genericBackground.asset?.url) : undefined;
   const pageUrl = !genericUrl && pageBackground.enabled ? resolveSiteAssetUrl(pageBackground.imageUrl) : undefined;
   const backgroundUrl = genericUrl ?? pageUrl;
-  const themeStyle = buildPreviewThemeStyle(appearance);
+  const themeStyle = { ...buildPreviewThemeStyle(appearance), "--theme-preview-viewport-width": `${viewport === "desktop" ? 1120 : viewport === "tablet" ? 768 : 375}px` } as CSSProperties;
   const modifierClasses = buildPreviewModifierClasses(appearance);
   const selectedClass = mode === "select" ? ` is-selecting selected-${selectedSurface.replace(/\./g, "-")}` : "";
+  const pulseClass = pulseSurface ? ` is-pulsing pulse-${pulseSurface.replace(/\./g, "-")}` : "";
+  const viewportWidth = viewport === "desktop" ? 1120 : viewport === "tablet" ? 768 : 375;
+  const canvasStyle: CSSProperties = zoom === "fit"
+    ? { maxWidth: `${viewportWidth}px` }
+    : { width: `${viewportWidth}px`, maxWidth: "none", zoom: Number(zoom) / 100 };
+
+  useEffect(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    preview.querySelectorAll<HTMLElement>("[data-theme-editor-selected]").forEach((element) => element.removeAttribute("data-theme-editor-selected"));
+    if (mode !== "select") return;
+    preview.querySelectorAll<HTMLElement>(`[data-surface="${selectedSurface}"]`).forEach((element) => element.setAttribute("data-theme-editor-selected", "true"));
+  }, [mode, page, selectedSurface]);
 
   function select(surface: ThemeEditorSurfaceId) {
     if (mode === "select") onSelect(surface);
@@ -51,8 +75,9 @@ export function ThemeEditorPreview({ appearance, page, pageBackgroundKey, viewpo
   }
 
   return (
-    <div className={`theme-editor-canvas viewport-${viewport}${selectedClass}`} style={{ maxWidth: `${viewport === "desktop" ? 1120 : viewport === "tablet" ? 768 : 375}px` }}>
-      <div className={`theme-editor-preview-site ${modifierClasses}`} style={themeStyle} onClick={() => select("global.background")}>
+    <div className={`theme-editor-canvas viewport-${viewport} zoom-${zoom}`} style={canvasStyle}>
+      <div ref={previewRef} data-theme-preview-content className={`theme-editor-preview-site site-theme-content app-shell ${modifierClasses}${selectedClass}${pulseClass}`} style={themeStyle} onClick={() => select("global.background")}>
+        <AppBackground pathname={getPreviewRoute(page) ?? "/"} hasCustomWallpaper={Boolean(backgroundUrl)} contained />
         {backgroundUrl && <div className="theme-editor-preview-background" style={genericUrl ? {
           backgroundImage: `url("${genericUrl}")`,
           backgroundPosition: `${genericBackground.positionX ?? 50}% ${genericBackground.positionY ?? 50}%`,
@@ -69,19 +94,22 @@ export function ThemeEditorPreview({ appearance, page, pageBackgroundKey, viewpo
             ? hexToRgba(genericBackground.overlayColor ?? "#000000", genericBackground.overlayOpacity ?? 0)
             : `rgba(0, 0, 0, ${pageBackground.overlayOpacity ?? appearance.theme.backgroundOverlayOpacity})`
         }} />}
-        <header className="theme-editor-preview-nav" onClick={(event) => event.stopPropagation()}>
-          <strong>UNREAL STUDIO</strong>
-          <nav>
-            <span data-surface="icon.problem" onClick={() => select("icon.problem")}><DraftIcon slot="problem" appearance={appearance} />题目</span>
-            <span><DraftIcon slot="challenge" appearance={appearance} />挑战</span>
-            <span><DraftIcon slot="leaderboard" appearance={appearance} />榜单</span>
-            <span><DraftIcon slot="team" appearance={appearance} />战队</span>
-          </nav>
-        </header>
-        <main className="theme-editor-preview-page" onClick={(event) => event.stopPropagation()}>
-          <PreviewPageHeader page={page} onSelect={() => select("decoration.pageHeader")} />
-          <PreviewComposition page={page} appearance={appearance} onSelect={select} />
+        <AppHeaderView role={3} isAuthenticated hasPublicLeaderboard userName="Theme Preview User" avatarUrl={null} onLogout={() => undefined} interactive={false} activePath={getPreviewRoute(page)} renderIcon={(slot) => <span data-surface={`icon.${slot}`} onClick={() => select(`icon.${slot}` as ThemeEditorSurfaceId)}><DraftIcon slot={slot} appearance={appearance} /></span>} />
+        <main className={`page-container theme-editor-preview-page${page === "leaderboard" || page === "problem" || page === "help" ? " production-preview" : ""}`} onClick={(event) => { event.stopPropagation(); const surface = (event.target as Element).closest<HTMLElement>("[data-surface]")?.dataset.surface as ThemeEditorSurfaceId | undefined; if (surface) select(surface); }}>
+          {page === "leaderboard" ? (
+            <LeaderboardHomeView {...leaderboardPreviewFixture} isLoading={false} error={null} canManage showPersonalRecord={false} />
+          ) : page === "problem" ? (
+            <ProblemDetailView problem={problemPreviewFixture} seasonScore={null} language={1} languages={[{ value: 1, label: "C++17" }, { value: 2, label: "C11" }, { value: 3, label: "C#" }]} isAuthenticated canManage challengeId={null} error={null} isSubmitting={false} editor={<div className="code-editor-shell"><div className="theme-editor-code-preview" aria-label="代码编辑器预览"><pre>{"#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    return 0;\n}"}</pre></div></div>} onSubmit={(event) => event.preventDefault()} onLanguageChange={() => undefined} onClearSource={() => undefined} />
+          ) : page === "help" ? (
+            <HelpCenterView documents={helpPreviewFixture.documents} document={helpPreviewFixture.document} isLoading={false} error={null} canManage />
+          ) : (
+            <>
+              <PreviewPageHeader page={page} onSelect={() => select("decoration.pageHeader")} />
+              <PreviewComposition page={page} appearance={appearance} onSelect={select} />
+            </>
+          )}
         </main>
+        <SiteFooter />
         {genericUrl && mode === "select" && selectedSurface === "global.background" && (
           <div
             className="theme-editor-focal-zone"
@@ -115,23 +143,31 @@ function PreviewPageHeader({ page, onSelect }: { page: ThemeEditorPreviewPage; o
     "security-audit": ["SECURITY", "安全审计", "查看不可变安全事件记录"]
   };
   const [eyebrow, title, description] = labels[page];
-  return <div className="page-header theme-editor-surface" data-surface="decoration.pageHeader" onClick={onSelect}><div><span className="theme-editor-preview-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{description}</p></div><button className="button primary" type="button">主要操作</button></div>;
+  return <div className="page-header theme-editor-surface" data-surface="decoration.pageHeader" onClick={onSelect}><div><span className="theme-editor-preview-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{description}</p></div></div>;
+}
+
+function getPreviewRoute(page: ThemeEditorPreviewPage) {
+  if (page === "problem") return "/problems/theme-preview-problem";
+  if (page === "challenge") return "/challenges";
+  if (page === "leaderboard" || page === "season") return "/leaderboards";
+  if (page === "team") return "/teams";
+  if (page === "help") return "/help";
+  if (page === "account") return "/profile/me";
+  return undefined;
 }
 
 function PreviewComposition({ page, appearance, onSelect }: { page: ThemeEditorPreviewPage; appearance: SiteAppearance; onSelect: (surface: ThemeEditorSurfaceId) => void }) {
   if (page === "login") return <div className="theme-editor-preview-login"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header" onClick={(event) => { event.stopPropagation(); onSelect("panel.header"); }}><strong>账号登录</strong></div><label>账号 / 邮箱<input value="UnrealStudio" readOnly /></label><label>密码<input value="••••••••" readOnly /></label><button className="button primary" type="button">进入工作室</button></section></div>;
-  if (page === "leaderboard") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><strong>TOP 3</strong></div><div className="theme-editor-podium"><b>02</b><b>01</b><b>03</b></div></section><PreviewTable onSelect={onSelect} /></div>;
   if (page === "team") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="chat" appearance={appearance} /><strong>战队聊天</strong></div><p>保持沟通，推进当前项目。</p><button className="button" type="button"><DraftIcon slot="git" appearance={appearance} />Git 项目</button></section><EmptyPreview onSelect={onSelect} /></div>;
-  if (page === "help") return <div className="theme-editor-preview-help"><aside className="content-block"><strong>目录</strong><span>快速开始</span><span>提交与判题</span></aside><article className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><strong>快速开始</strong></div><p>选择题目、编写代码，然后提交到判题系统。</p><pre><code>const themed = true;</code></pre></article></div>;
   if (page === "account") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><strong>个人资料</strong><label>用户名<input value="UnrealStudio" readOnly /></label><button className="button primary" type="button">保存资料</button></section><section className="content-block"><strong>安全设置</strong><p>密码与会话状态保持安全。</p><span className="theme-editor-badge">已启用</span></section></div>;
   if (page === "security-audit") return <PreviewTable onSelect={onSelect} security />;
   if (page === "season") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="season" appearance={appearance} /><strong>2026 秋季赛</strong></div><p>Scheduled · 3 Problems</p><button className="button primary" type="button"><DraftIcon slot="reward" appearance={appearance} />奖励设置</button></section><PreviewTable onSelect={onSelect} /></div>;
   if (page === "challenge") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="challenge" appearance={appearance} /><strong>算法挑战</strong></div><p>4 个任务 · 当前进度 75%</p><div className="theme-editor-progress"><span /></div></section><EmptyPreview onSelect={onSelect} /></div>;
-  return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header" onClick={(event) => { event.stopPropagation(); onSelect("panel.header"); }}><DraftIcon slot="problem" appearance={appearance} /><strong>两数之和</strong><span className="theme-editor-badge">100 分</span></div><p>给定两个整数，返回它们的和。</p><pre><code>int add(int a, int b)</code></pre><button className="button primary" type="button">提交代码</button></section><PreviewTable onSelect={onSelect} /></div>;
+  return null;
 }
 
 function PreviewTable({ onSelect, security = false }: { onSelect: (surface: ThemeEditorSurfaceId) => void; security?: boolean }) {
-  return <div className="table-wrap theme-editor-surface" onClick={() => onSelect("panel.border")}><table><thead><tr><th>{security ? "事件" : "名称"}</th><th>状态</th><th>时间</th></tr></thead><tbody><tr><td>{security ? "SiteAppearance.Updated" : "示例记录"}</td><td><span className="theme-editor-badge">PASS</span></td><td>16:05</td></tr><tr><td>{security ? "User.Login" : "第二条记录"}</td><td>Ready</td><td>16:03</td></tr></tbody></table></div>;
+  return <div className="table-wrap theme-editor-surface" onClick={() => onSelect("panel.border")}><table><thead><tr><th>{security ? "事件" : "名称"}</th><th>状态</th><th>时间</th></tr></thead><tbody><tr><td>{security ? "SiteAppearance.Updated" : "2026 秋季赛"}</td><td><span className="theme-editor-badge">PASS</span></td><td>16:05</td></tr><tr><td>{security ? "User.Login" : "测试挑战"}</td><td>Ready</td><td>16:03</td></tr></tbody></table></div>;
 }
 
 function EmptyPreview({ onSelect }: { onSelect: (surface: ThemeEditorSurfaceId) => void }) {
@@ -235,9 +271,9 @@ function hexToRgba(hex: string, opacity: number) {
 }
 
 function resolvePreviewFont(preset: SiteAppearance["theme"]["fontPreset"]) {
-  if (preset === "readable") return '"Noto Sans SC", "Microsoft YaHei", sans-serif';
-  if (preset === "mono") return '"JetBrains Mono", Consolas, monospace';
-  return 'Inter, "Segoe UI", "Microsoft YaHei", sans-serif';
+  if (preset === "readable") return '"Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif';
+  if (preset === "mono") return '"Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, monospace';
+  return 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 }
 
 function clamp(value: number, min: number, max: number) {

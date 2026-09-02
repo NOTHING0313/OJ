@@ -7,6 +7,31 @@
   background: #06080d;
 }
 
+.oj-app-background.is-contained {
+  position: absolute;
+}
+
+.oj-app-background.is-contained .oj-bg-orb {
+  width: min(38%, 590px);
+}
+
+.oj-app-background.is-contained .oj-bg-orb-secondary {
+  width: min(35%, 540px);
+}
+
+.oj-app-background.is-contained .oj-bg-orb-lower {
+  width: min(38%, 580px);
+}
+
+.oj-app-background.is-contained .oj-bg-beams {
+  transform: translate3d(-18%, 3vh, 0) scale(1.12);
+}
+
+.oj-app-background.is-contained .oj-bg-rings {
+  right: -12%;
+  width: min(56%, 780px);
+}
+
 .oj-bg-base,
 .oj-bg-grid,
 .oj-bg-noise,
@@ -188,6 +213,11 @@
   animation: ojLeaderboardPrimary 13.5s cubic-bezier(0.45, 0.02, 0.38, 1) infinite alternate;
 }
 
+.oj-app-background--leaderboard.is-contained .oj-bg-orb-primary,
+.oj-app-background--challenge.is-contained .oj-bg-orb-primary {
+  width: min(36%, 560px);
+}
+
 .oj-app-background--leaderboard .oj-bg-orb-secondary,
 .oj-app-background--challenge .oj-bg-orb-secondary {
   top: 5%;
@@ -195,6 +225,11 @@
   width: min(34vw, 520px);
   filter: blur(52px) saturate(1.2);
   animation: ojLeaderboardSecondary 17s cubic-bezier(0.42, 0.02, 0.36, 1) infinite alternate;
+}
+
+.oj-app-background--leaderboard.is-contained .oj-bg-orb-secondary,
+.oj-app-background--challenge.is-contained .oj-bg-orb-secondary {
+  width: min(34%, 520px);
 }
 
 .oj-app-background--leaderboard .oj-bg-orb-lower,

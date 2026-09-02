@@ -14,6 +14,7 @@ import {
 
 export type ThemeEditorPreviewPage = "login" | "problem" | "challenge" | "team" | "leaderboard" | "season" | "help" | "account" | "security-audit";
 export type ThemeEditorViewport = "desktop" | "tablet" | "mobile";
+export type ThemeEditorPreviewZoom = "fit" | "100" | "75" | "50";
 export type ThemeEditorMode = "preview" | "select";
 export type ThemeEditorCompareMode = "draft" | "saved" | "default";
 export type ThemeEditorSurfaceId =
@@ -50,6 +51,13 @@ export const themeEditorViewports: Array<{ key: ThemeEditorViewport; label: stri
   { key: "desktop", label: "桌面", width: 1120 },
   { key: "tablet", label: "平板", width: 768 },
   { key: "mobile", label: "手机", width: 375 }
+];
+
+export const themeEditorPreviewZooms: Array<{ key: ThemeEditorPreviewZoom; label: string }> = [
+  { key: "fit", label: "适应宽度" },
+  { key: "100", label: "100%" },
+  { key: "75", label: "75%" },
+  { key: "50", label: "50%" }
 ];
 
 export const themeEditableSurfaces: ThemeEditableSurface[] = [

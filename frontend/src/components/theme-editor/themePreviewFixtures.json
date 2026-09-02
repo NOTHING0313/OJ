@@ -1,0 +1,65 @@
+{
+  "help": {
+    "documents": [
+      { "id": "help-quick-start", "title": "快速开始", "slug": "quick-start", "summary": "了解题目、提交与判题流程", "isPublished": true, "sortOrder": 1, "updatedAt": "2026-08-30T00:00:00Z" },
+      { "id": "help-submission", "title": "提交与判题", "slug": "submissions", "summary": "查看判题状态与结果", "isPublished": true, "sortOrder": 2, "updatedAt": "2026-08-30T00:00:00Z" }
+    ],
+    "document": { "id": "help-quick-start", "title": "快速开始", "slug": "quick-start", "summary": "了解题目、提交与判题流程", "isPublished": true, "sortOrder": 1, "updatedAt": "2026-08-30T00:00:00Z", "createdAt": "2026-08-30T00:00:00Z", "markdownContent": "## 开始答题\n\n选择题目、编写代码，然后提交到判题系统。\n\n```cpp\nint main() { return 0; }\n```" }
+  },
+  "problem": {
+    "id": "theme-preview-problem",
+    "title": "两数之和",
+    "description": "给定两个整数 `a` 和 `b`，返回它们的和。",
+    "inputDescription": "输入两个整数。",
+    "outputDescription": "输出它们的和。",
+    "timeLimitMs": 1000,
+    "memoryLimitMb": 128,
+    "totalScore": 100,
+    "judgeMode": 1,
+    "languageTags": ["C++", "C", "C#"],
+    "functionSpec": null,
+    "hasListNode": false,
+    "hasTreeNode": false,
+    "samples": [{ "id": "theme-preview-sample", "input": "1 2", "output": "3" }]
+  },
+  "leaderboard": {
+    "globalLeaderboard": {
+      "season": null,
+      "entries": [
+        { "rank": 1, "userId": null, "userName": null, "displayName": "student1", "alias": "student1", "isAnonymous": false, "isCurrentUser": false, "totalScore": 500, "baseScore": 500, "solvedCount": 3, "timeBonus": 0, "runtimeBonus": 0, "memoryBonus": 0, "lastScoreImprovedAt": "2026-08-30T08:00:00Z" },
+        { "rank": 2, "userId": null, "userName": null, "displayName": "Theme Preview User", "alias": "preview", "isAnonymous": false, "isCurrentUser": true, "totalScore": 420, "baseScore": 400, "solvedCount": 2, "timeBonus": 20, "runtimeBonus": 0, "memoryBonus": 0, "lastScoreImprovedAt": "2026-08-30T07:30:00Z" },
+        { "rank": 3, "userId": null, "userName": null, "displayName": "student3", "alias": "student3", "isAnonymous": false, "isCurrentUser": false, "totalScore": 360, "baseScore": 350, "solvedCount": 2, "timeBonus": 10, "runtimeBonus": 0, "memoryBonus": 0, "lastScoreImprovedAt": "2026-08-30T07:00:00Z" }
+      ]
+    },
+    "summary": {
+      "name": "Test",
+      "status": 2,
+      "startAt": "2026-08-01T00:00:00Z",
+      "freezeAt": "2026-09-01T00:00:00Z",
+      "publicUntil": "2026-10-01T00:00:00Z",
+      "boards": [
+        { "id": "theme-preview-global-board", "boardType": 1, "challengeId": null, "challengeTitle": null },
+        { "id": "theme-preview-challenge-board", "boardType": 2, "challengeId": "theme-preview-challenge", "challengeTitle": "测试挑战" }
+      ]
+    },
+    "challenges": [
+      {
+        "challengeId": "theme-preview-challenge",
+        "title": "测试挑战",
+        "description": "Theme Preview synthetic challenge",
+        "totalTaskCount": 3,
+        "participantCount": 12,
+        "teamCount": 0,
+        "participationMode": 1,
+        "completedUserCount": 4,
+        "startAt": "2026-08-01T00:00:00Z",
+        "endAt": "2026-09-01T00:00:00Z",
+        "isPublished": true,
+        "topEntries": [
+          { "rank": 1, "userId": null, "userName": "student1", "avatarUrl": null, "completedTaskCount": 3, "totalScore": 300, "lastCompletedAt": "2026-08-30T08:00:00Z", "alias": "student1", "isAnonymous": false },
+          { "rank": 2, "userId": null, "userName": "Theme Preview User", "avatarUrl": null, "completedTaskCount": 2, "totalScore": 220, "lastCompletedAt": "2026-08-30T07:30:00Z", "alias": "preview", "isAnonymous": false }
+        ]
+      }
+    ]
+  }
+}

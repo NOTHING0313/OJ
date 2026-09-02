@@ -176,6 +176,7 @@ public sealed class ThemeLibraryServiceTests : IDisposable
         var assetId = await AddAssetAsync(source.Paths, ".png", Png());
         var request = Request("Portable");
         request.Appearance.Background = new SiteThemeBackgroundDto { Enabled = true, Asset = Ref(assetId) };
+        Assert.True((await source.Service.RegisterAssetDisplayNameAsync(assetId, "problem-icon-blue.webp", Guid.NewGuid(), UserRole.Root)).IsSuccess);
         var preset = (await source.Service.CreateAsync(request, Guid.NewGuid(), UserRole.Root)).Value!;
         using var export = (await source.Service.ExportAsync(preset.Id!.Value, UserRole.Root)).Value!;
 
@@ -186,6 +187,7 @@ public sealed class ThemeLibraryServiceTests : IDisposable
         Assert.True(imported.IsSuccess);
         Assert.NotEqual(assetId, imported.Value!.Appearance.Background.Asset!.AssetId);
         Assert.True(File.Exists(target.Paths.ResolveThemeAssetPath(imported.Value.Appearance.Background.Asset.AssetId)));
+        Assert.Equal("problem-icon-blue.webp", (await target.Service.GetAssetDisplayNamesAsync()).Value![imported.Value.Appearance.Background.Asset.AssetId]);
         Assert.DoesNotContain(targetDb.SiteSettings, item => item.Key == "appearance");
         Assert.Contains(target.Audits, item => item.Action == SecurityAuditActions.ThemePresetImported);
 
@@ -209,6 +211,97 @@ public sealed class ThemeLibraryServiceTests : IDisposable
         Assert.Equal(3, (await context.Service.ListAsync(UserRole.Root)).Value!.Items.Count);
     }
 
+    [Fact]
+    public async Task ImportPreflight_ValidatesSummaryAndDoesNotCommitAnything()
+    {
+        await using var db = CreateDb();
+        var context = CreateService(db);
+        Assert.True((await context.Service.CreateAsync(Request("Alpha"), Guid.NewGuid(), UserRole.Root)).IsSuccess);
+        var appearance = context.Appearance.GetDefaultAppearance();
+        appearance.Background = new SiteThemeBackgroundDto { Enabled = true, Asset = new ThemeAssetReferenceDto { AssetId = "assets/001.png", Url = "assets/001.png" } };
+        var pack = CreatePackWithEntries("Alpha", appearance, ("assets/001.png", Png()));
+        var before = await db.SiteSettings.Where(item => item.Key == "theme-library").Select(item => item.Value).SingleAsync();
+
+        var result = await context.Service.PreflightImportAsync("theme.zip", "application/zip", pack.Length, pack, UserRole.Root);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Alpha (2)", result.Value!.ResolvedName);
+        Assert.True(result.Value.HasNameCollision);
+        Assert.True(result.Value.HasBackground);
+        Assert.Equal(1, result.Value.AssetCount);
+        Assert.Equal(Png().LongLength, result.Value.TotalAssetBytes);
+        Assert.Equal(before, await db.SiteSettings.Where(item => item.Key == "theme-library").Select(item => item.Value).SingleAsync());
+        Assert.False(Directory.Exists(context.Paths.ThemeAssetsRoot));
+    }
+
+    [Fact]
+    public async Task ImportPreflight_RejectsMissingReferencedAssetWithoutCommit()
+    {
+        await using var db = CreateDb();
+        var context = CreateService(db);
+        var appearance = context.Appearance.GetDefaultAppearance();
+        appearance.Background = new SiteThemeBackgroundDto { Enabled = true, Asset = new ThemeAssetReferenceDto { AssetId = "assets/001.png", Url = "assets/001.png" } };
+        var pack = CreatePack("Missing", appearance);
+
+        Assert.True((await context.Service.PreflightImportAsync("theme.zip", "application/zip", pack.Length, pack, UserRole.Root)).IsFailure);
+        Assert.Empty(db.SiteSettings);
+        Assert.False(Directory.Exists(context.Paths.ThemeAssetsRoot));
+    }
+
+    [Fact]
+    public async Task V1PackWithoutAssetDisplayNames_RemainsImportableWithSafeFallback()
+    {
+        await using var db = CreateDb();
+        var context = CreateService(db);
+        var appearance = context.Appearance.GetDefaultAppearance();
+        appearance.Background = new SiteThemeBackgroundDto { Enabled = true, Asset = new ThemeAssetReferenceDto { AssetId = "assets/001.png", Url = "assets/001.png" } };
+        var pack = CreatePackWithEntries("Legacy V1", appearance, ("assets/001.png", Png()));
+
+        var imported = await context.Service.ImportAsync("legacy.zip", "application/zip", pack.Length, pack, Guid.NewGuid(), UserRole.Root);
+
+        Assert.True(imported.IsSuccess);
+        var assetId = imported.Value!.Appearance.Background.Asset!.AssetId;
+        Assert.Equal("001.png", (await context.Service.GetAssetDisplayNamesAsync()).Value![assetId]);
+    }
+
+    [Theory]
+    [InlineData("../../problem-icon-blue.webp", "problem-icon-blue.webp")]
+    [InlineData("C:\\art\\panel.png", "panel.png")]
+    [InlineData("bad\u0001name.png", "badname.png")]
+    [InlineData("图标-蓝色.png", "图标-蓝色.png")]
+    public async Task AssetDisplayName_IsNormalizedMetadataOnly(string suppliedName, string expected)
+    {
+        await using var db = CreateDb();
+        var context = CreateService(db);
+        var assetId = $"{Guid.NewGuid():N}.png";
+
+        var result = await context.Service.RegisterAssetDisplayNameAsync(assetId, suppliedName, Guid.NewGuid(), UserRole.Root);
+
+        Assert.Equal(expected, result.Value);
+        Assert.Equal(expected, (await context.Service.GetAssetDisplayNamesAsync()).Value![assetId]);
+        Assert.DoesNotContain(suppliedName, assetId, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AssetDisplayNames_AllowDuplicatesAndBoundLength()
+    {
+        await using var db = CreateDb();
+        var context = CreateService(db);
+        var first = $"{Guid.NewGuid():N}.png";
+        var second = $"{Guid.NewGuid():N}.webp";
+        var longName = new string('a', 160) + ".png";
+
+        Assert.True((await context.Service.RegisterAssetDisplayNameAsync(first, "shared.png", Guid.NewGuid(), UserRole.Root)).IsSuccess);
+        Assert.True((await context.Service.RegisterAssetDisplayNameAsync(second, "shared.png", Guid.NewGuid(), UserRole.Root)).IsSuccess);
+        var bounded = await context.Service.RenameAssetDisplayNameAsync(first, longName, Guid.NewGuid(), UserRole.Root);
+        var unicodeBounded = await context.Service.RenameAssetDisplayNameAsync(first, new string('界', 127) + "😀.png", Guid.NewGuid(), UserRole.Root);
+
+        Assert.Equal(128, bounded.Value!.Length);
+        Assert.Equal(127, unicodeBounded.Value!.Length);
+        Assert.False(char.IsHighSurrogate(unicodeBounded.Value[^1]));
+        Assert.Equal("shared.png", (await context.Service.GetAssetDisplayNamesAsync()).Value![second]);
+    }
+
     [Theory]
     [InlineData("wrong-format", 1)]
     [InlineData("onlinejudge-theme", 99)]
@@ -217,6 +310,8 @@ public sealed class ThemeLibraryServiceTests : IDisposable
         await using var db = CreateDb();
         var context = CreateService(db);
         var pack = CreatePack("Theme", context.Appearance.GetDefaultAppearance(), format, version);
+        Assert.True((await context.Service.PreflightImportAsync("theme.zip", "application/zip", pack.Length, pack, UserRole.Root)).IsFailure);
+        pack.Position = 0;
         Assert.True((await context.Service.ImportAsync("theme.zip", "application/zip", pack.Length, pack, Guid.NewGuid(), UserRole.Root)).IsFailure);
         Assert.Empty(db.SiteSettings);
     }
@@ -240,6 +335,8 @@ public sealed class ThemeLibraryServiceTests : IDisposable
         appearance.Background = new SiteThemeBackgroundDto { Enabled = true, Asset = new ThemeAssetReferenceDto { AssetId = "assets/001.png", Url = "assets/001.png" } };
         var pack = CreatePackWithEntries("Forged", appearance, ("assets/001.png", "<script/>"u8.ToArray()));
 
+        Assert.True((await context.Service.PreflightImportAsync("bad.zip", "application/zip", pack.Length, pack, UserRole.Root)).IsFailure);
+        pack.Position = 0;
         Assert.True((await context.Service.ImportAsync("bad.zip", "application/zip", pack.Length, pack, Guid.NewGuid(), UserRole.Root)).IsFailure);
         Assert.Empty(db.SiteSettings);
         Assert.False(Directory.Exists(context.Paths.ThemeAssetsRoot));
@@ -254,6 +351,8 @@ public sealed class ThemeLibraryServiceTests : IDisposable
         appearance.Icons["unknown"] = null;
         var pack = CreatePack("Unknown Slot", appearance);
 
+        Assert.Contains("Unknown theme icon slot", (await context.Service.PreflightImportAsync("bad.zip", "application/zip", pack.Length, pack, UserRole.Root)).ErrorMessage);
+        pack.Position = 0;
         Assert.Contains("Unknown theme icon slot", (await context.Service.ImportAsync("bad.zip", "application/zip", pack.Length, pack, Guid.NewGuid(), UserRole.Root)).ErrorMessage);
         Assert.Empty(db.SiteSettings);
     }
@@ -309,11 +408,28 @@ public sealed class ThemeLibraryServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ImportPreflight_RejectsZipSlipAndCompressionBombBeforePreview()
+    {
+        await using var db = CreateDb();
+        var context = CreateService(db);
+        var zipSlip = CreateZip(("manifest.json", "{}"u8.ToArray()), ("../escape.png", Png()));
+        Assert.True((await context.Service.PreflightImportAsync("bad.zip", "application/zip", zipSlip.Length, zipSlip, UserRole.Root)).IsFailure);
+        var svg = CreateZip(("manifest.json", "{}"u8.ToArray()), ("assets/001.svg", "<svg/>"u8.ToArray()));
+        Assert.True((await context.Service.PreflightImportAsync("svg.zip", "application/zip", svg.Length, svg, UserRole.Root)).IsFailure);
+
+        var appearance = context.Appearance.GetDefaultAppearance();
+        appearance.Background = new SiteThemeBackgroundDto { Enabled = true, Asset = new ThemeAssetReferenceDto { AssetId = "assets/001.png", Url = "assets/001.png" } };
+        var bomb = CreatePackWithEntries("Bomb", appearance, ("assets/001.png", new byte[1024 * 1024]));
+        Assert.True((await context.Service.PreflightImportAsync("bomb.zip", "application/zip", bomb.Length, bomb, UserRole.Root)).IsFailure);
+        Assert.Empty(db.SiteSettings);
+    }
+
+    [Fact]
     public void Endpoints_AreRootOnlyAndMutationsRetainRateLimits()
     {
         var authorize = Assert.Single(typeof(ThemeLibraryController).GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>());
         Assert.Equal("RequireRoot", authorize.Policy);
-        foreach (var method in new[] { nameof(ThemeLibraryController.Create), nameof(ThemeLibraryController.Update), nameof(ThemeLibraryController.Apply), nameof(ThemeLibraryController.ApplyDefault), nameof(ThemeLibraryController.Import) })
+        foreach (var method in new[] { nameof(ThemeLibraryController.Create), nameof(ThemeLibraryController.Update), nameof(ThemeLibraryController.Apply), nameof(ThemeLibraryController.ApplyDefault), nameof(ThemeLibraryController.PreflightImport), nameof(ThemeLibraryController.Import) })
         {
             Assert.NotEmpty(typeof(ThemeLibraryController).GetMethod(method)!.GetCustomAttributes(typeof(RiskRateLimitAttribute), true));
         }

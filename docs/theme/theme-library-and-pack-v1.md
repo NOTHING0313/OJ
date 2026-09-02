@@ -25,6 +25,8 @@ assets/003.webp
 
 The manifest format is `onlinejudge-theme`, version `1`, preset schema version `1`, metadata, and one `SiteAppearance`. Asset references are logical `assets/<server-numbered-file>` keys only. Export includes referenced assets only, deduplicates a reused physical file, and exposes no server path, database data, users, JWTs, audit records, runtime configuration, CSS, JavaScript, HTML, or SVG. Limits are 50 assets and 50 MiB compressed.
 
+V1 may include an optional `assets` metadata array containing a logical pack path and normalized display name. This metadata never changes the server-controlled archive path. Older V1 packs without the array remain valid; imported assets receive a safe basename fallback. No pack version bump is required.
+
 ## Import security and atomicity
 
 Import uses the SECURITY-10D upload boundary plus `ISecureArchiveExtractor`; it never calls unchecked `ExtractToDirectory`. The extractor rejects traversal, rooted or drive paths, double-decoded traversal, backslashes, symlinks, duplicate entries, unexpected directories or file types, excessive entry count, excessive expanded/per-entry bytes, and excessive compression ratio. Only `manifest.json` and PNG/JPEG/WebP files directly under `assets/` are accepted.
@@ -32,6 +34,8 @@ Import uses the SECURITY-10D upload boundary plus `ISecureArchiveExtractor`; it 
 JSON deserialization rejects unknown fields. Format/version, required appearance nodes, controlled page/icon/decoration slots, numeric ranges, name/description, and logical references are validated. Every archived image passes the existing ThemeImage filename, MIME, magic-byte, trailer, and 5 MiB policy. Imported asset IDs are ignored; fresh generated IDs and same-origin URLs replace all logical pack references. Unreferenced archive files and missing referenced files are rejected.
 
 All entries and images are validated before a preset is persisted. New files are tracked and removed if validation or persistence fails, so no partial preset or imported assets remain. Import never auto-applies. A name collision receives the first safe `(2)`, `(3)`, and so on suffix rather than overwriting an existing preset.
+
+The editor first uploads the selected ZIP to the Root-only preflight endpoint. Preflight runs the same archive, manifest, reference, slot, and image validators as commit import and returns only a safe summary. It creates no preset, asset, active Appearance change, or audit event. Because packs are capped at 50 MiB, confirmation re-uploads and re-validates the file instead of creating a server-side import session or staging token. This trades one additional upload for no import-session state, TTL, cleanup job, or time-of-check/time-of-use trust.
 
 ## Audit and operational limits
 

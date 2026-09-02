@@ -68,6 +68,8 @@ public class ThemeAssetReferenceDto
 
 public class ThemeAssetDto : ThemeAssetReferenceDto
 {
+    public string? DisplayName { get; set; }
+
     public string ContentType { get; set; } = string.Empty;
 
     public long Size { get; set; }

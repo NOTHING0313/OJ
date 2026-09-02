@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using OnlineJudge.Api.Controllers;
 using OnlineJudge.Api.RateLimiting;
+using OnlineJudge.Application.SecurityAudit;
 using OnlineJudge.Application.SiteSettings.Dtos;
 using OnlineJudge.Application.SiteSettings.Requests;
 using OnlineJudge.Domain.Enums;
@@ -29,6 +30,7 @@ public sealed class ThemeAssetServiceTests : IDisposable
         Assert.True(result.IsSuccess);
         Assert.EndsWith(extension, result.Value!.AssetId, StringComparison.Ordinal);
         Assert.Equal($"/theme-assets/{result.Value.AssetId}", result.Value.Url);
+        Assert.Equal(Path.GetFileName(fileName), result.Value.DisplayName);
         Assert.DoesNotContain(paths.ThemeAssetsRoot, System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
         Assert.True(File.Exists(paths.ResolveThemeAssetPath(result.Value.AssetId)));
     }
@@ -178,6 +180,41 @@ public sealed class ThemeAssetServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Upload_PersistsDisplayNameWithoutChangingGeneratedPhysicalName()
+    {
+        await using var db = CreateDb();
+        var (service, paths) = CreateService(db);
+        await using var content = new MemoryStream(Png());
+
+        var uploaded = (await service.UploadAsync(Guid.NewGuid(), UserRole.Root, "problem-icon-blue.png", "image/png", content.Length, content)).Value!;
+
+        Assert.Equal("problem-icon-blue.png", uploaded.DisplayName);
+        Assert.Matches("^[0-9a-f]{32}\\.png$", uploaded.AssetId);
+        Assert.True(File.Exists(paths.ResolveThemeAssetPath(uploaded.AssetId)));
+        Assert.DoesNotContain("problem-icon-blue.png", paths.ResolveThemeAssetPath(uploaded.AssetId), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Rename_ChangesOnlyDisplayMetadataAndDeleteRemovesIt()
+    {
+        await using var db = CreateDb();
+        var (service, paths) = CreateService(db);
+        await using var content = new MemoryStream(Png());
+        var uploaded = (await service.UploadAsync(Guid.NewGuid(), UserRole.Root, "before.png", "image/png", content.Length, content)).Value!;
+        var originalPath = paths.ResolveThemeAssetPath(uploaded.AssetId);
+
+        var renamed = await service.RenameAsync(Guid.NewGuid(), UserRole.Root, uploaded.AssetId, "folder/after.png");
+
+        Assert.Equal("after.png", renamed.Value!.DisplayName);
+        Assert.Equal(uploaded.AssetId, renamed.Value.AssetId);
+        Assert.True(File.Exists(originalPath));
+        Assert.Equal("after.png", Assert.Single((await service.ListAsync(UserRole.Root)).Value!).DisplayName);
+        Assert.True((await service.DeleteAsync(Guid.NewGuid(), UserRole.Root, uploaded.AssetId)).IsSuccess);
+        Assert.False(File.Exists(originalPath));
+        Assert.DoesNotContain(uploaded.AssetId, await db.SiteSettings.Select(item => item.Value).SingleAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ExternalThemeRoot_PreservesAssetAcrossReleaseDirectories()
     {
         var persistentRoot = Path.Combine(root, "persistent-theme-assets");
@@ -222,7 +259,9 @@ public sealed class ThemeAssetServiceTests : IDisposable
         var paths = new RuntimeStoragePathProvider(Path.Combine(root, "api"), themeAssetsRoot: Path.Combine(root, "theme-assets"));
         var appearanceService = new SiteSettingsService(db, storagePaths: paths);
         var uploadOptions = options ?? new SecureUploadOptions();
-        return (new ThemeAssetService(paths, new SecureUploadValidator(uploadOptions), uploadOptions, appearanceService), paths, appearanceService);
+        var validator = new SecureUploadValidator(uploadOptions);
+        var libraryService = new ThemeLibraryService(db, appearanceService, paths, new SecureArchiveExtractor(uploadOptions), validator, new NullAuditWriter(), TimeProvider.System);
+        return (new ThemeAssetService(paths, validator, uploadOptions, appearanceService, libraryService), paths, appearanceService);
     }
 
     private static OnlineJudgeDbContext CreateDb() => new(new DbContextOptionsBuilder<OnlineJudgeDbContext>()
@@ -233,6 +272,12 @@ public sealed class ThemeAssetServiceTests : IDisposable
     private static byte[] Jpeg() => [0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0xff, 0xd9];
 
     private static byte[] WebP() => [.. "RIFF"u8.ToArray(), 0, 0, 0, 0, .. "WEBP"u8.ToArray()];
+
+    private sealed class NullAuditWriter : ISecurityAuditWriter
+    {
+        public void Stage(SecurityAuditRecord record) { }
+        public Task WriteAsync(SecurityAuditRecord record, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
 
     public void Dispose()
     {

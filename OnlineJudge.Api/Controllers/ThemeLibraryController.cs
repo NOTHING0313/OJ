@@ -91,6 +91,18 @@ public sealed class ThemeLibraryController(IThemeLibraryService themeLibraryServ
     }
 
     [RiskRateLimit(RateLimitPolicies.Upload)]
+    [HttpPost("import/preflight")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxRequestBytes)]
+    public async Task<IActionResult> PreflightImport(IFormFile? file, CancellationToken cancellationToken)
+    {
+        if (currentUser.Role is not { } role) return Unauthorized();
+        if (file is null || file.Length == 0) return BadRequest("Theme pack is required.");
+        await using var content = file.OpenReadStream();
+        return ToActionResult(await themeLibraryService.PreflightImportAsync(file.FileName, file.ContentType, file.Length, content, role, cancellationToken));
+    }
+
+    [RiskRateLimit(RateLimitPolicies.Upload)]
     [HttpPost("import")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxRequestBytes)]

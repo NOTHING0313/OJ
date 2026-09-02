@@ -1,11 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getProblem, type ProblemDetailDto } from "../api/problemsApi";
 import { getCurrentSeasonProblemLeaderboard, type SeasonProblemLeaderboard } from "../api/leaderboardsApi";
 import { createSubmission, type JudgeLanguage } from "../api/submissionsApi";
 import { canManageContent, useAuth } from "../auth/AuthContext";
 import { CodeEditor } from "../components/CodeEditor";
-import { MarkdownRenderer } from "../components/MarkdownRenderer";
+import { ProblemDetailView } from "../components/problems/ProblemDetailView";
 
 export function ProblemDetailPage() {
   const { id } = useParams();
@@ -171,174 +171,49 @@ export function ProblemDetailPage() {
     return <div className="state-line">加载中...</div>;
   }
 
-  return (
-    <section className="page-section two-column problem-detail-layout ui-v2-page problem-detail-v2-page">
-      <article className="problem-content problem-content-v2">
-        <div className="page-header compact ui-v2-page-header problem-detail-header-v3">
-          <div className="problem-title-block-v3">
-            <p className="eyebrow">PROBLEM</p>
-            <h1>{problem.title}</h1>
-            <div className="problem-meta-row-v3">
-              <span className="problem-meta-summary-v3">{problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {problem.totalScore} 分</span>
-              {explicitLanguageTags.map((tagLanguage) => (
-                <span className="context-chip" key={tagLanguage}>{getProblemLanguageTag(tagLanguage)}</span>
-              ))}
-            </div>
-          </div>
-          <div className="problem-header-actions-v3">
-            {isAuthenticated && (
-              <Link className="button" to={`/submissions/my?problemId=${problem.id}`}>
-                我的提交
-              </Link>
-            )}
-            {canManageContent(currentUser?.role) && (
-              <Link className="button" to={`/admin/problems/${problem.id}/test-cases`}>
-                测试用例
-              </Link>
-            )}
-          </div>
-        </div>
+  const sharedProblem = {
+    id: problem.id,
+    title: problem.title,
+    description: problem.description,
+    inputDescription: problem.inputDescription,
+    outputDescription: problem.outputDescription,
+    timeLimitMs: problem.timeLimitMs,
+    memoryLimitMb: problem.memoryLimitMb,
+    totalScore: problem.totalScore,
+    judgeMode: problem.judgeMode,
+    languageTags: explicitLanguageTags.map(getProblemLanguageTag),
+    functionSpec,
+    hasListNode,
+    hasTreeNode,
+    samples: sampleTestCases.map((testCase) => ({
+      id: testCase.id,
+      input: problem.judgeMode === 1 ? testCase.input : formatFunctionSampleArguments(testCase.argumentsJson, functionSpec),
+      output: problem.judgeMode === 1 ? testCase.expectedOutput : formatFunctionSampleExpected(testCase.expectedJson)
+    }))
+  };
 
-        {seasonLeaderboard?.season && seasonLeaderboard.problem && (
-          <section className="problem-season-score-card">
-            <div><span>赛季计分</span><strong>{seasonLeaderboard.season.name}</strong></div>
-            <dl>
-              <div><dt>基础分</dt><dd>{seasonLeaderboard.problem.baseScore}</dd></div>
-              <div><dt>Top10 时间奖励</dt><dd>最高 +{Math.max(...seasonLeaderboard.season.scoringRules.timeBonusPercentages)}%</dd></div>
-              <div><dt>运行奖励</dt><dd>最高 +{maxBonus(seasonLeaderboard.season.scoringRules.runtimeBonusTiers)}%</dd></div>
-              <div><dt>内存奖励</dt><dd>最高 +{maxBonus(seasonLeaderboard.season.scoringRules.memoryBonusTiers)}%</dd></div>
-            </dl>
-            <Link className="button" to={`/leaderboards/users/problems/${problem.id}`}>查看单题榜</Link>
-          </section>
-        )}
+  return <ProblemDetailView
+    problem={sharedProblem}
+    seasonScore={seasonLeaderboard?.season && seasonLeaderboard.problem ? {
+      seasonName: seasonLeaderboard.season.name,
+      baseScore: seasonLeaderboard.problem.baseScore,
+      timeBonus: Math.max(...seasonLeaderboard.season.scoringRules.timeBonusPercentages),
+      runtimeBonus: maxBonus(seasonLeaderboard.season.scoringRules.runtimeBonusTiers),
+      memoryBonus: maxBonus(seasonLeaderboard.season.scoringRules.memoryBonusTiers)
+    } : null}
+    language={language}
+    languages={availableLanguages.map((value) => ({ value, label: getJudgeLanguageName(value) }))}
+    isAuthenticated={isAuthenticated}
+    canManage={canManageContent(currentUser?.role)}
+    challengeId={challengeId}
+    error={error}
+    isSubmitting={isSubmitting}
+    editor={<CodeEditor value={sourceCode} language={language} onChange={handleSourceCodeChange} height="560px" />}
+    onSubmit={handleSubmit}
+    onLanguageChange={(value) => handleLanguageChange(value as JudgeLanguage)}
+    onClearSource={clearSourceCache}
+  />;
 
-        <section className="content-block">
-          <h2>描述</h2>
-          <MarkdownRenderer value={problem.description} />
-        </section>
-        {problem.judgeMode === 1 ? (
-          <>
-            <section className="content-block">
-              <h2>输入说明</h2>
-              <MarkdownRenderer value={problem.inputDescription} />
-            </section>
-            <section className="content-block">
-              <h2>输出说明</h2>
-              <MarkdownRenderer value={problem.outputDescription} />
-            </section>
-          </>
-        ) : (
-          <section className="content-block">
-            <h2>函数说明</h2>
-            <p>只需要完成 Solution 类中的函数，不需要编写 Main/main，不需要处理输入输出。函数式题目当前支持 C++17、C# 和 C11。</p>
-            {hasListNode && <p className="quiet-note">链表测试数据使用数组表示，例如 [1,2,3] 表示 1 -&gt; 2 -&gt; 3；[] 表示空链表。C11 暂不支持链表函数式判题。</p>}
-            {hasTreeNode && <p className="quiet-note">二叉树测试数据使用层序数组表示，例如 [1,2,3,null,4]；[] 表示空树；输出比较会忽略尾部多余 null。C11 暂不支持二叉树函数式判题。</p>}
-            {language === 2 && <p className="quiet-note">C 语言返回数组时，请使用 malloc 分配返回数组，并正确设置 *returnSize。</p>}
-            {functionSpec ? (
-              <div className="table-wrap">
-                <table className="function-spec-table">
-                  <tbody>
-                    <tr>
-                      <th>函数名</th>
-                      <td>{functionSpec.functionName}</td>
-                    </tr>
-                    <tr>
-                      <th>返回类型</th>
-                      <td>{functionSpec.returnType}</td>
-                    </tr>
-                    <tr>
-                      <th>参数</th>
-                      <td>{functionSpec.parameters.map((parameter) => `${parameter.type} ${parameter.name}`).join(", ") || "无"}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="quiet-note">函数配置暂不可用，请联系出题人检查配置。</div>
-            )}
-          </section>
-        )}
-
-        <section className="content-block public-samples">
-          <h2>公开样例</h2>
-          {sampleTestCases.length === 0 ? (
-            <div className="empty-state">暂无公开样例</div>
-          ) : (
-            <div className="sample-list">
-              {sampleTestCases.map((testCase, index) => (
-                <div className="sample-card" key={testCase.id}>
-                  <h3>样例 {index + 1}</h3>
-                  {problem.judgeMode === 1 ? (
-                    <div className="sample-grid">
-                      <div>
-                        <span>输入</span>
-                        <pre>{testCase.input || "-"}</pre>
-                      </div>
-                      <div>
-                        <span>输出</span>
-                        <pre>{testCase.expectedOutput || "-"}</pre>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="function-sample">
-                      <div className="function-sample-section">
-                        <span className="function-sample-label">输入</span>
-                        <pre className="function-sample-code">{formatFunctionSampleArguments(testCase.argumentsJson, functionSpec)}</pre>
-                      </div>
-                      <div className="function-sample-section">
-                        <span className="function-sample-label">输出</span>
-                        <pre className="function-sample-code">{formatFunctionSampleExpected(testCase.expectedJson)}</pre>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </article>
-
-      <aside className="submit-panel submit-panel-v2">
-        <div className="submit-panel-heading-v3">
-          <h2>提交代码</h2>
-          {challengeId && (
-            <Link className="button" to={`/challenges/${challengeId}`}>
-              返回挑战棋盘
-            </Link>
-          )}
-        </div>
-        <form onSubmit={handleSubmit} className="form-stack">
-          <label>
-            语言
-            <select
-              value={language}
-              disabled={availableLanguages.length === 0}
-              onChange={(event) => handleLanguageChange(Number(event.target.value) as JudgeLanguage)}
-            >
-              {availableLanguages.map((availableLanguage) => (
-                <option key={availableLanguage} value={availableLanguage}>{getJudgeLanguageName(availableLanguage)}</option>
-              ))}
-            </select>
-          </label>
-
-          <div className="code-field">
-            <span>代码</span>
-            <CodeEditor value={sourceCode} language={language} onChange={handleSourceCodeChange} height="560px" />
-          </div>
-
-          {error && <div className="alert error">{error}</div>}
-          <div className="button-row">
-            <button className="button" type="button" onClick={clearSourceCache}>
-              清空本地缓存
-            </button>
-            <button className="button primary" type="submit" disabled={isSubmitting || availableLanguages.length === 0}>
-              {isSubmitting ? "提交中..." : "提交"}
-            </button>
-          </div>
-        </form>
-      </aside>
-    </section>
-  );
 }
 
 function defaultCodeTemplate(language: JudgeLanguage) {

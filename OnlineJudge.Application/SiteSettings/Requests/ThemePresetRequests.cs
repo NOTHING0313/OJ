@@ -17,3 +17,8 @@ public sealed class RenameThemePresetRequest
 {
     public string Name { get; set; } = string.Empty;
 }
+
+public sealed class RenameThemeAssetRequest
+{
+    public string DisplayName { get; set; } = string.Empty;
+}

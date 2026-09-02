@@ -178,6 +178,8 @@ export const DotField = memo(function DotField({
       resizeTimer = window.setTimeout(rebuild, 100);
     };
 
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(handleResize);
+
     const handleMouseMove = (event: MouseEvent) => {
       if (!interactive) return;
       const rect = parent.getBoundingClientRect();
@@ -202,6 +204,7 @@ export const DotField = memo(function DotField({
     };
 
     rebuild();
+    resizeObserver?.observe(parent);
     window.addEventListener("resize", handleResize);
     if (interactive) {
       window.addEventListener("mousemove", handleMouseMove, { passive: true });
@@ -212,6 +215,7 @@ export const DotField = memo(function DotField({
     return () => {
       if (raf) cancelAnimationFrame(raf);
       window.clearTimeout(resizeTimer);
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("mousemove", handleMouseMove);
       document.documentElement.removeEventListener("mouseleave", handleMouseLeave);

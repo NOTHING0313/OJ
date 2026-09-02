@@ -7,14 +7,15 @@ export type AppBackgroundMode = "ambient" | "auth" | "leaderboard" | "challenge"
 interface AppBackgroundProps {
   pathname: string;
   hasCustomWallpaper: boolean;
+  contained?: boolean;
 }
 
-export function AppBackground({ pathname, hasCustomWallpaper }: AppBackgroundProps) {
+export function AppBackground({ pathname, hasCustomWallpaper, contained = false }: AppBackgroundProps) {
   const mode = hasCustomWallpaper ? "wallpaper" : resolveBackgroundMode(pathname);
   const showDots = mode === "leaderboard" || mode === "challenge";
 
   return (
-    <div className={`oj-app-background oj-app-background--${mode}`} aria-hidden="true">
+    <div className={`oj-app-background oj-app-background--${mode}${contained ? " is-contained" : ""}`} aria-hidden="true">
       <div className="oj-bg-base" />
       {mode !== "wallpaper" && (
         <>

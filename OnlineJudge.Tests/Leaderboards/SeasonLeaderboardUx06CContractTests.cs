@@ -23,10 +23,10 @@ public sealed class SeasonLeaderboardUx06CContractTests
         { "frontend/src/pages/AdminLeaderboardSeasonPage.tsx", "BenchmarkModal" },
         { "frontend/src/pages/AdminLeaderboardSeasonPage.tsx", "runtimeBonusEnabled && <th>运行基准</th>" },
         { "frontend/src/pages/AdminLeaderboardSeasonPage.tsx", "memoryBonusEnabled && <th>内存基准</th>" },
-        { "frontend/src/pages/LeaderboardHomePage.tsx", "enabledChallengeIds" },
-        { "frontend/src/pages/LeaderboardHomePage.tsx", "enabledChallenges.map" },
-        { "frontend/src/pages/LeaderboardHomePage.tsx", "slice(0, 3)" },
-        { "frontend/src/pages/LeaderboardHomePage.tsx", "暂无成绩" },
+        { "frontend/src/components/leaderboards/LeaderboardHomeView.tsx", "enabledChallengeIds" },
+        { "frontend/src/components/leaderboards/LeaderboardHomeView.tsx", "enabledChallenges.map" },
+        { "frontend/src/components/leaderboards/LeaderboardHomeView.tsx", "slice(0, 3)" },
+        { "frontend/src/components/leaderboards/LeaderboardHomeView.tsx", "暂无成绩" },
         { "frontend/src/pages/TeamPage.tsx", "team-audit-summary" },
         { "frontend/src/pages/TeamPage.tsx", "Repository Host" }
     };
@@ -56,10 +56,11 @@ public sealed class SeasonLeaderboardUx06CContractTests
     [Fact]
     public void BoardCenter_FiltersToEnabledBoards_AndKeepsManagementAuthorized()
     {
-        var page = Read("frontend/src/pages/LeaderboardHomePage.tsx");
-        Assert.Contains("enabledChallengeIds.has", page, StringComparison.Ordinal);
-        Assert.Contains("canManageContent(currentUser?.role)", page, StringComparison.Ordinal);
-        Assert.Contains("榜单管理", page, StringComparison.Ordinal);
+        var container = Read("frontend/src/pages/LeaderboardHomePage.tsx");
+        var view = Read("frontend/src/components/leaderboards/LeaderboardHomeView.tsx");
+        Assert.Contains("enabledChallengeIds.has", view, StringComparison.Ordinal);
+        Assert.Contains("canManageContent(currentUser?.role)", container, StringComparison.Ordinal);
+        Assert.Contains("榜单管理", view, StringComparison.Ordinal);
     }
 
     private static string Read(string relativePath) => File.ReadAllText(Path.Combine(ProjectRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar)));

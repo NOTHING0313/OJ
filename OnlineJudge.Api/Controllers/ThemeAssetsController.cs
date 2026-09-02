@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Application.Common.CurrentUser;
+using OnlineJudge.Application.SiteSettings.Requests;
 using OnlineJudge.Application.SiteSettings.Services;
 
 namespace OnlineJudge.Api.Controllers;
@@ -37,7 +38,7 @@ public sealed class ThemeAssetsController(IThemeAssetService themeAssetService, 
     [RequestSizeLimit(MaxRequestSize)]
     public async Task<IActionResult> Upload(IFormFile? file, CancellationToken cancellationToken)
     {
-        if (currentUser.Role is not { } role)
+        if (currentUser.Role is not { } role || currentUser.UserId is not { } userId)
         {
             return Unauthorized();
         }
@@ -48,7 +49,25 @@ public sealed class ThemeAssetsController(IThemeAssetService themeAssetService, 
         }
 
         await using var content = file.OpenReadStream();
-        var result = await themeAssetService.UploadAsync(role, file.FileName, file.ContentType, file.Length, content, cancellationToken);
+        var result = await themeAssetService.UploadAsync(userId, role, file.FileName, file.ContentType, file.Length, content, cancellationToken);
+        if (result.IsFailure)
+        {
+            return result.ErrorMessage == "Forbidden." ? Forbid() : BadRequest(result.ErrorMessage);
+        }
+
+        return Ok(result.Value);
+    }
+
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [HttpPatch("{assetId}/name")]
+    public async Task<IActionResult> Rename(string assetId, RenameThemeAssetRequest request, CancellationToken cancellationToken)
+    {
+        if (currentUser.Role is not { } role || currentUser.UserId is not { } userId)
+        {
+            return Unauthorized();
+        }
+
+        var result = await themeAssetService.RenameAsync(userId, role, assetId, request.DisplayName, cancellationToken);
         if (result.IsFailure)
         {
             return result.ErrorMessage == "Forbidden." ? Forbid() : BadRequest(result.ErrorMessage);
@@ -61,12 +80,12 @@ public sealed class ThemeAssetsController(IThemeAssetService themeAssetService, 
     [HttpDelete("{assetId}")]
     public async Task<IActionResult> Delete(string assetId, CancellationToken cancellationToken)
     {
-        if (currentUser.Role is not { } role)
+        if (currentUser.Role is not { } role || currentUser.UserId is not { } userId)
         {
             return Unauthorized();
         }
 
-        var result = await themeAssetService.DeleteAsync(role, assetId, cancellationToken);
+        var result = await themeAssetService.DeleteAsync(userId, role, assetId, cancellationToken);
         if (result.IsSuccess)
         {
             return NoContent();

@@ -7,7 +7,7 @@ public class TeamFrontendSourceTests
     {
         var root = FindRepositoryRoot();
         var main = File.ReadAllText(Path.Combine(root, "frontend", "src", "main.tsx"));
-        var layout = File.ReadAllText(Path.Combine(root, "frontend", "src", "AppLayout.tsx"));
+        var layout = File.ReadAllText(Path.Combine(root, "frontend", "src", "components", "AppHeaderView.tsx"));
         var page = File.ReadAllText(Path.Combine(root, "frontend", "src", "pages", "TeamPage.tsx"));
         var api = File.ReadAllText(Path.Combine(root, "frontend", "src", "api", "teamsApi.ts"));
         var styles = File.ReadAllText(Path.Combine(root, "frontend", "src", "styles.css"));

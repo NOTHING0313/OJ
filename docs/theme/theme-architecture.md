@@ -24,6 +24,8 @@ Decoration keys are the generic semantic surfaces PageHeader, CardHeader, PanelC
 
 Root editing continues to use one local Appearance draft for Background, Panel, Icons, and Decorations. Upload and assignment are separate: one asset may be selected by multiple slots. The lightweight asset library lists thumbnail, type, size, and logical `UsedBy` references without exposing filesystem paths.
 
+Artist-facing asset display names are optional metadata stored inside the existing bounded `theme-library` SiteSetting JSON. The name is normalized from a client basename, limited to 128 characters, and may be changed by Root. It never participates in an asset ID, URL, physical filename, filesystem lookup, or preset reference. Existing assets without metadata continue to use a short generated-ID label.
+
 ## Asset lifecycle and persistence
 
 PNG, JPEG, and WebP files up to 5 MiB pass the shared `ThemeImage` secure upload policy, including filename, MIME, signature, and size checks. SVG is rejected. Files are written atomically under configured `Storage:ThemeAssetsRoot` and served at `/theme-assets`; absolute disk paths are never returned.

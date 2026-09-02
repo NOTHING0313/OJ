@@ -23,28 +23,29 @@ public class HelpCenterFrontendContractTests
     public void HelpRoutesAndNavigation_AreRoleCorrect()
     {
         var main = Read("frontend", "src", "main.tsx");
-        var layout = Read("frontend", "src", "AppLayout.tsx");
-        var reader = Read("frontend", "src", "pages", "HelpCenterPage.tsx");
+        var layout = Read("frontend", "src", "components", "AppHeaderView.tsx");
+        var view = Read("frontend", "src", "components", "help", "HelpCenterView.tsx");
 
         Assert.Contains("path=\"/help\"", main, StringComparison.Ordinal);
         Assert.Contains("path=\"/help/:slug\"", main, StringComparison.Ordinal);
         Assert.Contains("path=\"/help/manage\"", main, StringComparison.Ordinal);
         Assert.Contains("allowedRoles={[2, 3]}", main, StringComparison.Ordinal);
-        Assert.Contains("to=\"/help\"><ThemeIcon slot=\"help\" />帮助", layout, StringComparison.Ordinal);
-        Assert.Contains("canManage && <Link className=\"button\" to=\"/help/manage\">文档管理</Link>", reader, StringComparison.Ordinal);
+        Assert.Contains("renderIcon(\"help\")}帮助", layout, StringComparison.Ordinal);
+        Assert.Contains("canManage && <Link className=\"button\" to=\"/help/manage\">文档管理</Link>", view, StringComparison.Ordinal);
     }
 
     [Fact]
     public void HelpCenter_OpensFirstPublishedDocumentAndSupportsDeepLinks()
     {
         var reader = Read("frontend", "src", "pages", "HelpCenterPage.tsx");
+        var view = Read("frontend", "src", "components", "help", "HelpCenterView.tsx");
         var api = Read("frontend", "src", "api", "helpDocumentsApi.ts");
 
         Assert.Contains("const selectedSlug = slug ?? list[0].slug", reader, StringComparison.Ordinal);
         Assert.Contains("navigate(`/help/${selectedSlug}`, { replace: true })", reader, StringComparison.Ordinal);
-        Assert.Contains("to={`/help/${item.slug}`}", reader, StringComparison.Ordinal);
+        Assert.Contains("to={`/help/${item.slug}`}", view, StringComparison.Ordinal);
         Assert.Contains("/api/help-documents/${encodeURIComponent(slug)}", api, StringComparison.Ordinal);
-        Assert.Contains("暂无帮助文档", reader, StringComparison.Ordinal);
+        Assert.Contains("暂无帮助文档", view, StringComparison.Ordinal);
     }
 
     [Fact]

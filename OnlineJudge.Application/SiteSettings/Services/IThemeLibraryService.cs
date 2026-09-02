@@ -23,7 +23,17 @@ public interface IThemeLibraryService
 
     Task<Result<ThemePackExportDto>> ExportAsync(Guid presetId, UserRole role, CancellationToken cancellationToken = default);
 
+    Task<Result<ThemePackPreflightDto>> PreflightImportAsync(string fileName, string contentType, long length, Stream content, UserRole role, CancellationToken cancellationToken = default);
+
     Task<Result<ThemePresetDto>> ImportAsync(string fileName, string contentType, long length, Stream content, Guid userId, UserRole role, CancellationToken cancellationToken = default);
 
     Task<Result<IReadOnlyDictionary<string, IReadOnlyList<string>>>> GetAssetReferencesAsync(CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyDictionary<string, string>>> GetAssetDisplayNamesAsync(CancellationToken cancellationToken = default);
+
+    Task<Result<string>> RegisterAssetDisplayNameAsync(string assetId, string originalFileName, Guid userId, UserRole role, CancellationToken cancellationToken = default);
+
+    Task<Result<string>> RenameAssetDisplayNameAsync(string assetId, string displayName, Guid userId, UserRole role, CancellationToken cancellationToken = default);
+
+    Task<Result> RemoveAssetDisplayNameAsync(string assetId, Guid userId, UserRole role, CancellationToken cancellationToken = default);
 }

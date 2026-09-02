@@ -32,6 +32,8 @@ The Property Inspector renders only the controls supported by the selected surfa
 
 Asset properties reuse the THEME-10F Theme Asset API and library. The picker displays thumbnail, detected browser resolution, content type, size, and accurate saved-plus-draft `Used By` references. Explicit drop zones upload only through the existing secure upload endpoints. SVG, remote URLs, custom CSS, JavaScript, and HTML are not accepted.
 
+The picker prefers the persisted artist-facing display name and also searches the immutable AssetId. Root may rename display metadata without changing URLs or references. Pack selection performs a server-validated manifest preview before the explicit import confirmation; the preview makes clear that validation has completed, import has not, and import will not apply the theme.
+
 ## Draft, history, and save semantics
 
 One `SiteAppearance` value is the editor Draft. The session history reducer owns `saved`, `present`, `past`, and `future`; it is capped at 50 steps and stores asset references, never asset bytes. History is not written to the database, Appearance JSON, or local storage.
@@ -41,6 +43,8 @@ Slider, color, enum, asset, and reset changes update local Draft only. Undo and 
 `Save & Apply` remains the direct Draft path that calls the existing Appearance PUT. Preset `Load` changes the local Draft only; `Save As` and `Save Draft` persist a reusable preset without applying it. Preset `Apply` uses the backend Appearance update service exactly once, then reloads ThemeProvider. A successful Appearance mutation produces `SiteAppearance.Updated`; preset application additionally produces the narrowly scoped `Theme.Applied` lifecycle audit record, without duplicating the mutation itself. A failed or rate-limited save retains the full Draft. `Discard Changes` restores Current Saved without an API call.
 
 Loading or applying another preset while the Draft is dirty opens a three-way Save / Discard / Cancel guard. The built-in Default Theme is a virtual exact-default entry: it can be loaded and applied but never renamed, overwritten, duplicated as a system object, deleted, or stored as an ordinary preset.
+
+All editor dialogs use the same scoped accessible primitive. Opening moves focus inside; Tab and Shift+Tab remain trapped in the topmost dialog; Escape closes cancellable dialogs; closing restores the trigger focus. Dialogs expose `role="dialog"`, `aria-modal`, labelled titles and descriptions, block background pointer/keyboard interaction, and lock/restore document scrolling. Rename, delete, import review, apply, reset, Save As, asset actions, and the dirty guard do not use native `alert`, `confirm`, or `prompt`.
 
 `Reset Section` changes only the selected surface. `Reset Entire Theme` requires a confirmation dialog and places the exact default configuration into the Draft. Neither reset operation deletes assets; explicit deletion remains manual and protected by saved and draft references.
 

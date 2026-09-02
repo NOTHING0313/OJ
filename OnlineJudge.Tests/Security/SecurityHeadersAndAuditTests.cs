@@ -191,10 +191,11 @@ public sealed class SecurityHeadersAndAuditTests
     public void FrontendRouteAndNavigation_AreRootOnly()
     {
         var main = Read("frontend", "src", "main.tsx");
-        var layout = Read("frontend", "src", "AppLayout.tsx");
+        var layout = Read("frontend", "src", "components", "AppHeaderView.tsx");
         Assert.Contains("path=\"/admin/security-audit\"", main, StringComparison.Ordinal);
         Assert.Contains("<ProtectedRoute allowedRoles={[3]}>", main, StringComparison.Ordinal);
-        Assert.Contains("{isRoot(role) && <NavLink to=\"/admin/security-audit\">安全审计</NavLink>}", layout, StringComparison.Ordinal);
+        Assert.Contains("isRoot(role) && <NavLink to=\"/admin/security-audit\"", layout, StringComparison.Ordinal);
+        Assert.Contains(">安全审计</NavLink>", layout, StringComparison.Ordinal);
     }
 
     [Fact]

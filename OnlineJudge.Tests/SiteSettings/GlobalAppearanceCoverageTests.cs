@@ -101,14 +101,14 @@ public sealed class GlobalAppearanceCoverageTests
     }
 
     [Theory]
-    [InlineData("theme-editor-preview-nav")]
+    [InlineData("AppHeaderView")]
     [InlineData("page-header")]
     [InlineData("content-block")]
     [InlineData("button")]
     [InlineData("input")]
     [InlineData("theme-editor-badge")]
     [InlineData("table")]
-    [InlineData("<code>")]
+    [InlineData("<pre>")]
     [InlineData("empty-state")]
     [InlineData("DraftIcon")]
     [InlineData("decoration.pageHeader")]
@@ -233,7 +233,7 @@ public sealed class GlobalAppearanceCoverageTests
     public void ThemeIcon_PreservesDefaultRendererLayoutAndAccessibilityContract()
     {
         var component = Read("frontend", "src", "components", "ThemeIcon.tsx");
-        var layout = Read("frontend", "src", "AppLayout.tsx");
+        var layout = Read("frontend", "src", "components", "AppHeaderView.tsx");
         var styles = Styles();
 
         Assert.Contains("return <>{fallback}</>", component, StringComparison.Ordinal);
@@ -241,8 +241,8 @@ public sealed class GlobalAppearanceCoverageTests
         Assert.Contains("aria-hidden=\"true\"", component, StringComparison.Ordinal);
         Assert.Contains("object-fit: contain", styles, StringComparison.Ordinal);
         Assert.Contains("width: 20px", styles, StringComparison.Ordinal);
-        Assert.Contains("<ThemeIcon slot=\"problem\" />题目", layout, StringComparison.Ordinal);
-        Assert.Contains("<ThemeIcon slot=\"help\" />帮助", layout, StringComparison.Ordinal);
+        Assert.Contains("renderIcon(\"problem\")}题目", layout, StringComparison.Ordinal);
+        Assert.Contains("renderIcon(\"help\")}帮助", layout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -391,7 +391,7 @@ public sealed class GlobalAppearanceCoverageTests
     public void VisualEditor_IsRootProtectedAndRouteLevelLazyLoaded()
     {
         var main = Read("frontend", "src", "main.tsx");
-        var layout = Read("frontend", "src", "AppLayout.tsx");
+        var layout = Read("frontend", "src", "components", "AppHeaderView.tsx");
 
         Assert.Contains("lazy(() => import(\"./pages/AdminSiteSettingsPage\"))", main, StringComparison.Ordinal);
         Assert.Contains("<Suspense", main, StringComparison.Ordinal);

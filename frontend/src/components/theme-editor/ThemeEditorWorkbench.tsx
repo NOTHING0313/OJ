@@ -11,6 +11,8 @@ import {
   listThemeAssets,
   listThemePresets,
   normalizeSiteAppearance,
+  preflightThemePresetImport,
+  renameThemeAsset,
   renameThemePreset,
   resolveSiteAssetUrl,
   sitePageOptions,
@@ -26,6 +28,7 @@ import {
   type SiteThemeIconSlot,
   type ThemeAssetLibraryItem,
   type ThemeAssetReference,
+  type ThemePackPreflight,
   type ThemePreset,
   type ThemePresetList
 } from "../../api/siteSettingsApi";
@@ -35,6 +38,7 @@ import { useTheme } from "../../theme/ThemeContext";
 import { type ThemeDecorationSlot, type ThemeIconSlot } from "../../theme/themeSlots";
 import { normalizeUploadedImagePath } from "../../utils/uploadedImageUrl";
 import { ThemeEditorPreview } from "./ThemeEditorPreview";
+import { ThemeEditorDialog } from "./ThemeEditorDialog";
 import {
   ThemeEditorHistoryLimit,
   appearanceEquals,
@@ -47,10 +51,12 @@ import {
   resetThemeSurface,
   themeEditableSurfaces,
   themeEditorPreviewPages,
+  themeEditorPreviewZooms,
   themeEditorViewports,
   type ThemeEditorCompareMode,
   type ThemeEditorMode,
   type ThemeEditorPreviewPage,
+  type ThemeEditorPreviewZoom,
   type ThemeEditorSurfaceId,
   type ThemeEditorViewport
 } from "./themeEditorModel";
@@ -71,9 +77,15 @@ export function ThemeEditorWorkbench() {
   const [previewPage, setPreviewPage] = useState<ThemeEditorPreviewPage>("problem");
   const [pageBackgroundKey, setPageBackgroundKey] = useState<SitePageKey>("problems");
   const [viewport, setViewport] = useState<ThemeEditorViewport>("desktop");
+  const [previewZoom, setPreviewZoom] = useState<ThemeEditorPreviewZoom>("fit");
   const [editorMode, setEditorMode] = useState<ThemeEditorMode>("select");
   const [compareMode, setCompareMode] = useState<ThemeEditorCompareMode>("draft");
   const [surfaceSearch, setSurfaceSearch] = useState("");
+  const [navigatorCollapsed, setNavigatorCollapsed] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [pulseSurface, setPulseSurface] = useState<ThemeEditorSurfaceId | null>(null);
+  const pulseTimerRef = useRef<number | null>(null);
   const [themeAssets, setThemeAssets] = useState<ThemeAssetLibraryItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -89,7 +101,13 @@ export function ThemeEditorWorkbench() {
   const [pendingDraftAction, setPendingDraftAction] = useState<PendingDraftAction | null>(null);
   const [savePresetDialog, setSavePresetDialog] = useState<{ continuation: PendingDraftAction | null } | null>(null);
   const [applyPresetDialog, setApplyPresetDialog] = useState<ThemePreset | null>(null);
-  const [importPresetDialog, setImportPresetDialog] = useState<File | null>(null);
+  const [importPresetDialog, setImportPresetDialog] = useState<{ file: File; preview: ThemePackPreflight } | null>(null);
+  const [updatePresetDialog, setUpdatePresetDialog] = useState<ThemePreset | null>(null);
+  const [renamePresetDialog, setRenamePresetDialog] = useState<ThemePreset | null>(null);
+  const [deletePresetDialog, setDeletePresetDialog] = useState<ThemePreset | null>(null);
+  const [renameAssetDialog, setRenameAssetDialog] = useState<ThemeAssetLibraryItem | null>(null);
+  const [deleteAssetDialog, setDeleteAssetDialog] = useState<ThemeAssetLibraryItem | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const dirty = !appearanceEquals(draftCheckpoint, history.present);
   const previewAppearance = compareMode === "draft" ? history.present : compareMode === "saved" ? draftCheckpoint : createDefaultSiteAppearance();
   const selected = getThemeSurface(selectedSurface);
@@ -107,12 +125,16 @@ export function ThemeEditorWorkbench() {
 
   useEffect(() => { dispatch({ type: "initialize", value: siteAppearance }); setDraftCheckpoint(siteAppearance); }, [siteAppearance]);
   useEffect(() => { void refreshAssets(); void refreshLibrary(); }, []);
+  useEffect(() => () => { if (pulseTimerRef.current != null) window.clearTimeout(pulseTimerRef.current); }, []);
 
   function changeDraft(mutator: (draft: SiteAppearance) => void) {
     const next = normalizeSiteAppearance(history.present);
     mutator(next);
     dispatch({ type: "change", value: next });
     setCompareMode("draft");
+    setPulseSurface(selectedSurface);
+    if (pulseTimerRef.current != null) window.clearTimeout(pulseTimerRef.current);
+    pulseTimerRef.current = window.setTimeout(() => setPulseSurface(null), 450);
     setNotice(null);
     setError(null);
   }
@@ -228,7 +250,8 @@ export function ThemeEditorWorkbench() {
   }
 
   async function handleUpdatePreset(preset: ThemePreset) {
-    if (!preset.id || !window.confirm(`用当前草稿覆盖“${preset.name}”？网站正在使用的主题不会改变。`)) return;
+    if (!preset.id) return;
+    setUpdatePresetDialog(null);
     setLibraryBusy(true);
     try {
       await updateThemePreset(preset.id, preset.name, preset.description, history.present);
@@ -247,29 +270,38 @@ export function ThemeEditorWorkbench() {
     finally { setLibraryBusy(false); }
   }
 
-  async function handleRenamePreset(preset: ThemePreset) {
+  async function handleRenamePreset(preset: ThemePreset, name: string) {
     if (!preset.id) return;
-    const name = window.prompt("新的主题名称", preset.name)?.trim();
-    if (!name) return;
+    setDialogError(null);
     setLibraryBusy(true);
-    try { await renameThemePreset(preset.id, name); await refreshLibrary(); setNotice("主题已重命名。"); }
-    catch (reason) { setError(getApiErrorMessage(reason, "主题重命名失败。")); }
+    try { await renameThemePreset(preset.id, name); await refreshLibrary(); setRenamePresetDialog(null); setNotice("主题已重命名。"); }
+    catch (reason) { setDialogError(getApiErrorMessage(reason, "主题重命名失败。")); }
     finally { setLibraryBusy(false); }
   }
 
   async function handleDeletePreset(preset: ThemePreset) {
-    if (!preset.id || !window.confirm(`删除「${preset.name}」？引用的资源文件不会被自动删除。`)) return;
+    if (!preset.id) return;
+    setDialogError(null);
     setLibraryBusy(true);
-    try { await deleteThemePreset(preset.id); if (selectedPresetId === preset.id) { setSelectedPresetId(undefined); setDraftCheckpoint(history.saved); } await Promise.all([refreshLibrary(), refreshAssets()]); setNotice("主题已删除；素材文件保持不变。当前编辑内容仍保留为草稿。"); }
-    catch (reason) { setError(getApiErrorMessage(reason, "主题删除失败。")); }
+    try { await deleteThemePreset(preset.id); if (selectedPresetId === preset.id) { setSelectedPresetId(undefined); setDraftCheckpoint(history.saved); } await Promise.all([refreshLibrary(), refreshAssets()]); setDeletePresetDialog(null); setNotice("主题已删除；素材文件保持不变。当前编辑内容仍保留为草稿。"); }
+    catch (reason) { setDialogError(getApiErrorMessage(reason, "主题删除失败。")); }
+    finally { setLibraryBusy(false); }
+  }
+
+  async function prepareImportPreset(file: File) {
+    setLibraryBusy(true);
+    setError(null);
+    setDialogError(null);
+    try { setImportPresetDialog({ file, preview: await preflightThemePresetImport(file) }); }
+    catch (reason) { setError(getApiErrorMessage(reason, "主题包未通过安全检查，未导入任何内容。")); }
     finally { setLibraryBusy(false); }
   }
 
   async function performImportPreset(file: File) {
-    setImportPresetDialog(null);
     setLibraryBusy(true);
-    try { const imported = await importThemePreset(file); setSelectedPresetId(imported.id); await Promise.all([refreshLibrary(), refreshAssets()]); setNotice(`${imported.name} 已安全导入 · 格式版本 ${imported.schemaVersion} · ${imported.assetCount} 个素材 · 尚未应用到全站。`); }
-    catch (reason) { setError(getApiErrorMessage(reason, "主题包导入失败。")); }
+    setDialogError(null);
+    try { const imported = await importThemePreset(file); setSelectedPresetId(imported.id); await Promise.all([refreshLibrary(), refreshAssets()]); setImportPresetDialog(null); setNotice(`${imported.name} 已安全导入 · 格式版本 ${imported.schemaVersion} · ${imported.assetCount} 个素材 · 尚未应用到全站。`); }
+    catch (reason) { setDialogError(getApiErrorMessage(reason, "主题包导入失败，未应用任何主题。")); }
     finally { setLibraryBusy(false); }
   }
 
@@ -325,13 +357,32 @@ export function ThemeEditorWorkbench() {
   }
 
   async function handleDeleteAsset(assetId: string) {
-    setError(null);
+    setLibraryBusy(true);
+    setDialogError(null);
     try {
       await deleteThemeAsset(assetId);
       await refreshAssets();
+      setDeleteAssetDialog(null);
       setNotice("未被正式配置或当前草稿引用的资源已删除。");
     } catch (reason) {
-      setError(getApiErrorMessage(reason, "资源删除失败。"));
+      setDialogError(getApiErrorMessage(reason, "资源删除失败。"));
+    } finally {
+      setLibraryBusy(false);
+    }
+  }
+
+  async function handleRenameAsset(asset: ThemeAssetLibraryItem, displayName: string) {
+    setLibraryBusy(true);
+    setDialogError(null);
+    try {
+      await renameThemeAsset(asset.assetId, displayName);
+      await refreshAssets();
+      setRenameAssetDialog(null);
+      setNotice("素材显示名称已更新；文件地址和现有引用保持不变。");
+    } catch (reason) {
+      setDialogError(getApiErrorMessage(reason, "素材重命名失败。"));
+    } finally {
+      setLibraryBusy(false);
     }
   }
 
@@ -391,7 +442,7 @@ export function ThemeEditorWorkbench() {
 
   return (
     <ThemeEditorGestureContext.Provider value={gestureControls}>
-    <section className="theme-editor-page">
+    <section className={`theme-editor-page${focusMode ? " focus-mode" : ""}`}>
       <header className="theme-editor-page-header">
         <div><span>站点外观 / 可视化工作台</span><h1>可视化主题编辑器</h1><p>选择编辑区域 → 实时预览 → 撤销或对比 → 保存主题 → 明确应用</p></div>
         <div className={`theme-editor-save-state${dirty ? " dirty" : ""}`}><span />{dirty ? "有未保存修改" : "当前草稿已保存"}</div>
@@ -420,12 +471,12 @@ export function ThemeEditorWorkbench() {
       </div>
 
       <section className="theme-library-panel" aria-label="主题库">
-        <header><div><span>主题库</span><h2>已保存主题</h2><p>“载入预览”只改变草稿；只有“应用全站”才会改变网站主题。</p></div><div><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="搜索主题名称..." aria-label="搜索主题" /><select value={presetSort} onChange={(event) => setPresetSort(event.target.value as "updated" | "name")} aria-label="主题排序"><option value="updated">最近更新</option><option value="name">按名称</option></select><label className="button">导入主题包<input type="file" accept=".zip,application/zip" disabled={libraryBusy} onChange={(event) => { const file = event.target.files?.[0]; if (file) setImportPresetDialog(file); event.currentTarget.value = ""; }} /></label><button className="button primary" type="button" disabled={libraryBusy} onClick={() => setSavePresetDialog({ continuation: null })}>另存为主题</button></div></header>
+        <header><div><span>主题库</span><h2>已保存主题</h2><p>“载入预览”只改变草稿；只有“应用全站”才会改变网站主题。</p></div><div><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="搜索主题名称..." aria-label="搜索主题" /><select value={presetSort} onChange={(event) => setPresetSort(event.target.value as "updated" | "name")} aria-label="主题排序"><option value="updated">最近更新</option><option value="name">按名称</option></select><label className="button">{libraryBusy ? "正在检查..." : "导入主题包"}<input type="file" accept=".zip,application/zip" disabled={libraryBusy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void prepareImportPreset(file); event.currentTarget.value = ""; }} /></label><button className="button primary" type="button" disabled={libraryBusy} onClick={() => setSavePresetDialog({ continuation: null })}>另存为主题</button></div></header>
         <div className="theme-library-grid">
           {visiblePresets.map((preset) => <article key={preset.id ?? "default"} className={selectedPresetId !== undefined && selectedPresetId === preset.id ? "selected" : ""}>
             <div className="theme-library-swatch" style={{ background: `linear-gradient(135deg, ${preset.appearance.theme.panelColor}, ${preset.appearance.theme.accentColor})` }} aria-hidden="true" />
             <div className="theme-library-meta"><div><strong>{getPresetDisplayName(preset)}</strong><span>{preset.isBuiltIn ? "系统" : "自定义"}</span></div><p>{preset.isBuiltIn ? "不可修改的系统默认主题" : preset.description || "可保存、复用和导出的主题"}</p><small>{preset.assetCount} 个素材 · {preset.updatedAt ? new Date(preset.updatedAt).toLocaleString() : "系统内置"}{themeLibrary.lastAppliedPresetId === preset.id && preset.id ? " · 最近从此主题应用" : ""}</small></div>
-            <div className="theme-library-actions"><button type="button" onClick={() => requestLibraryAction("load", preset)}>载入预览</button><button type="button" className="primary" onClick={() => requestLibraryAction("apply", preset)}>应用全站</button>{!preset.isBuiltIn && <details onClick={(event) => { if ((event.target as HTMLElement).closest("button")) event.currentTarget.removeAttribute("open"); }}><summary>更多</summary><div><button type="button" onClick={() => void handleUpdatePreset(preset)}>用草稿更新</button><button type="button" onClick={() => void handleDuplicatePreset(preset)}>复制主题</button><button type="button" onClick={() => void handleRenamePreset(preset)}>重命名</button><button type="button" onClick={() => preset.id && void exportThemePreset(preset.id, preset.name)}>导出主题包</button><button type="button" className="danger" onClick={() => void handleDeletePreset(preset)}>删除主题</button></div></details>}</div>
+            <div className="theme-library-actions"><button type="button" onClick={() => requestLibraryAction("load", preset)}>载入预览</button><button type="button" className="primary" onClick={() => requestLibraryAction("apply", preset)}>应用全站</button>{!preset.isBuiltIn && <details onClick={(event) => { if ((event.target as HTMLElement).closest("button")) event.currentTarget.removeAttribute("open"); }}><summary>更多</summary><div><button type="button" onClick={() => setUpdatePresetDialog(preset)}>用草稿更新</button><button type="button" onClick={() => void handleDuplicatePreset(preset)}>复制主题</button><button type="button" onClick={() => { setDialogError(null); setRenamePresetDialog(preset); }}>重命名</button><button type="button" onClick={() => preset.id && void exportThemePreset(preset.id, preset.name)}>导出主题包</button><button type="button" className="danger" onClick={() => { setDialogError(null); setDeletePresetDialog(preset); }}>删除主题</button></div></details>}</div>
           </article>)}
           {visiblePresets.length === 0 && <div className="theme-library-empty">没有匹配的主题。</div>}
         </div>
@@ -434,6 +485,7 @@ export function ThemeEditorWorkbench() {
       <div className="theme-editor-context-bar">
         <label>预览页面<select value={previewPage} onChange={(event) => changePreviewPage(event.target.value as ThemeEditorPreviewPage)}>{themeEditorPreviewPages.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
         <div className="theme-editor-viewport-switch" aria-label="预览尺寸">{themeEditorViewports.map((option) => <SegmentedButton key={option.key} active={viewport === option.key} onClick={() => setViewport(option.key)}>{option.label}<small>{option.width}</small></SegmentedButton>)}</div>
+        <div className="theme-editor-zoom-switch" aria-label="预览缩放">{themeEditorPreviewZooms.map((option) => <SegmentedButton key={option.key} active={previewZoom === option.key} onClick={() => setPreviewZoom(option.key)}>{option.label}</SegmentedButton>)}</div>
         <div className="theme-editor-quick-actions" aria-label="快速选择编辑区域">
           <button type="button" onClick={() => selectSurface("global.background")}>背景</button>
           <button type="button" onClick={() => selectSurface("panel.primary")}>面板</button>
@@ -441,41 +493,51 @@ export function ThemeEditorWorkbench() {
           <button type="button" onClick={() => selectSurface("icon.problem")}>图标</button>
           <button type="button" onClick={() => selectSurface("decoration.pageHeader")}>装饰</button>
         </div>
+        <div className="theme-editor-layout-actions" aria-label="预览布局">
+          {!focusMode && <button type="button" className="button" aria-pressed={navigatorCollapsed} onClick={() => setNavigatorCollapsed((value) => !value)}>{navigatorCollapsed ? "展开导航" : "收起导航"}</button>}
+          {!focusMode && <button type="button" className="button" aria-pressed={inspectorCollapsed} onClick={() => setInspectorCollapsed((value) => !value)}>{inspectorCollapsed ? "展开属性" : "收起属性"}</button>}
+          <button type="button" className="button primary" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? "退出专注预览" : "专注预览"}</button>
+        </div>
       </div>
 
-      <div className="theme-editor-workbench">
-        <aside className="theme-editor-navigator" aria-label="编辑区域导航">
+      <div className={`theme-editor-workbench${navigatorCollapsed || focusMode ? " navigator-collapsed" : ""}${inspectorCollapsed || focusMode ? " inspector-collapsed" : ""}`}>
+        {!navigatorCollapsed && !focusMode && <aside className="theme-editor-navigator" aria-label="编辑区域导航">
           <div className="theme-editor-pane-heading"><div><span>编辑区域</span><strong>快速定位</strong></div><b>{filteredSurfaces.length}</b></div>
           <label className="theme-editor-search"><span>搜索</span><input value={surfaceSearch} onChange={(event) => setSurfaceSearch(event.target.value)} placeholder="背景、面板、题目、标题、角落..." /></label>
           {(["Global", "Panels", "Icons", "Decorations"] as const).map((group) => {
             const surfaces = filteredSurfaces.filter((surface) => surface.group === group);
             return surfaces.length > 0 && <section key={group}><h2>{getSurfaceGroupLabel(group)}</h2>{surfaces.map((surface) => <button key={surface.id} type="button" className={selectedSurface === surface.id ? "active" : ""} onClick={() => selectSurface(surface.id)}><strong>{surface.label}</strong><small>{surface.description}</small></button>)}</section>;
           })}
-        </aside>
+        </aside>}
 
         <section className="theme-editor-stage" aria-label="主题预览画布">
-          <div className="theme-editor-stage-heading"><div><span>{getCompareModeLabel(compareMode)}预览</span><strong>{themeEditorPreviewPages.find((item) => item.key === previewPage)?.label}</strong></div><small>{editorMode === "select" ? "点击带轮廓的区域即可编辑；蓝色轮廓只在编辑器中显示" : "只看最终效果，不显示选择轮廓"}</small></div>
+          <div className="theme-editor-stage-heading"><div><span>{getCompareModeLabel(compareMode)}预览</span><strong>{themeEditorPreviewPages.find((item) => item.key === previewPage)?.label}</strong></div><div className="theme-editor-stage-selection"><strong>当前选择：{getThemeSurfaceBreadcrumb(selectedSurface)}</strong><small>{getAffectedSurfaceMessage(previewPage, selectedSurface)}</small></div><small>{editorMode === "select" ? "点击带轮廓的区域即可编辑；蓝色轮廓只在编辑器中显示" : "只看最终效果，不显示选择轮廓"}</small></div>
           <div className="theme-editor-canvas-scroll">
-            <ThemeEditorPreview appearance={previewAppearance} page={previewPage} pageBackgroundKey={pageBackgroundKey} viewport={viewport} mode={editorMode} selectedSurface={selectedSurface} onSelect={selectSurface} onBackgroundPositionChange={(positionX, positionY) => changeDraft((draft) => { draft.background.positionX = Math.round(positionX); draft.background.positionY = Math.round(positionY); })} onGestureStart={gestureControls.begin} onGestureEnd={gestureControls.end} />
+            <ThemeEditorPreview appearance={previewAppearance} page={previewPage} pageBackgroundKey={pageBackgroundKey} viewport={viewport} zoom={previewZoom} mode={editorMode} selectedSurface={selectedSurface} pulseSurface={pulseSurface} onSelect={selectSurface} onBackgroundPositionChange={(positionX, positionY) => changeDraft((draft) => { draft.background.positionX = Math.round(positionX); draft.background.positionY = Math.round(positionY); })} onGestureStart={gestureControls.begin} onGestureEnd={gestureControls.end} />
           </div>
           {viewport === "mobile" && <p className="theme-editor-mobile-note">移动端提供基础编辑；建议使用桌面端高效调整主题。</p>}
         </section>
 
-        <aside className="theme-editor-inspector" aria-label="属性设置">
+        {!inspectorCollapsed && !focusMode && <aside className="theme-editor-inspector" aria-label="属性设置">
           <div className="theme-editor-pane-heading"><div><span>属性设置</span><strong>{selected.label}</strong></div></div>
           <div className="theme-editor-breadcrumb">{getThemeSurfaceBreadcrumb(selectedSurface)}</div>
           <p className="theme-editor-inspector-description">{selected.description}</p>
           <ThemePropertyInspector appearance={history.present} page={previewPage} pageBackgroundKey={pageBackgroundKey} onPageBackgroundKeyChange={setPageBackgroundKey} surface={selectedSurface} assets={themeAssets} disabled={isSaving} uploading={isUploading} onChange={changeDraft} onAssignAsset={assignAsset} onUpload={handleAssetUpload} onOpenLibrary={() => setShowAssetLibrary(true)} />
           <button className="button theme-editor-reset-section" type="button" disabled={isSaving} onClick={handleResetSection}>恢复当前区域默认值</button>
-        </aside>
+        </aside>}
       </div>
 
-      {showAssetLibrary && <AssetLibraryDialog assets={themeAssets} draft={history.present} onClose={() => setShowAssetLibrary(false)} onSelect={(asset) => { assignAsset(asset); setShowAssetLibrary(false); }} onDelete={handleDeleteAsset} onNavigate={(surface) => { selectSurface(surface); setShowAssetLibrary(false); }} />}
+      {showAssetLibrary && <AssetLibraryDialog assets={themeAssets} draft={history.present} onClose={() => setShowAssetLibrary(false)} onSelect={(asset) => { assignAsset(asset); setShowAssetLibrary(false); }} onRename={(asset) => { setDialogError(null); setRenameAssetDialog(asset); }} onDelete={(asset) => { setDialogError(null); setDeleteAssetDialog(asset); }} onNavigate={(surface) => { selectSurface(surface); setShowAssetLibrary(false); }} />}
       {showResetAll && <ConfirmDialog title="恢复整个默认主题？" description="全部自定义配置将变为系统默认草稿。素材文件不会删除；只有“保存并应用全站”后才会改变网站主题。" confirmLabel="恢复默认草稿" onCancel={() => setShowResetAll(false)} onConfirm={handleResetAll} />}
       {pendingDraftAction && <DraftTransitionDialog target={getPendingActionLabel(pendingDraftAction)} onSave={saveThenContinuePendingAction} onDiscard={discardThenContinuePendingAction} onCancel={() => setPendingDraftAction(null)} />}
       {savePresetDialog && <PresetSaveDialog busy={libraryBusy} onCancel={() => setSavePresetDialog(null)} onSave={(name, description) => void confirmSavePreset(name, description)} />}
       {applyPresetDialog && <ConfirmDialog title="应用主题到全站？" description={`“${getPresetDisplayName(applyPresetDialog)}”将改变网站当前主题。缺失素材会安全回退到默认视觉。`} confirmLabel="确认应用全站" onCancel={() => setApplyPresetDialog(null)} onConfirm={() => void performApply(applyPresetDialog)} />}
-      {importPresetDialog && <ConfirmDialog title="导入主题包？" description={`${importPresetDialog.name} 将由服务器检查格式版本、压缩包路径和图片安全性。导入成功后只加入主题库，不会自动应用。`} confirmLabel="检查并导入" onCancel={() => setImportPresetDialog(null)} onConfirm={() => void performImportPreset(importPresetDialog)} />}
+      {updatePresetDialog && <ConfirmDialog title="用当前草稿更新主题？" description={`“${updatePresetDialog.name}”将保存当前草稿，但不会改变网站正在使用的主题。`} confirmLabel="确认更新" onCancel={() => setUpdatePresetDialog(null)} onConfirm={() => void handleUpdatePreset(updatePresetDialog)} />}
+      {renamePresetDialog && <RenameDialog title="重命名主题" label="主题名称" currentName={renamePresetDialog.name} maxLength={64} busy={libraryBusy} error={dialogError} onCancel={() => setRenamePresetDialog(null)} onSave={(name) => void handleRenamePreset(renamePresetDialog, name)} />}
+      {deletePresetDialog && <DeleteDialog title="删除主题？" objectName={deletePresetDialog.name} description="该主题会从主题库删除，引用的素材文件会保留，当前草稿也不会改变。" busy={libraryBusy} error={dialogError} onCancel={() => setDeletePresetDialog(null)} onDelete={() => void handleDeletePreset(deletePresetDialog)} />}
+      {renameAssetDialog && <RenameDialog title="重命名素材" label="素材显示名称" currentName={getAssetDisplayName(renameAssetDialog)} maxLength={128} busy={libraryBusy} error={dialogError} onCancel={() => setRenameAssetDialog(null)} onSave={(name) => void handleRenameAsset(renameAssetDialog, name)} />}
+      {deleteAssetDialog && <DeleteDialog title="删除素材？" objectName={getAssetDisplayName(deleteAssetDialog)} description="只会删除这个未被引用的素材文件；此操作无法撤销。" busy={libraryBusy} error={dialogError} onCancel={() => setDeleteAssetDialog(null)} onDelete={() => void handleDeleteAsset(deleteAssetDialog.assetId)} />}
+      {importPresetDialog && <ImportReviewDialog value={importPresetDialog.preview} busy={libraryBusy} error={dialogError} onCancel={() => setImportPresetDialog(null)} onConfirm={() => void performImportPreset(importPresetDialog.file)} />}
     </section>
     </ThemeEditorGestureContext.Provider>
   );
@@ -544,7 +606,7 @@ function SlotNumericProperties({ value, disabled, onChange }: { value: SiteTheme
 
 function AssetProperty({ value, assets, disabled, uploading, onChoose, onUpload, onOpenLibrary }: { value: ThemeAssetReference | null; assets: ThemeAssetLibraryItem[]; disabled: boolean; uploading: boolean; onChoose: (asset: ThemeAssetReference | null) => void; onUpload: (file: File) => Promise<void>; onOpenLibrary: () => void }) {
   const metadata = assets.find((asset) => asset.assetId === value?.assetId);
-  return <div className="theme-editor-asset-property"><div className="theme-editor-asset-preview">{value ? <AssetThumbnail asset={{ ...metadata, ...value } as ThemeAssetLibraryItem} /> : <span>未选择素材</span>}</div><div className="theme-editor-asset-meta"><strong title={value?.assetId}>{value ? getAssetDisplayName(value.assetId) : "使用默认外观"}</strong><small>{metadata ? `${getAssetTypeLabel(metadata.contentType)} · ${formatBytes(metadata.size)} · 引用 ${metadata.usedBy.length} 处` : "可从素材库选择、上传新素材或清除"}</small></div><select aria-label="选择已有素材" value={value?.assetId ?? ""} disabled={disabled} onChange={(event) => { const asset = assets.find((item) => item.assetId === event.target.value); onChoose(asset ? toReference(asset) : null); }}><option value="">选择已有素材</option>{assets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{getAssetDisplayName(asset.assetId)} · {getAssetTypeLabel(asset.contentType)} · {formatBytes(asset.size)}</option>)}</select><AssetDropZone disabled={disabled} uploading={uploading} onUpload={onUpload} /><div className="theme-editor-asset-actions"><button className="button" type="button" disabled={disabled} onClick={onOpenLibrary}>打开素材库</button><button className="button" type="button" disabled={disabled || !value} onClick={() => onChoose(null)}>清除素材</button></div></div>;
+  return <div className="theme-editor-asset-property"><div className="theme-editor-asset-preview">{value ? <AssetThumbnail asset={{ ...metadata, ...value } as ThemeAssetLibraryItem} /> : <span>未选择素材</span>}</div><div className="theme-editor-asset-meta"><strong title={value?.assetId}>{metadata ? getAssetDisplayName(metadata) : value ? getFallbackAssetDisplayName(value.assetId) : "使用默认外观"}</strong><small>{metadata ? `${getAssetTypeLabel(metadata.contentType)} · ${formatBytes(metadata.size)} · 引用 ${metadata.usedBy.length} 处` : "可从素材库选择、上传新素材或清除"}</small></div><select aria-label="选择已有素材" value={value?.assetId ?? ""} disabled={disabled} onChange={(event) => { const asset = assets.find((item) => item.assetId === event.target.value); onChoose(asset ? toReference(asset) : null); }}><option value="">选择已有素材</option>{assets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{getAssetDisplayName(asset)} · {getAssetTypeLabel(asset.contentType)} · {formatBytes(asset.size)}</option>)}</select><AssetDropZone disabled={disabled} uploading={uploading} onUpload={onUpload} /><div className="theme-editor-asset-actions"><button className="button" type="button" disabled={disabled} onClick={onOpenLibrary}>打开素材库</button><button className="button" type="button" disabled={disabled || !value} onClick={() => onChoose(null)}>清除素材</button></div></div>;
 }
 
 function PageBackgroundAsset({ value, disabled, uploading, onUpload, onClear }: { value: string | null; disabled: boolean; uploading: boolean; onUpload: (file: File) => Promise<void>; onClear: () => void }) {
@@ -556,17 +618,17 @@ function AssetDropZone({ disabled, uploading, onUpload }: { disabled: boolean; u
   return <label className={`theme-editor-drop-zone${disabled ? " disabled" : ""}`} onDragOver={(event: DragEvent<HTMLLabelElement>) => { if (!disabled) event.preventDefault(); }} onDrop={(event: DragEvent<HTMLLabelElement>) => { event.preventDefault(); if (!disabled) receive(event.dataTransfer.files); }}><strong>{uploading ? "正在安全上传..." : "拖入图片或点击选择"}</strong><small>支持 PNG / JPEG / WebP，服务器会进行安全检查</small><input type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled || uploading} onChange={(event: ChangeEvent<HTMLInputElement>) => { receive(event.target.files); event.target.value = ""; }} /></label>;
 }
 
-function AssetLibraryDialog({ assets, draft, onClose, onSelect, onDelete, onNavigate }: { assets: ThemeAssetLibraryItem[]; draft: SiteAppearance; onClose: () => void; onSelect: (asset: ThemeAssetReference) => void; onDelete: (assetId: string) => Promise<void>; onNavigate: (surface: ThemeEditorSurfaceId) => void }) {
+function AssetLibraryDialog({ assets, draft, onClose, onSelect, onRename, onDelete, onNavigate }: { assets: ThemeAssetLibraryItem[]; draft: SiteAppearance; onClose: () => void; onSelect: (asset: ThemeAssetReference) => void; onRename: (asset: ThemeAssetLibraryItem) => void; onDelete: (asset: ThemeAssetLibraryItem) => void; onNavigate: (surface: ThemeEditorSurfaceId) => void }) {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
   const [unusedOnly, setUnusedOnly] = useState(false);
   const visibleAssets = assets.map((asset) => ({ asset, usages: [...new Set([...asset.usedBy, ...getDraftAssetUsages(draft, asset.assetId)])] }))
     .filter(({ asset, usages }) => {
       const query = search.trim().toLocaleLowerCase();
-      const matchesSearch = !query || [asset.assetId, asset.contentType, ...usages].some((value) => value.toLocaleLowerCase().includes(query));
+      const matchesSearch = !query || [getAssetDisplayName(asset), asset.assetId, asset.contentType, ...usages].some((value) => value.toLocaleLowerCase().includes(query));
       return matchesSearch && (type === "all" || asset.contentType === type) && (!unusedOnly || usages.length === 0);
     });
-  return <div className="theme-editor-modal-backdrop" role="presentation"><section className="theme-editor-modal asset-library" role="dialog" aria-modal="true" aria-labelledby="asset-library-title"><header><div><span>共享素材选择器</span><h2 id="asset-library-title">主题素材库</h2></div><button type="button" onClick={onClose} aria-label="关闭素材库">×</button></header><div className="theme-editor-asset-filters"><label>搜索<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="素材编号或引用位置" /></label><label>类型<select value={type} onChange={(event) => setType(event.target.value)}><option value="all">全部类型</option><option value="image/png">PNG</option><option value="image/jpeg">JPEG</option><option value="image/webp">WebP</option></select></label><label className="theme-editor-unused-filter"><input type="checkbox" checked={unusedOnly} onChange={(event) => setUnusedOnly(event.target.checked)} />只看未引用</label></div>{assets.length === 0 ? <div className="empty-state">素材库中还没有图片</div> : visibleAssets.length === 0 ? <div className="empty-state">没有匹配的素材</div> : <div className="theme-editor-asset-library">{visibleAssets.map(({ asset, usages }) => <article key={asset.assetId}><AssetThumbnail asset={asset} /><div><strong title={asset.assetId}>{getAssetDisplayName(asset.assetId)}</strong><span>{getAssetTypeLabel(asset.contentType)} · {formatBytes(asset.size)}</span><small>引用位置</small><div className="theme-editor-usage-list">{usages.length === 0 ? <em>未引用</em> : usages.map((usage) => { const surface = usageToSurface(usage); return surface ? <button key={usage} type="button" onClick={() => onNavigate(surface)}>{getUsageLabel(usage)}</button> : <span key={usage}>{getUsageLabel(usage)}</span>; })}</div></div><div><button className="button primary" type="button" onClick={() => onSelect(toReference(asset))}>选用</button><button className="button" type="button" disabled={usages.length > 0} onClick={() => void onDelete(asset.assetId)}>删除</button></div></article>)}</div>}</section></div>;
+  return <ThemeEditorDialog titleId="asset-library-title" onCancel={onClose} className="asset-library"><header><div><span>共享素材选择器</span><h2 id="asset-library-title">主题素材库</h2></div><button type="button" onClick={onClose} aria-label="关闭素材库">×</button></header><div className="theme-editor-asset-filters"><label>搜索<input data-dialog-autofocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="显示名称、素材编号或引用位置" /></label><label>类型<select value={type} onChange={(event) => setType(event.target.value)}><option value="all">全部类型</option><option value="image/png">PNG</option><option value="image/jpeg">JPEG</option><option value="image/webp">WebP</option></select></label><label className="theme-editor-unused-filter"><input type="checkbox" checked={unusedOnly} onChange={(event) => setUnusedOnly(event.target.checked)} />只看未引用</label></div>{assets.length === 0 ? <div className="empty-state">素材库中还没有图片</div> : visibleAssets.length === 0 ? <div className="empty-state">没有匹配的素材</div> : <div className="theme-editor-asset-library">{visibleAssets.map(({ asset, usages }) => <article key={asset.assetId}><AssetThumbnail asset={asset} /><div><strong title={asset.assetId}>{getAssetDisplayName(asset)}</strong><span>{getAssetTypeLabel(asset.contentType)} · {formatBytes(asset.size)}</span><small>引用位置</small><div className="theme-editor-usage-list">{usages.length === 0 ? <em>未引用</em> : usages.map((usage) => { const surface = usageToSurface(usage); return surface ? <button key={usage} type="button" onClick={() => onNavigate(surface)}>{getUsageLabel(usage)}</button> : <span key={usage}>{getUsageLabel(usage)}</span>; })}</div></div><div><button className="button primary" type="button" onClick={() => onSelect(toReference(asset))}>选用</button><button className="button" type="button" onClick={() => onRename(asset)}>重命名</button><button className="button danger" type="button" disabled={usages.length > 0} onClick={() => onDelete(asset)}>删除</button></div></article>)}</div>}</ThemeEditorDialog>;
 }
 
 function AssetThumbnail({ asset }: { asset: ThemeAssetLibraryItem }) {
@@ -607,22 +669,43 @@ function ToolbarGroup({ label, children }: { label: string; children: ReactNode 
   return <div className="theme-editor-toolbar-group"><span>{label}</span><div>{children}</div></div>;
 }
 
+function getAffectedSurfaceMessage(page: ThemeEditorPreviewPage, surface: ThemeEditorSurfaceId) {
+  if (surface === "panel.primary" && page === "leaderboard") return "该样式会影响当前预览中的 2 个榜单面板";
+  if (surface === "panel.header" && page === "leaderboard") return "该样式会影响当前预览中的 2 个面板标题";
+  if (surface === "global.background" || surface === "global.colors") return "该样式影响整个预览页面";
+  return "当前选区会同步使用草稿中的主题设置";
+}
+
 function SegmentedButton({ active, children, onClick }: { active: boolean; children: ReactNode; onClick: () => void }) {
   return <button type="button" className={active ? "active" : ""} aria-pressed={active} onClick={onClick}>{children}</button>;
 }
 
 function ConfirmDialog({ title, description, confirmLabel, onCancel, onConfirm }: { title: string; description: string; confirmLabel: string; onCancel: () => void; onConfirm: () => void }) {
-  return <div className="theme-editor-modal-backdrop" role="presentation"><section className="theme-editor-modal confirm" role="dialog" aria-modal="true" aria-labelledby="theme-editor-confirm-title"><h2 id="theme-editor-confirm-title">{title}</h2><p>{description}</p><div><button className="button" type="button" onClick={onCancel}>取消</button><button className="button primary" type="button" onClick={onConfirm}>{confirmLabel}</button></div></section></div>;
+  return <ThemeEditorDialog titleId="theme-editor-confirm-title" descriptionId="theme-editor-confirm-description" onCancel={onCancel} className="confirm"><h2 id="theme-editor-confirm-title">{title}</h2><p id="theme-editor-confirm-description">{description}</p><div><button className="button" type="button" onClick={onCancel}>取消</button><button className="button primary" type="button" data-dialog-autofocus onClick={onConfirm}>{confirmLabel}</button></div></ThemeEditorDialog>;
 }
 
 function DraftTransitionDialog({ target, onSave, onDiscard, onCancel }: { target: string; onSave: () => void; onDiscard: () => void; onCancel: () => void }) {
-  return <div className="theme-editor-modal-backdrop" role="presentation"><section className="theme-editor-modal confirm" role="dialog" aria-modal="true" aria-labelledby="theme-draft-transition-title"><h2 id="theme-draft-transition-title">当前草稿尚未保存</h2><p>继续“{target}”前，可以先另存当前草稿、放弃修改后继续，或取消操作。</p><div><button className="button" type="button" onClick={onCancel}>取消</button><button className="button danger" type="button" onClick={onDiscard}>放弃并继续</button><button className="button primary" type="button" onClick={onSave}>先另存草稿</button></div></section></div>;
+  return <ThemeEditorDialog titleId="theme-draft-transition-title" descriptionId="theme-draft-transition-description" onCancel={onCancel} className="confirm"><h2 id="theme-draft-transition-title">当前草稿尚未保存</h2><p id="theme-draft-transition-description">继续“{target}”前，可以先另存当前草稿、放弃修改后继续，或取消操作。</p><div><button className="button" type="button" data-dialog-autofocus onClick={onCancel}>取消</button><button className="button danger" type="button" onClick={onDiscard}>放弃并继续</button><button className="button primary" type="button" onClick={onSave}>先另存草稿</button></div></ThemeEditorDialog>;
 }
 
 function PresetSaveDialog({ busy, onCancel, onSave }: { busy: boolean; onCancel: () => void; onSave: (name: string, description: string | null) => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  return <div className="theme-editor-modal-backdrop" role="presentation"><section className="theme-editor-modal confirm theme-preset-save-dialog" role="dialog" aria-modal="true" aria-labelledby="theme-preset-save-title"><h2 id="theme-preset-save-title">将草稿另存为主题</h2><p>保存到主题库不会改变网站正在使用的主题。</p><label>主题名称<input autoFocus maxLength={64} value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：夏日活动主题" /></label><label>说明 <small>可选</small><textarea maxLength={256} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="简短说明这套主题的用途" /></label><div><button className="button" type="button" disabled={busy} onClick={onCancel}>取消</button><button className="button primary" type="button" disabled={busy || !name.trim()} onClick={() => onSave(name, description.trim() || null)}>{busy ? "正在保存..." : "保存到主题库"}</button></div></section></div>;
+  return <ThemeEditorDialog titleId="theme-preset-save-title" descriptionId="theme-preset-save-description" onCancel={busy ? undefined : onCancel} className="confirm theme-preset-save-dialog"><form onSubmit={(event) => { event.preventDefault(); if (name.trim() && !busy) onSave(name, description.trim() || null); }}><h2 id="theme-preset-save-title">将草稿另存为主题</h2><p id="theme-preset-save-description">保存到主题库不会改变网站正在使用的主题。</p><label>主题名称<input data-dialog-autofocus maxLength={64} value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：夏日活动主题" /></label><label>说明 <small>可选</small><textarea maxLength={256} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="简短说明这套主题的用途" /></label><div className="theme-editor-dialog-actions"><button className="button" type="button" disabled={busy} onClick={onCancel}>取消</button><button className="button primary" type="submit" disabled={busy || !name.trim()}>{busy ? "正在保存..." : "保存到主题库"}</button></div></form></ThemeEditorDialog>;
+}
+
+function RenameDialog({ title, label, currentName, maxLength, busy, error, onCancel, onSave }: { title: string; label: string; currentName: string; maxLength: number; busy: boolean; error: string | null; onCancel: () => void; onSave: (name: string) => void }) {
+  const [name, setName] = useState(currentName);
+  const trimmed = name.trim();
+  return <ThemeEditorDialog titleId="theme-rename-title" descriptionId="theme-rename-description" onCancel={busy ? undefined : onCancel} className="confirm theme-preset-save-dialog"><form onSubmit={(event) => { event.preventDefault(); if (trimmed && !busy) onSave(trimmed); }}><h2 id="theme-rename-title">{title}</h2><p id="theme-rename-description">仅更新显示名称，不会改变文件地址、素材引用或已应用主题。</p><label>{label}<input data-dialog-autofocus maxLength={maxLength} value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="theme-editor-dialog-error" role="alert">{error}</p>}<div className="theme-editor-dialog-actions"><button className="button" type="button" disabled={busy} onClick={onCancel}>取消</button><button className="button primary" type="submit" disabled={busy || !trimmed || trimmed.length > maxLength}>保存</button></div></form></ThemeEditorDialog>;
+}
+
+function DeleteDialog({ title, objectName, description, busy, error, onCancel, onDelete }: { title: string; objectName: string; description: string; busy: boolean; error: string | null; onCancel: () => void; onDelete: () => void }) {
+  return <ThemeEditorDialog titleId="theme-delete-title" descriptionId="theme-delete-description" onCancel={busy ? undefined : onCancel} className="confirm"><h2 id="theme-delete-title">{title}</h2><p id="theme-delete-description"><strong>“{objectName}”</strong><br />{description}</p>{error && <p className="theme-editor-dialog-error" role="alert">{error}</p>}<div><button className="button" type="button" data-dialog-autofocus disabled={busy} onClick={onCancel}>取消</button><button className="button danger" type="button" disabled={busy} onClick={onDelete}>{busy ? "正在删除..." : "确认删除"}</button></div></ThemeEditorDialog>;
+}
+
+function ImportReviewDialog({ value, busy, error, onCancel, onConfirm }: { value: ThemePackPreflight; busy: boolean; error: string | null; onCancel: () => void; onConfirm: () => void }) {
+  return <ThemeEditorDialog titleId="theme-import-title" descriptionId="theme-import-description" onCancel={busy ? undefined : onCancel} className="confirm theme-import-review"><h2 id="theme-import-title">主题包已通过安全检查</h2><p id="theme-import-description">以下内容仅完成验证，尚未导入，也不会自动应用到全站。</p><dl><dt>主题名称</dt><dd>{value.name}</dd><dt>导入名称</dt><dd>{value.resolvedName}</dd><dt>说明</dt><dd>{value.description || "无"}</dd><dt>格式</dt><dd>{value.format} V{value.version}</dd><dt>素材</dt><dd>{value.assetCount} 个 · {formatBytes(value.totalAssetBytes)}</dd><dt>背景</dt><dd>{value.hasBackground ? "有" : "无"}</dd><dt>面板 / 图标 / 装饰</dt><dd>{value.panelAssetCount} / {value.iconOverrideCount} / {value.decorationCount}</dd><dt>名称冲突</dt><dd>{value.hasNameCollision ? "有，已生成安全后缀" : "无"}</dd></dl>{value.warnings.length > 0 && <ul>{value.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}{error && <p className="theme-editor-dialog-error" role="alert">{error}</p>}<div><button className="button" type="button" data-dialog-autofocus disabled={busy} onClick={onCancel}>取消</button><button className="button primary" type="button" disabled={busy} onClick={onConfirm}>{busy ? "正在导入..." : "确认导入主题库"}</button></div></ThemeEditorDialog>;
 }
 
 function useUnsavedAppearanceGuard(dirty: boolean, onNavigate: (url: string) => void) {
@@ -678,7 +761,11 @@ function formatBytes(size: number) {
   return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
 }
 
-function getAssetDisplayName(assetId: string) {
+function getAssetDisplayName(asset: ThemeAssetLibraryItem) {
+  return asset.displayName?.trim() || getFallbackAssetDisplayName(asset.assetId);
+}
+
+function getFallbackAssetDisplayName(assetId: string) {
   return `素材 ${assetId.slice(0, 8).toUpperCase()}`;
 }
 

@@ -39,6 +39,10 @@ public sealed class ThemeAssetService(
             ? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
             : (await themeLibraryService.GetAssetReferencesAsync(cancellationToken)).Value
                 ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var displayNames = themeLibraryService is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : (await themeLibraryService.GetAssetDisplayNamesAsync(cancellationToken)).Value
+                ?? new Dictionary<string, string>(StringComparer.Ordinal);
 
         var assets = Directory.EnumerateFiles(storagePaths.ThemeAssetsRoot, "*", SearchOption.TopDirectoryOnly)
             .Select(path => new FileInfo(path))
@@ -48,6 +52,7 @@ public sealed class ThemeAssetService(
             {
                 AssetId = file.Name,
                 Url = AssetUrlPrefix + file.Name,
+                DisplayName = displayNames.GetValueOrDefault(file.Name) ?? GetFallbackDisplayName(file.Name),
                 ContentType = GetContentType(file.Extension.ToLowerInvariant()),
                 Size = file.Length,
                 UsedBy = GetReferences(appearance.Value, file.Name)
@@ -59,7 +64,7 @@ public sealed class ThemeAssetService(
         return Result<IReadOnlyList<ThemeAssetLibraryItemDto>>.Success(assets);
     }
 
-    public async Task<Result<ThemeAssetDto>> UploadAsync(UserRole currentUserRole, string originalFileName, string declaredContentType, long declaredLength, Stream content, CancellationToken cancellationToken = default)
+    public async Task<Result<ThemeAssetDto>> UploadAsync(Guid userId, UserRole currentUserRole, string originalFileName, string declaredContentType, long declaredLength, Stream content, CancellationToken cancellationToken = default)
     {
         if (currentUserRole != UserRole.Root)
         {
@@ -81,16 +86,75 @@ public sealed class ThemeAssetService(
 
         var assetId = $"{Guid.NewGuid():N}{validation.CanonicalExtension}";
         var size = await storagePaths.WriteThemeAssetAsync(assetId, content, uploadOptions.ImageMaxBytes, cancellationToken);
+        var displayName = GetFallbackDisplayName(assetId);
+        if (themeLibraryService is not null)
+        {
+            var metadata = await themeLibraryService.RegisterAssetDisplayNameAsync(assetId, originalFileName, userId, currentUserRole, cancellationToken);
+            if (metadata.IsFailure || metadata.Value is null)
+            {
+                TryDelete(storagePaths.ResolveThemeAssetPath(assetId));
+                return Result<ThemeAssetDto>.Failure(metadata.ErrorMessage ?? "Theme asset metadata could not be saved.");
+            }
+            displayName = metadata.Value;
+        }
         return Result<ThemeAssetDto>.Success(new ThemeAssetDto
         {
             AssetId = assetId,
             Url = AssetUrlPrefix + assetId,
+            DisplayName = displayName,
             ContentType = GetContentType(validation.CanonicalExtension),
             Size = size
         });
     }
 
-    public async Task<Result> DeleteAsync(UserRole currentUserRole, string assetId, CancellationToken cancellationToken = default)
+    public Task<Result<ThemeAssetDto>> UploadAsync(UserRole currentUserRole, string originalFileName, string declaredContentType, long declaredLength, Stream content, CancellationToken cancellationToken = default) =>
+        UploadAsync(Guid.Empty, currentUserRole, originalFileName, declaredContentType, declaredLength, content, cancellationToken);
+
+    public async Task<Result<ThemeAssetDto>> RenameAsync(Guid userId, UserRole currentUserRole, string assetId, string displayName, CancellationToken cancellationToken = default)
+    {
+        if (currentUserRole != UserRole.Root)
+        {
+            return Result<ThemeAssetDto>.Failure("Forbidden.");
+        }
+
+        string path;
+        try
+        {
+            path = storagePaths.ResolveThemeAssetPath(assetId);
+        }
+        catch (InvalidDataException)
+        {
+            return Result<ThemeAssetDto>.Failure("Theme asset id is invalid.");
+        }
+
+        if (!IsManagedAssetId(assetId) || !File.Exists(path))
+        {
+            return Result<ThemeAssetDto>.Failure("Theme asset was not found.");
+        }
+
+        if (themeLibraryService is null)
+        {
+            return Result<ThemeAssetDto>.Failure("Theme asset metadata is unavailable.");
+        }
+
+        var renamed = await themeLibraryService.RenameAssetDisplayNameAsync(assetId, displayName, userId, currentUserRole, cancellationToken);
+        if (renamed.IsFailure || renamed.Value is null)
+        {
+            return Result<ThemeAssetDto>.Failure(renamed.ErrorMessage ?? "Theme asset could not be renamed.");
+        }
+
+        var file = new FileInfo(path);
+        return Result<ThemeAssetDto>.Success(new ThemeAssetDto
+        {
+            AssetId = assetId,
+            Url = AssetUrlPrefix + assetId,
+            DisplayName = renamed.Value,
+            ContentType = GetContentType(file.Extension.ToLowerInvariant()),
+            Size = file.Length
+        });
+    }
+
+    public async Task<Result> DeleteAsync(Guid userId, UserRole currentUserRole, string assetId, CancellationToken cancellationToken = default)
     {
         if (currentUserRole != UserRole.Root)
         {
@@ -132,8 +196,17 @@ public sealed class ThemeAssetService(
             File.Delete(path);
         }
 
+        if (themeLibraryService is not null)
+        {
+            var metadata = await themeLibraryService.RemoveAssetDisplayNameAsync(assetId, userId, currentUserRole, cancellationToken);
+            if (metadata.IsFailure) return metadata;
+        }
+
         return Result.Success();
     }
+
+    public Task<Result> DeleteAsync(UserRole currentUserRole, string assetId, CancellationToken cancellationToken = default) =>
+        DeleteAsync(Guid.Empty, currentUserRole, assetId, cancellationToken);
 
     private static IReadOnlyList<string> GetReferences(SiteAppearanceDto appearance, string assetId)
     {
@@ -187,4 +260,12 @@ public sealed class ThemeAssetService(
         ".webp" => "image/webp",
         _ => throw new InvalidOperationException("Unsupported canonical theme image extension.")
     };
+
+    private static string GetFallbackDisplayName(string assetId) => $"Asset {Path.GetFileNameWithoutExtension(assetId)[..8].ToUpperInvariant()}";
+
+    private static void TryDelete(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch { }
+    }
 }

@@ -32,6 +32,7 @@ export interface ThemeAssetReference {
 }
 
 export interface ThemeAsset extends ThemeAssetReference {
+  displayName: string | null;
   contentType: string;
   size: number;
 }
@@ -137,6 +138,23 @@ export interface ThemePresetList {
   lastAppliedPresetId: string | null;
 }
 
+export interface ThemePackPreflight {
+  name: string;
+  description: string | null;
+  format: string;
+  version: number;
+  schemaVersion: number;
+  assetCount: number;
+  totalAssetBytes: number;
+  hasBackground: boolean;
+  panelAssetCount: number;
+  iconOverrideCount: number;
+  decorationCount: number;
+  hasNameCollision: boolean;
+  resolvedName: string;
+  warnings: string[];
+}
+
 export const sitePageOptions: Array<{ key: SitePageKey; label: string; description: string }> = [
   { key: "global", label: "全局默认", description: "页面没有单独配置时使用的背景。" },
   { key: "problems", label: "题目页面", description: "题目列表、题目详情和答题页面。" },
@@ -173,6 +191,13 @@ export function listThemeAssets() {
 
 export function deleteThemeAsset(assetId: string) {
   return request<void>(`/api/site-settings/theme-assets/${encodeURIComponent(assetId)}`, { method: "DELETE" });
+}
+
+export function renameThemeAsset(assetId: string, displayName: string) {
+  return request<ThemeAsset>(`/api/site-settings/theme-assets/${encodeURIComponent(assetId)}/name`, {
+    method: "PATCH",
+    body: JSON.stringify({ displayName })
+  });
 }
 
 export function listThemePresets() {
@@ -240,6 +265,12 @@ export function importThemePreset(file: File) {
   const body = new FormData();
   body.append("file", file);
   return request<ThemePreset>("/api/site-settings/theme-presets/import", { method: "POST", body }).then(normalizeThemePreset);
+}
+
+export function preflightThemePresetImport(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return request<ThemePackPreflight>("/api/site-settings/theme-presets/import/preflight", { method: "POST", body });
 }
 
 function normalizeThemePreset(value: ThemePreset): ThemePreset {

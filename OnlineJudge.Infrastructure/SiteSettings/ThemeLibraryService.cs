@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,7 @@ public sealed class ThemeLibraryService(
 {
     private const string LibraryKey = "theme-library";
     private const string AssetUrlPrefix = "/theme-assets/";
+    private const int MaxAssetDisplayNameLength = 128;
     private static readonly SemaphoreSlim MutationLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly JsonSerializerOptions ImportJsonOptions = new(JsonSerializerDefaults.Web)
@@ -177,7 +179,15 @@ public sealed class ThemeLibraryService(
             Name = preset.Name,
             Description = preset.Description,
             SchemaVersion = preset.SchemaVersion,
-            Appearance = appearance
+            Appearance = appearance,
+            Assets = sources
+                .Where(source => source.AssetId is not null && library.AssetDisplayNames.TryGetValue(source.AssetId, out _))
+                .Select(source => new ThemePackAssetMetadata
+                {
+                    Path = source.PackPath,
+                    DisplayName = NormalizeAssetDisplayName(library.AssetDisplayNames[source.AssetId!], Path.GetFileName(source.PackPath))
+                })
+                .ToList()
         };
         var output = new MemoryStream();
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
@@ -207,72 +217,49 @@ public sealed class ThemeLibraryService(
         return Result<ThemePackExportDto>.Success(new ThemePackExportDto { Content = output, FileName = $"{SafeFileName(preset.Name)}.oj-theme.zip" });
     }
 
+    public async Task<Result<ThemePackPreflightDto>> PreflightImportAsync(string fileName, string contentType, long length, Stream content, UserRole role, CancellationToken cancellationToken = default)
+    {
+        if (role != UserRole.Root) return Result<ThemePackPreflightDto>.Failure("Forbidden.");
+        var validated = await ValidateImportAsync(fileName, contentType, length, content, cancellationToken);
+        if (validated.IsFailure || validated.Value is null) return Result<ThemePackPreflightDto>.Failure(validated.ErrorMessage ?? "Theme pack is invalid.");
+        var library = await ReadLibraryAsync(cancellationToken);
+        if (library.Presets.Count >= ThemePackContract.MaxPresets) return Result<ThemePackPreflightDto>.Failure("Theme preset limit of 30 has been reached.");
+        var collision = HasNameCollision(library, validated.Value.RequestedName);
+        var resolvedName = collision ? SuggestName(library, validated.Value.RequestedName) : validated.Value.RequestedName;
+        var appearance = validated.Value.Appearance;
+        return Result<ThemePackPreflightDto>.Success(new ThemePackPreflightDto
+        {
+            Name = validated.Value.RequestedName,
+            Description = validated.Value.Description,
+            Format = ThemePackContract.Format,
+            Version = ThemePackContract.Version,
+            SchemaVersion = ThemePackContract.PresetSchemaVersion,
+            AssetCount = validated.Value.References.Count,
+            TotalAssetBytes = validated.Value.References.Sum(path => (long)validated.Value.Entries[path].Length),
+            HasBackground = appearance.Background.Asset is not null || appearance.Pages.Values.Any(page => !string.IsNullOrWhiteSpace(page.ImageUrl)),
+            PanelAssetCount = new[] { appearance.PanelSkin.BackgroundTexture, appearance.PanelSkin.HeaderTexture, appearance.PanelSkin.BorderTexture }.Count(asset => asset is not null),
+            IconOverrideCount = appearance.Icons.Values.Count(slot => slot?.Asset is not null),
+            DecorationCount = appearance.Decorations.Values.Count(slot => slot?.Asset is not null),
+            HasNameCollision = collision,
+            ResolvedName = resolvedName,
+            Warnings = collision ? [$"A theme named '{validated.Value.RequestedName}' already exists; it will be imported as '{resolvedName}'."] : []
+        });
+    }
+
     public Task<Result<ThemePresetDto>> ImportAsync(string fileName, string contentType, long length, Stream content, Guid userId, UserRole role, CancellationToken cancellationToken = default) =>
         WithMutationLockAsync(() => ImportCoreAsync(fileName, contentType, length, content, userId, role, cancellationToken), cancellationToken);
 
     private async Task<Result<ThemePresetDto>> ImportCoreAsync(string fileName, string contentType, long length, Stream content, Guid userId, UserRole role, CancellationToken cancellationToken)
     {
         if (role != UserRole.Root) return Result<ThemePresetDto>.Failure("Forbidden.");
-        if (length is <= 0 or > ThemePackContract.MaxPackBytes
-            || !string.Equals(Path.GetExtension(fileName), ".zip", StringComparison.OrdinalIgnoreCase)
-            || !ArchiveContentTypes.Contains(contentType))
-        {
-            return Result<ThemePresetDto>.Failure("Only OnlineJudge theme ZIP packs up to 50 MiB are allowed.");
-        }
-
-        var extraction = await archiveExtractor.ExtractThemePackAsync(content, cancellationToken);
-        if (extraction.IsFailure || extraction.Value is null) return Result<ThemePresetDto>.Failure(extraction.ErrorMessage ?? "Theme pack is invalid.");
-        var entries = extraction.Value;
-        ThemePackManifest? manifest;
-        try
-        {
-            using var document = JsonDocument.Parse(entries["manifest.json"]);
-            var allowed = new HashSet<string>(["format", "version", "name", "description", "schemaVersion", "appearance"], StringComparer.Ordinal);
-            if (document.RootElement.ValueKind != JsonValueKind.Object || document.RootElement.EnumerateObject().Any(property => !allowed.Contains(property.Name)))
-                return Result<ThemePresetDto>.Failure("Theme pack manifest contains unknown fields.");
-            manifest = document.RootElement.Deserialize<ThemePackManifest>(ImportJsonOptions);
-        }
-        catch (JsonException)
-        {
-            return Result<ThemePresetDto>.Failure("Theme pack manifest is invalid JSON.");
-        }
-
-        if (manifest is null || manifest.Format != ThemePackContract.Format || manifest.Version != ThemePackContract.Version || manifest.SchemaVersion != ThemePackContract.PresetSchemaVersion)
-            return Result<ThemePresetDto>.Failure("Theme pack format or version is not supported.");
-        var metadataError = ValidateMetadata(manifest.Name, manifest.Description, out var requestedName, out var description);
-        if (metadataError is not null) return Result<ThemePresetDto>.Failure(metadataError);
-
+        var validatedPack = await ValidateImportAsync(fileName, contentType, length, content, cancellationToken);
+        if (validatedPack.IsFailure || validatedPack.Value is null) return Result<ThemePresetDto>.Failure(validatedPack.ErrorMessage ?? "Theme pack is invalid.");
+        var pack = validatedPack.Value;
         var library = await ReadLibraryAsync(cancellationToken);
         if (library.Presets.Count >= ThemePackContract.MaxPresets) return Result<ThemePresetDto>.Failure("Theme preset limit of 30 has been reached.");
-        var name = HasNameCollision(library, requestedName) ? SuggestName(library, requestedName) : requestedName;
-
-        var appearance = manifest.Appearance ?? new SiteAppearanceDto();
-        if (appearance.Theme is null || appearance.Pages is null || appearance.Background is null || appearance.PanelSkin is null || appearance.Icons is null || appearance.Decorations is null)
-            return Result<ThemePresetDto>.Failure("Theme pack appearance is incomplete.");
-        var references = CollectPackReferences(appearance);
-        if (references.IsFailure || references.Value is null) return Result<ThemePresetDto>.Failure(references.ErrorMessage ?? "Theme pack asset references are invalid.");
-        var packedAssets = entries.Keys.Where(key => key != "manifest.json").ToHashSet(StringComparer.Ordinal);
-        if (!packedAssets.SetEquals(references.Value)) return Result<ThemePresetDto>.Failure("Theme pack must contain exactly the assets referenced by its manifest.");
-
-        var importedAssets = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var packPath in references.Value)
-        {
-            var bytes = entries[packPath];
-            var extension = Path.GetExtension(packPath).ToLowerInvariant();
-            await using var image = new MemoryStream(bytes, writable: false);
-            var validation = await uploadValidator.ValidateAsync(new SecureUploadRequest
-            {
-                Policy = UploadPolicy.ThemeImage,
-                OriginalFileName = Path.GetFileName(packPath),
-                DeclaredContentType = ContentType(extension),
-                DeclaredLength = bytes.LongLength,
-                Content = image
-            }, cancellationToken);
-            if (!validation.IsValid || validation.CanonicalExtension is null)
-                return Result<ThemePresetDto>.Failure(validation.ErrorMessage ?? "Theme pack contains an invalid image.");
-            importedAssets[packPath] = $"{Guid.NewGuid():N}{validation.CanonicalExtension}";
-        }
-
+        var name = HasNameCollision(library, pack.RequestedName) ? SuggestName(library, pack.RequestedName) : pack.RequestedName;
+        var importedAssets = pack.References.ToDictionary(path => path, path => $"{Guid.NewGuid():N}{CanonicalExtension(Path.GetExtension(path))}", StringComparer.Ordinal);
+        var appearance = pack.Appearance;
         RewriteImportedReferences(appearance, importedAssets);
         var stagingRoot = Path.Combine(Path.GetTempPath(), "onlinejudge-theme-import", Guid.NewGuid().ToString("N"));
         var stagingPaths = new RuntimeStoragePathProvider(Path.Combine(stagingRoot, "api"), themeAssetsRoot: Path.Combine(stagingRoot, "assets"));
@@ -281,7 +268,7 @@ public sealed class ThemeLibraryService(
         {
             foreach (var (packPath, assetId) in importedAssets)
             {
-                await using var image = new MemoryStream(entries[packPath], writable: false);
+                await using var image = new MemoryStream(pack.Entries[packPath], writable: false);
                 await stagingPaths.WriteThemeAssetAsync(assetId, image, 5L * 1024 * 1024, cancellationToken);
             }
 
@@ -297,8 +284,13 @@ public sealed class ThemeLibraryService(
             }
 
             var now = timeProvider.GetUtcNow();
-            var preset = new StoredThemePreset { Id = Guid.NewGuid(), Name = name, Description = description, SchemaVersion = 1, Appearance = validated.Value, CreatedAt = now, UpdatedAt = now };
+            var preset = new StoredThemePreset { Id = Guid.NewGuid(), Name = name, Description = pack.Description, SchemaVersion = 1, Appearance = validated.Value, CreatedAt = now, UpdatedAt = now };
             library.Presets.Add(preset);
+            foreach (var (packPath, assetId) in importedAssets)
+            {
+                library.AssetDisplayNames[assetId] = pack.DisplayNames.GetValueOrDefault(packPath)
+                    ?? NormalizeAssetDisplayName(Path.GetFileName(packPath), GetFallbackAssetDisplayName(assetId));
+            }
             await PersistAsync(library, userId, SecurityAuditActions.ThemePresetImported, preset, cancellationToken);
             return Result<ThemePresetDto>.Success(ToDto(preset));
         }
@@ -310,6 +302,103 @@ public sealed class ThemeLibraryService(
         finally
         {
             TryDeleteDirectory(stagingRoot);
+        }
+    }
+
+    private async Task<Result<ValidatedThemePack>> ValidateImportAsync(string fileName, string contentType, long length, Stream content, CancellationToken cancellationToken)
+    {
+        if (length is <= 0 or > ThemePackContract.MaxPackBytes
+            || !string.Equals(Path.GetExtension(fileName), ".zip", StringComparison.OrdinalIgnoreCase)
+            || !ArchiveContentTypes.Contains(contentType))
+        {
+            return Result<ValidatedThemePack>.Failure("Only OnlineJudge theme ZIP packs up to 50 MiB are allowed.");
+        }
+
+        var extraction = await archiveExtractor.ExtractThemePackAsync(content, cancellationToken);
+        if (extraction.IsFailure || extraction.Value is null) return Result<ValidatedThemePack>.Failure(extraction.ErrorMessage ?? "Theme pack is invalid.");
+        var entries = extraction.Value;
+        ThemePackManifest? manifest;
+        try
+        {
+            using var document = JsonDocument.Parse(entries["manifest.json"]);
+            var allowed = new HashSet<string>(["format", "version", "name", "description", "schemaVersion", "appearance", "assets"], StringComparer.Ordinal);
+            if (document.RootElement.ValueKind != JsonValueKind.Object || document.RootElement.EnumerateObject().Any(property => !allowed.Contains(property.Name)))
+                return Result<ValidatedThemePack>.Failure("Theme pack manifest contains unknown fields.");
+            manifest = document.RootElement.Deserialize<ThemePackManifest>(ImportJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return Result<ValidatedThemePack>.Failure("Theme pack manifest is invalid JSON.");
+        }
+
+        if (manifest is null || manifest.Format != ThemePackContract.Format || manifest.Version != ThemePackContract.Version || manifest.SchemaVersion != ThemePackContract.PresetSchemaVersion)
+            return Result<ValidatedThemePack>.Failure("Theme pack format or version is not supported.");
+        var metadataError = ValidateMetadata(manifest.Name, manifest.Description, out var requestedName, out var description);
+        if (metadataError is not null) return Result<ValidatedThemePack>.Failure(metadataError);
+        var appearance = manifest.Appearance ?? new SiteAppearanceDto();
+        if (appearance.Theme is null || appearance.Pages is null || appearance.Background is null || appearance.PanelSkin is null || appearance.Icons is null || appearance.Decorations is null)
+            return Result<ValidatedThemePack>.Failure("Theme pack appearance is incomplete.");
+        var references = CollectPackReferences(appearance);
+        if (references.IsFailure || references.Value is null) return Result<ValidatedThemePack>.Failure(references.ErrorMessage ?? "Theme pack asset references are invalid.");
+        var packedAssets = entries.Keys.Where(key => key != "manifest.json").ToHashSet(StringComparer.Ordinal);
+        if (!packedAssets.SetEquals(references.Value)) return Result<ValidatedThemePack>.Failure("Theme pack must contain exactly the assets referenced by its manifest.");
+
+        foreach (var packPath in references.Value)
+        {
+            var bytes = entries[packPath];
+            var extension = Path.GetExtension(packPath).ToLowerInvariant();
+            await using var image = new MemoryStream(bytes, writable: false);
+            var validation = await uploadValidator.ValidateAsync(new SecureUploadRequest
+            {
+                Policy = UploadPolicy.ThemeImage,
+                OriginalFileName = Path.GetFileName(packPath),
+                DeclaredContentType = ContentType(extension),
+                DeclaredLength = bytes.LongLength,
+                Content = image
+            }, cancellationToken);
+            if (!validation.IsValid || validation.CanonicalExtension is null)
+                return Result<ValidatedThemePack>.Failure(validation.ErrorMessage ?? "Theme pack contains an invalid image.");
+        }
+
+        var displayNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var asset in manifest.Assets ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(asset.Path) || !references.Value.Contains(asset.Path) || displayNames.ContainsKey(asset.Path))
+                return Result<ValidatedThemePack>.Failure("Theme pack asset metadata is invalid.");
+            displayNames[asset.Path] = NormalizeAssetDisplayName(asset.DisplayName, Path.GetFileName(asset.Path));
+        }
+
+        var appearanceValidation = await ValidateImportedAppearanceAsync(appearance, entries, references.Value, cancellationToken);
+        if (appearanceValidation.IsFailure) return Result<ValidatedThemePack>.Failure(appearanceValidation.ErrorMessage ?? "Imported theme appearance is invalid.");
+
+        return Result<ValidatedThemePack>.Success(new ValidatedThemePack(entries, references.Value, appearance, requestedName, description, displayNames));
+    }
+
+    private async Task<Result> ValidateImportedAppearanceAsync(SiteAppearanceDto appearance, IReadOnlyDictionary<string, byte[]> entries, IEnumerable<string> references, CancellationToken cancellationToken)
+    {
+        var validationRoot = Path.Combine(Path.GetTempPath(), "onlinejudge-theme-preflight", Guid.NewGuid().ToString("N"));
+        var validationPaths = new RuntimeStoragePathProvider(Path.Combine(validationRoot, "api"), themeAssetsRoot: Path.Combine(validationRoot, "assets"));
+        var assetIds = references.ToDictionary(path => path, path => $"{Guid.NewGuid():N}{CanonicalExtension(Path.GetExtension(path))}", StringComparer.Ordinal);
+        var validationAppearance = Clone(appearance);
+        RewriteImportedReferences(validationAppearance, assetIds);
+        try
+        {
+            foreach (var (packPath, assetId) in assetIds)
+            {
+                await using var image = new MemoryStream(entries[packPath], writable: false);
+                await validationPaths.WriteThemeAssetAsync(assetId, image, 5L * 1024 * 1024, cancellationToken);
+            }
+            var validator = new SiteSettingsService(dbContext, storagePaths: validationPaths);
+            var validated = await validator.ValidateAppearanceAsync(ToRequest(validationAppearance), cancellationToken: cancellationToken);
+            return validated.IsSuccess ? Result.Success() : Result.Failure(validated.ErrorMessage ?? "Imported theme appearance is invalid.");
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException)
+        {
+            return Result.Failure(exception.Message);
+        }
+        finally
+        {
+            TryDeleteDirectory(validationRoot);
         }
     }
 
@@ -326,6 +415,37 @@ public sealed class ThemeLibraryService(
             }
         }
         return Result<IReadOnlyDictionary<string, IReadOnlyList<string>>>.Success(references.ToDictionary(item => item.Key, item => (IReadOnlyList<string>)item.Value, StringComparer.Ordinal));
+    }
+
+    public async Task<Result<IReadOnlyDictionary<string, string>>> GetAssetDisplayNamesAsync(CancellationToken cancellationToken = default)
+    {
+        var library = await ReadLibraryAsync(cancellationToken);
+        return Result<IReadOnlyDictionary<string, string>>.Success(new Dictionary<string, string>(library.AssetDisplayNames, StringComparer.Ordinal));
+    }
+
+    public Task<Result<string>> RegisterAssetDisplayNameAsync(string assetId, string originalFileName, Guid userId, UserRole role, CancellationToken cancellationToken = default) =>
+        WithMutationLockAsync(() => SaveAssetDisplayNameAsync(assetId, NormalizeAssetDisplayName(originalFileName, GetFallbackAssetDisplayName(assetId)), userId, role, cancellationToken), cancellationToken);
+
+    public Task<Result<string>> RenameAssetDisplayNameAsync(string assetId, string displayName, Guid userId, UserRole role, CancellationToken cancellationToken = default) =>
+        WithMutationLockAsync(() => SaveAssetDisplayNameAsync(assetId, NormalizeAssetDisplayName(displayName, GetFallbackAssetDisplayName(assetId)), userId, role, cancellationToken), cancellationToken);
+
+    public Task<Result> RemoveAssetDisplayNameAsync(string assetId, Guid userId, UserRole role, CancellationToken cancellationToken = default) =>
+        WithMutationLockAsync(async () =>
+        {
+            if (role != UserRole.Root) return Result.Failure("Forbidden.");
+            var library = await ReadLibraryAsync(cancellationToken);
+            if (!library.AssetDisplayNames.Remove(assetId)) return Result.Success();
+            await PersistMetadataAsync(library, userId, cancellationToken);
+            return Result.Success();
+        }, cancellationToken);
+
+    private async Task<Result<string>> SaveAssetDisplayNameAsync(string assetId, string displayName, Guid userId, UserRole role, CancellationToken cancellationToken)
+    {
+        if (role != UserRole.Root) return Result<string>.Failure("Forbidden.");
+        var library = await ReadLibraryAsync(cancellationToken);
+        library.AssetDisplayNames[assetId] = displayName;
+        await PersistMetadataAsync(library, userId, cancellationToken);
+        return Result<string>.Success(displayName);
     }
 
     private async Task<Result<ThemePresetDto>> SaveNewAsync(string requestedName, string? requestedDescription, SiteAppearanceDto appearance, Guid userId, UserRole role, string action, Guid? sourcePresetId, CancellationToken cancellationToken)
@@ -353,6 +473,9 @@ public sealed class ThemeLibraryService(
         {
             var library = JsonSerializer.Deserialize<StoredThemeLibrary>(value, JsonOptions) ?? new StoredThemeLibrary();
             library.Presets = library.Presets.Where(item => item.Id != Guid.Empty && item.SchemaVersion == 1).Take(ThemePackContract.MaxPresets).ToList();
+            library.AssetDisplayNames = (library.AssetDisplayNames ?? new Dictionary<string, string>())
+                .Where(item => !string.IsNullOrWhiteSpace(item.Key))
+                .ToDictionary(item => item.Key, item => NormalizeAssetDisplayName(item.Value, GetFallbackAssetDisplayName(item.Key)), StringComparer.Ordinal);
             return library;
         }
         catch (JsonException)
@@ -373,6 +496,20 @@ public sealed class ThemeLibraryService(
         setting.UpdatedAt = timeProvider.GetUtcNow();
         setting.UpdatedByUserId = userId;
         auditWriter.Stage(new SecurityAuditRecord(action, "ThemePreset", preset.Id == Guid.Empty ? "default" : preset.Id.ToString(), Metadata: AuditMetadata(preset, sourcePresetId)));
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task PersistMetadataAsync(StoredThemeLibrary library, Guid userId, CancellationToken cancellationToken)
+    {
+        var setting = await dbContext.SiteSettings.SingleOrDefaultAsync(item => item.Key == LibraryKey, cancellationToken);
+        if (setting is null)
+        {
+            setting = new SiteSetting { Id = Guid.NewGuid(), Key = LibraryKey };
+            dbContext.SiteSettings.Add(setting);
+        }
+        setting.Value = JsonSerializer.Serialize(library, JsonOptions);
+        setting.UpdatedAt = timeProvider.GetUtcNow();
+        setting.UpdatedByUserId = userId;
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -416,19 +553,23 @@ public sealed class ThemeLibraryService(
         string RewriteTheme(ThemeAssetReferenceDto asset)
         {
             var source = storagePaths.ResolveThemeAssetPath(asset.AssetId);
-            return Add(source, Path.GetExtension(asset.AssetId));
+            return Add(source, Path.GetExtension(asset.AssetId), asset.AssetId);
         }
         string RewritePage(string url)
         {
-            if (url.StartsWith(AssetUrlPrefix, StringComparison.Ordinal)) return Add(storagePaths.ResolveThemeAssetPath(url[AssetUrlPrefix.Length..]), Path.GetExtension(url));
+            if (url.StartsWith(AssetUrlPrefix, StringComparison.Ordinal))
+            {
+                var assetId = url[AssetUrlPrefix.Length..];
+                return Add(storagePaths.ResolveThemeAssetPath(assetId), Path.GetExtension(url), assetId);
+            }
             const string uploadPrefix = "/uploads/images/";
-            return Add(storagePaths.ResolveUploadImagePath(url[uploadPrefix.Length..]), Path.GetExtension(url));
+            return Add(storagePaths.ResolveUploadImagePath(url[uploadPrefix.Length..]), Path.GetExtension(url), null);
         }
-        string Add(string source, string extension)
+        string Add(string source, string extension, string? assetId)
         {
             if (bySource.TryGetValue(source, out var existing)) return existing.PackPath;
             var packPath = $"assets/{bySource.Count + 1:D3}{CanonicalExtension(extension)}";
-            bySource[source] = new PackAssetSource(source, packPath);
+            bySource[source] = new PackAssetSource(source, packPath, assetId);
             return packPath;
         }
         RewriteReferences(appearance, RewriteTheme, RewritePage, exporting: true);
@@ -534,6 +675,23 @@ public sealed class ThemeLibraryService(
     private static string SafeFileName(string name) => string.Concat(name.Select(character => Path.GetInvalidFileNameChars().Contains(character) ? '-' : character)).Trim();
     private static string CanonicalExtension(string extension) => extension.ToLowerInvariant() switch { ".png" => ".png", ".jpg" or ".jpeg" => ".jpg", ".webp" => ".webp", _ => throw new InvalidDataException("Theme pack contains an unsupported asset type.") };
     private static string ContentType(string extension) => extension switch { ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".webp" => "image/webp", _ => "application/octet-stream" };
+    private static string NormalizeAssetDisplayName(string? value, string fallback)
+    {
+        var normalizedPath = (value ?? string.Empty).Replace('\\', '/');
+        var name = normalizedPath[(normalizedPath.LastIndexOf('/') + 1)..]
+            .Normalize(NormalizationForm.FormC)
+            .Trim();
+        name = new string(name.Where(character => !char.IsControl(character)).ToArray()).Trim();
+        if (name is "" or "." or "..") name = fallback;
+        if (name.Length <= MaxAssetDisplayNameLength) return name;
+        var end = char.IsHighSurrogate(name[MaxAssetDisplayNameLength - 1]) ? MaxAssetDisplayNameLength - 1 : MaxAssetDisplayNameLength;
+        return name[..end].TrimEnd();
+    }
+    private static string GetFallbackAssetDisplayName(string assetId)
+    {
+        var stem = Path.GetFileNameWithoutExtension(assetId);
+        return $"Asset {stem[..Math.Min(8, stem.Length)].ToUpperInvariant()}";
+    }
     private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
     private static void TryDeleteDirectory(string path) { try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); } catch { } }
 
@@ -549,6 +707,7 @@ public sealed class ThemeLibraryService(
         public int SchemaVersion { get; set; } = 1;
         public Guid? LastAppliedPresetId { get; set; }
         public List<StoredThemePreset> Presets { get; set; } = [];
+        public Dictionary<string, string> AssetDisplayNames { get; set; } = new(StringComparer.Ordinal);
     }
 
     private sealed class StoredThemePreset
@@ -570,7 +729,22 @@ public sealed class ThemeLibraryService(
         public string? Description { get; set; }
         public int SchemaVersion { get; set; }
         public SiteAppearanceDto? Appearance { get; set; }
+        public List<ThemePackAssetMetadata>? Assets { get; set; }
     }
 
-    private sealed record PackAssetSource(string SourcePath, string PackPath);
+    private sealed class ThemePackAssetMetadata
+    {
+        public string Path { get; set; } = string.Empty;
+        public string? DisplayName { get; set; }
+    }
+
+    private sealed record ValidatedThemePack(
+        IReadOnlyDictionary<string, byte[]> Entries,
+        HashSet<string> References,
+        SiteAppearanceDto Appearance,
+        string RequestedName,
+        string? Description,
+        IReadOnlyDictionary<string, string> DisplayNames);
+
+    private sealed record PackAssetSource(string SourcePath, string PackPath, string? AssetId);
 }
