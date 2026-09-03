@@ -14,8 +14,9 @@ public class JudgeSandboxSecurityTests
     {
         await using var stream = new BlockingOverflowStream(2048);
         var outputLimitReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var budget = new CapturedOutputBudget(1024, outputLimitReached);
 
-        var captureTask = DockerCommandClient.CaptureBoundedAsync(stream, 1024, outputLimitReached);
+        var captureTask = DockerCommandClient.CaptureBoundedAsync(stream, budget);
 
         await outputLimitReached.Task.WaitAsync(TimeSpan.FromSeconds(1));
         Assert.False(captureTask.IsCompleted);
@@ -24,6 +25,23 @@ public class JudgeSandboxSecurityTests
         var captured = await captureTask;
         Assert.True(captured.Truncated);
         Assert.Equal(1024, Encoding.UTF8.GetByteCount(captured.Text));
+    }
+
+    [Fact]
+    public async Task CaptureBoundedAsync_SharesOneBudgetAcrossStandardOutputAndError()
+    {
+        await using var standardOutput = new MemoryStream(Encoding.UTF8.GetBytes(new string('A', 700)));
+        await using var standardError = new MemoryStream(Encoding.UTF8.GetBytes(new string('B', 700)));
+        var outputLimitReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var budget = new CapturedOutputBudget(1024, outputLimitReached);
+
+        var captured = await Task.WhenAll(
+            DockerCommandClient.CaptureBoundedAsync(standardOutput, budget),
+            DockerCommandClient.CaptureBoundedAsync(standardError, budget));
+
+        Assert.True(outputLimitReached.Task.IsCompleted);
+        Assert.Equal(1024, captured.Sum(item => Encoding.UTF8.GetByteCount(item.Text)));
+        Assert.Contains(captured, item => item.Truncated);
     }
 
     [Fact]
@@ -38,6 +56,9 @@ public class JudgeSandboxSecurityTests
         AssertOption(arguments, "--pids-limit", "64");
         AssertOption(arguments, "--security-opt", "no-new-privileges");
         AssertOption(arguments, "--cap-drop", "ALL");
+        AssertOption(arguments, "--ipc", "none");
+        AssertOption(arguments, "--user", "judge");
+        AssertOption(arguments, "--ulimit", "fsize=67108864:67108864");
         Assert.Contains("--read-only", arguments);
         AssertOption(arguments, "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m");
     }
@@ -54,7 +75,6 @@ public class JudgeSandboxSecurityTests
         Assert.DoesNotContain("--privileged", arguments);
         Assert.DoesNotContain("--device", arguments);
         Assert.DoesNotContain("--pid", arguments);
-        Assert.DoesNotContain("--ipc", arguments);
         Assert.DoesNotContain("--uts", arguments);
         Assert.DoesNotContain("seccomp=unconfined", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("/var/run/docker.sock", text, StringComparison.OrdinalIgnoreCase);
@@ -65,7 +85,7 @@ public class JudgeSandboxSecurityTests
     }
 
     [Fact]
-    public void DockerCreate_OnlyMountsSubmissionWorkspaceAndMinimalNonSecretEnvironment()
+    public void DockerCreate_CompileMountsOnlyWritableSubmissionWorkspaceAndMinimalNonSecretEnvironment()
     {
         var arguments = Arguments();
         var volumeIndexes = arguments.Select((value, index) => (value, index)).Where(item => item.value == "-v").ToList();
@@ -81,6 +101,16 @@ public class JudgeSandboxSecurityTests
             || value.Contains("Redis", StringComparison.OrdinalIgnoreCase)
             || value.Contains("Jwt", StringComparison.OrdinalIgnoreCase)
             || value.Contains("Secret", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void DockerCreate_RuntimeMountsSubmissionWorkspaceReadOnly()
+    {
+        var arguments = Arguments(DockerWorkspaceAccess.ReadOnly);
+        var volumeIndex = arguments.ToList().IndexOf("-v");
+
+        Assert.True(volumeIndex >= 0);
+        Assert.Equal("C:/safe/workspace:/workspace:ro", arguments[volumeIndex + 1]);
     }
 
     [Fact]
@@ -114,6 +144,9 @@ public class JudgeSandboxSecurityTests
 
         Assert.Equal(4, client.Workspaces.Count);
         Assert.Equal(2, client.Workspaces.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(
+            [DockerWorkspaceAccess.ReadWrite, DockerWorkspaceAccess.ReadOnly, DockerWorkspaceAccess.ReadWrite, DockerWorkspaceAccess.ReadOnly],
+            client.WorkspaceAccesses);
         Assert.All(client.Workspaces.Distinct(StringComparer.OrdinalIgnoreCase), workspace => Assert.False(Directory.Exists(workspace)));
         Assert.Equal(client.CreatedNames, client.RemovedNames);
     }
@@ -143,14 +176,15 @@ public class JudgeSandboxSecurityTests
         Assert.DoesNotContain("docker rm $(docker ps", clientSource, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IReadOnlyList<string> Arguments() => DockerCommandClient.BuildCreateArguments(
+    private static IReadOnlyList<string> Arguments(DockerWorkspaceAccess workspaceAccess = DockerWorkspaceAccess.ReadWrite) => DockerCommandClient.BuildCreateArguments(
         "oj-00000000000000000000000000000000",
         new DockerContainerRequest(
             "C:/safe/workspace",
             128,
             "sandbox",
             "./main",
-            Guid.Parse("77777777-7777-7777-7777-777777777777")),
+            Guid.Parse("77777777-7777-7777-7777-777777777777"),
+            workspaceAccess),
         new JudgeSandboxOptions());
 
     private static void AssertOption(IReadOnlyList<string> arguments, string option, string value)
@@ -179,6 +213,7 @@ public class JudgeSandboxSecurityTests
         private readonly Dictionary<string, DockerContainerRequest> requests = [];
 
         public List<string> Workspaces { get; } = [];
+        public List<DockerWorkspaceAccess> WorkspaceAccesses { get; } = [];
         public List<string> CreatedNames { get; } = [];
         public List<string> RemovedNames { get; } = [];
 
@@ -186,6 +221,7 @@ public class JudgeSandboxSecurityTests
         {
             CreatedNames.Add(containerName);
             Workspaces.Add(request.WorkspaceDirectory);
+            WorkspaceAccesses.Add(request.WorkspaceAccess);
             requests[containerName] = request;
             return Task.FromResult(new string('a', 64));
         }

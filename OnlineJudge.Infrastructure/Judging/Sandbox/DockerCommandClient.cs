@@ -52,8 +52,9 @@ internal sealed class DockerCommandClient : IDockerCommandClient
         using var process = CreateProcess(["start", "--attach", containerName]);
         process.Start();
         var outputLimitReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var standardOutputTask = CaptureBoundedAsync(process.StandardOutput.BaseStream, options.MaxCapturedOutputBytes, outputLimitReached);
-        var standardErrorTask = CaptureBoundedAsync(process.StandardError.BaseStream, options.MaxCapturedOutputBytes, outputLimitReached);
+        var outputBudget = new CapturedOutputBudget(options.MaxCapturedOutputBytes, outputLimitReached);
+        var standardOutputTask = CaptureBoundedAsync(process.StandardOutput.BaseStream, outputBudget);
+        var standardErrorTask = CaptureBoundedAsync(process.StandardError.BaseStream, outputBudget);
 
         Task waitTask;
         try
@@ -94,6 +95,7 @@ internal sealed class DockerCommandClient : IDockerCommandClient
 
         if (completionTask == timeoutTask)
         {
+            await TryKillContainerAsync(containerName);
             TryKill(process);
             await WaitForExitWithoutThrowAsync(process);
             cancellationToken.ThrowIfCancellationRequested();
@@ -121,6 +123,7 @@ internal sealed class DockerCommandClient : IDockerCommandClient
         }
         catch (OperationCanceledException)
         {
+            await TryKillContainerAsync(containerName);
             TryKill(process);
             await WaitForExitWithoutThrowAsync(process);
             throw;
@@ -222,6 +225,10 @@ internal sealed class DockerCommandClient : IDockerCommandClient
     internal static IReadOnlyList<string> BuildCreateArguments(string containerName, DockerContainerRequest request, JudgeSandboxOptions options)
     {
         var memoryLimitMb = Math.Max(request.MemoryLimitMb, 16);
+        var fileSizeLimitBytes = (long)options.TempFileSystemSizeMb * 1024 * 1024;
+        var workspaceMount = request.WorkspaceAccess == DockerWorkspaceAccess.ReadOnly
+            ? $"{request.WorkspaceDirectory}:{DockerJudgeSandbox.ContainerWorkspace}:ro"
+            : $"{request.WorkspaceDirectory}:{DockerJudgeSandbox.ContainerWorkspace}";
         IReadOnlyList<string> submissionLabel = request.SubmissionId.HasValue
             ? ["--label", $"{SubmissionLabel}={request.SubmissionId.Value:N}"]
             : [];
@@ -231,6 +238,8 @@ internal sealed class DockerCommandClient : IDockerCommandClient
             "--name",
             containerName,
             "--network",
+            "none",
+            "--ipc",
             "none",
             "--memory",
             $"{memoryLimitMb}m",
@@ -244,6 +253,10 @@ internal sealed class DockerCommandClient : IDockerCommandClient
             "no-new-privileges",
             "--cap-drop",
             "ALL",
+            "--user",
+            "judge",
+            "--ulimit",
+            $"fsize={fileSizeLimitBytes}:{fileSizeLimitBytes}",
             "--read-only",
             "--tmpfs",
             $"/tmp:rw,noexec,nosuid,nodev,size={options.TempFileSystemSizeMb}m",
@@ -259,7 +272,7 @@ internal sealed class DockerCommandClient : IDockerCommandClient
             "--env",
             "NUGET_PACKAGES=/tmp/nuget",
             "-v",
-            $"{request.WorkspaceDirectory}:{DockerJudgeSandbox.ContainerWorkspace}",
+            workspaceMount,
             "-w",
             DockerJudgeSandbox.ContainerWorkspace,
             request.DockerImageName,
@@ -456,9 +469,9 @@ internal sealed class DockerCommandClient : IDockerCommandClient
         return new CliResult(process.ExitCode, await standardOutputTask, await standardErrorTask);
     }
 
-    internal static async Task<CapturedStream> CaptureBoundedAsync(Stream stream, int maxBytes, TaskCompletionSource outputLimitReached)
+    internal static async Task<CapturedStream> CaptureBoundedAsync(Stream stream, CapturedOutputBudget budget)
     {
-        var captured = new MemoryStream(Math.Min(maxBytes, 81920));
+        var captured = new MemoryStream(Math.Min(budget.InitialBytes, 81920));
         var buffer = new byte[81920];
         var truncated = false;
         while (true)
@@ -466,16 +479,15 @@ internal sealed class DockerCommandClient : IDockerCommandClient
             var read = await stream.ReadAsync(buffer);
             if (read == 0) break;
 
-            var remaining = maxBytes - (int)captured.Length;
-            if (remaining > 0)
+            var granted = budget.Claim(read);
+            if (granted > 0)
             {
-                await captured.WriteAsync(buffer.AsMemory(0, Math.Min(remaining, read)));
+                await captured.WriteAsync(buffer.AsMemory(0, granted));
             }
 
-            if (read > remaining)
+            if (granted < read)
             {
                 truncated = true;
-                outputLimitReached.TrySetResult();
             }
         }
 
@@ -550,7 +562,45 @@ internal sealed record DockerContainerRequest(
     int MemoryLimitMb,
     string DockerImageName,
     string Command,
-    Guid? SubmissionId = null);
+    Guid? SubmissionId = null,
+    DockerWorkspaceAccess WorkspaceAccess = DockerWorkspaceAccess.ReadWrite);
+
+internal enum DockerWorkspaceAccess
+{
+    ReadWrite,
+    ReadOnly
+}
+
+internal sealed class CapturedOutputBudget
+{
+    private readonly object gate = new();
+    private readonly TaskCompletionSource outputLimitReached;
+    private int remainingBytes;
+
+    public CapturedOutputBudget(int maxBytes, TaskCompletionSource outputLimitReached)
+    {
+        InitialBytes = maxBytes;
+        remainingBytes = maxBytes;
+        this.outputLimitReached = outputLimitReached;
+    }
+
+    public int InitialBytes { get; }
+
+    public int Claim(int requestedBytes)
+    {
+        lock (gate)
+        {
+            var grantedBytes = Math.Min(remainingBytes, requestedBytes);
+            remainingBytes -= grantedBytes;
+            if (grantedBytes < requestedBytes)
+            {
+                outputLimitReached.TrySetResult();
+            }
+
+            return grantedBytes;
+        }
+    }
+}
 
 internal sealed record DockerCommandResult(
     int? ExitCode,

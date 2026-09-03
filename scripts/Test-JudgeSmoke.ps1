@@ -795,6 +795,13 @@ try {
             "CE"
         )
 
+    $runtimeErrorCode = Get-RequiredStatusCode `
+        -Map $statusMap `
+        -Aliases @(
+            "RuntimeError",
+            "RE"
+        )
+
     Write-Pass "$($statusDefinition.Name): $($statusMap.Keys -join ', ')"
 
     Write-Step "Creating Temporary Smoke Problem"
@@ -945,6 +952,25 @@ int main( {
 }
 '@
 
+    $outputLimit = @'
+#include <iostream>
+
+int main() {
+    while (true) {
+        std::cout << "0123456789abcdef";
+    }
+}
+'@
+
+    $workspaceWrite = @'
+#include <fstream>
+
+int main() {
+    std::ofstream file("runtime-write.bin", std::ios::binary);
+    return file ? 0 : 42;
+}
+'@
+
     $results = @()
 
     $results += Run-JudgeCase `
@@ -992,6 +1018,26 @@ int main( {
         -Language 1 `
         -SourceCode $compileError `
         -ExpectedStatus $compileErrorCode `
+        -Headers $headers `
+        -ProblemId $problemId `
+        -UserId $userId `
+        -StatusMap $statusMap
+
+    $results += Run-JudgeCase `
+        -Name "C++17 Output Limit" `
+        -Language 1 `
+        -SourceCode $outputLimit `
+        -ExpectedStatus $runtimeErrorCode `
+        -Headers $headers `
+        -ProblemId $problemId `
+        -UserId $userId `
+        -StatusMap $statusMap
+
+    $results += Run-JudgeCase `
+        -Name "C++17 Runtime Workspace Read Only" `
+        -Language 1 `
+        -SourceCode $workspaceWrite `
+        -ExpectedStatus $runtimeErrorCode `
         -Headers $headers `
         -ProblemId $problemId `
         -UserId $userId `

@@ -506,6 +506,7 @@ try {
             -WorkingDirectory $root `
             -RedirectStandardOutput $apiOut `
             -RedirectStandardError $apiErr `
+            -WindowStyle Hidden `
             -PassThru
 
         Wait-Api 30
@@ -522,6 +523,7 @@ try {
             -WorkingDirectory $root `
             -RedirectStandardOutput $workerOut `
             -RedirectStandardError $workerErr `
+            -WindowStyle Hidden `
             -PassThru
 
         Start-Sleep -Seconds 2
@@ -550,18 +552,19 @@ try {
     Write-Pass "Root Login"
 
     Write-Step "Creating Temporary Custom Struct Function Problem"
-    $createdProblem = Invoke-Api -Method Post -Path "/api/problems" -Headers $headers -Body @{
+    $problemBody = @{
         title = "[SMOKE] Custom Struct Geometry $runId"
         description = "Temporary custom struct function judge smoke problem."
         inputDescription = ""
         outputDescription = ""
         timeLimitMs = 2000
         memoryLimitMb = 128
-        isPublished = $true
+        isPublished = $false
         judgeMode = 2
         functionSpecJson = $functionSpec
         starterCodeJson = $starterCode
     }
+    $createdProblem = Invoke-Api -Method Post -Path "/api/problems" -Headers $headers -Body $problemBody
 
     $problemId = Find-Guid -Value $createdProblem -Names @("id", "problemId")
     if ($null -eq $problemId) {
@@ -590,6 +593,11 @@ try {
     } | Out-Null
 
     Write-Pass "2 Custom Struct Cases"
+
+    Write-Step "Publishing Custom Struct Function Problem"
+    $problemBody.isPublished = $true
+    Invoke-Api -Method Put -Path "/api/problems/$problemId" -Headers $headers -Body $problemBody | Out-Null
+    Write-Pass "Published Judge Revision"
 
     Submit-And-AssertAccepted -Name "C++17 Triangle[] + Segment3[]" -Language 1 -SourceCode $cpp17Source
     Submit-And-AssertAccepted -Name "C11 Triangle[] + Segment3[]" -Language 2 -SourceCode $c11Source

@@ -68,7 +68,8 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 BuildCompileCommand(profile, request.CompileAssets),
                 timeout: TimeSpan.FromSeconds(30),
                 cancellationToken: cancellationToken,
-                submissionId: request.SubmissionId);
+                submissionId: request.SubmissionId,
+                workspaceAccess: DockerWorkspaceAccess.ReadWrite);
 
             if (compileResult.TimedOut)
             {
@@ -76,6 +77,15 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 {
                     Status = JudgeStatus.CompileError,
                     ErrorMessage = "Compilation timed out."
+                };
+            }
+
+            if (compileResult.OutputLimitExceeded)
+            {
+                return new JudgeResult
+                {
+                    Status = JudgeStatus.CompileError,
+                    ErrorMessage = "Compilation output limit exceeded."
                 };
             }
 
@@ -129,7 +139,8 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 $"{profile.RunCommand} < {inputFileName}",
                 timeout: TimeSpan.FromMilliseconds(Math.Max(request.TimeLimitMs, 1)),
                 cancellationToken: cancellationToken,
-                submissionId: request.SubmissionId);
+                submissionId: request.SubmissionId,
+                workspaceAccess: DockerWorkspaceAccess.ReadOnly);
 
             totalTimeUsedMs += runResult.ElapsedMs;
             var caseResult = CreateCaseResult(testCase, runResult);
@@ -172,10 +183,11 @@ public class DockerJudgeSandbox : IJudgeSandbox
         string command,
         TimeSpan timeout,
         CancellationToken cancellationToken,
-        Guid? submissionId = null)
+        Guid? submissionId = null,
+        DockerWorkspaceAccess workspaceAccess = DockerWorkspaceAccess.ReadWrite)
     {
         var containerName = CreateContainerName();
-        var request = new DockerContainerRequest(workspaceDirectory, memoryLimitMb, dockerImageName, command, submissionId);
+        var request = new DockerContainerRequest(workspaceDirectory, memoryLimitMb, dockerImageName, command, submissionId, workspaceAccess);
 
         try
         {

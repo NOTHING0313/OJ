@@ -1,11 +1,11 @@
 using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Judging.Services;
 using OnlineJudge.Domain.Enums;
-using System.Text.RegularExpressions;
+using OnlineJudge.Infrastructure.Judging.Function;
 
 namespace OnlineJudge.Infrastructure.Judging.Runners;
 
-public partial class Cpp17JudgeRunner(IJudgeSandbox judgeSandbox, IFunctionJudgeCodeBuilder functionJudgeCodeBuilder) : IJudgeRunner
+public class Cpp17JudgeRunner(IJudgeSandbox judgeSandbox, IFunctionJudgeCodeBuilder functionJudgeCodeBuilder) : IJudgeRunner
 {
     internal static readonly LanguageJudgeProfile Profile = new()
     {
@@ -135,9 +135,6 @@ public partial class Cpp17JudgeRunner(IJudgeSandbox judgeSandbox, IFunctionJudge
 
     private static bool ContainsMainFunction(string sourceCode)
     {
-        return MainFunctionRegex().IsMatch(sourceCode);
+        return FunctionUserCodeGuard.ContainsCStyleMain(sourceCode);
     }
-
-    [GeneratedRegex(@"\b(?:int|auto|void)\s+main\s*\(", RegexOptions.CultureInvariant)]
-    private static partial Regex MainFunctionRegex();
 }

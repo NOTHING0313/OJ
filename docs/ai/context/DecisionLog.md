@@ -120,3 +120,28 @@
   - Duplicate all commands directly in CI YAML: local and hosted verification would drift.
   - Add hosted Docker judge CI without a confirmed Docker-capable runner: creates a permanently queued or misleading gate.
 - Consequences: Push and pull-request CI cover backend and frontend fast gates; real Docker judge/security checks remain mandatory local gates until runner ownership is established.
+
+## Decision: Judge runtime workspaces are immutable data planes
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: SANDBOX-DATAPLANE-04B
+- Context: Compilation needs a writable submission workspace, but testcase execution only needs compiled artifacts and input. Keeping the bind mount writable allowed submitted programs to consume host disk, while independent stdout/stderr limits allowed twice the configured capture budget.
+- Decision: Keep the compile mount writable under a fixed file-size ceiling, mount the same workspace read-only for every testcase, confine permitted runtime writes to a size-bounded `/tmp`, and share one capture budget across stdout and stderr. Timeout, cancellation, or output overflow terminates the container before cleanup.
+- Rejected alternatives:
+  - Poll host workspace size: detection is not an enforceable quota and can lose a race against rapid disk exhaustion.
+  - Use a size-limited Docker named volume: the local volume driver does not provide a portable size guarantee across the supported Docker environments.
+  - Run compile and all testcases in one mutable container: creates cross-test state and weakens deterministic testcase isolation.
+- Consequences: Runtime code cannot mutate host workspace data; temporary writes and individual compiler artifacts have hard limits; output is bounded by the configured combined budget without changing judge status or persistence contracts.
+
+## Decision: Function entry-point preflight ignores non-code text
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: SANDBOX-DATAPLANE-04B
+- Context: Regex matching directly against submitted source rejected valid function solutions when `main`, `Main`, or `class Program` appeared only in comments or string/character literals.
+- Decision: Mask comments and supported literal forms before applying the existing entry-point patterns, using one internal guard shared by C11, C++17, and C# runners.
+- Rejected alternatives:
+  - Remove preflight entirely: loses the existing fast, friendly function-mode error contract.
+  - Add language parser dependencies: disproportionate for a narrow preflight and introduces new toolchain coupling.
+- Consequences: Real entry points are still rejected before Docker, while harmless explanatory text no longer causes false compile errors.

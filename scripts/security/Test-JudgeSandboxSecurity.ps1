@@ -36,19 +36,24 @@ function Invoke-IsolatedContainer {
         [string]$Command,
         [int]$MemoryMb = 64,
         [int]$TimeoutSeconds = 8,
-        [switch]$ExpectTimeout
+        [switch]$ExpectTimeout,
+        [switch]$ReadOnlyWorkspace
     )
 
     $name = "oj-security-$([Guid]::NewGuid().ToString('N'))"
+    $workspaceMount = if ($ReadOnlyWorkspace) { "${Workspace}:/workspace:ro" } else { "${Workspace}:/workspace" }
     $arguments = @(
         "create", "--name", $name,
         "--network", "none",
+        "--ipc", "none",
         "--memory", "${MemoryMb}m",
         "--memory-swap", "${MemoryMb}m",
         "--cpus", "1",
         "--pids-limit", "64",
         "--security-opt", "no-new-privileges",
         "--cap-drop", "ALL",
+        "--user", "judge",
+        "--ulimit", "fsize=67108864:67108864",
         "--read-only",
         "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m",
         "--label", $managedLabel,
@@ -56,7 +61,7 @@ function Invoke-IsolatedContainer {
         "--env", "HOME=/tmp",
         "--env", "DOTNET_CLI_HOME=/tmp/dotnet",
         "--env", "NUGET_PACKAGES=/tmp/nuget",
-        "-v", "${Workspace}:/workspace",
+        "-v", $workspaceMount,
         "-w", "/workspace",
         $Image, "bash", "-lc", $Command
     )
@@ -141,18 +146,23 @@ try {
     $output = Invoke-IsolatedContainer $cppImage $normal 'yes OUTPUT | head -c 5242880' 64 8
     if ($output.ExitCode -ne 0) { throw "Output spam container failed unexpectedly." }
 
-    $fileSpam = Invoke-IsolatedContainer $cppImage $normal 'dd if=/dev/zero of=/workspace/file-spam.bin bs=1M count=16 status=none' 64 8
-    if ($fileSpam.ExitCode -ne 0) { throw "File-spam cleanup probe failed unexpectedly." }
+    $fileSpam = Invoke-IsolatedContainer $cppImage $normal 'dd if=/dev/zero of=/workspace/file-spam.bin bs=1M count=16 status=none' 64 8 -ReadOnlyWorkspace
+    if ($fileSpam.ExitCode -eq 0 -or (Test-Path -LiteralPath (Join-Path $normal "file-spam.bin"))) {
+        throw "Read-only runtime workspace did not block file spam."
+    }
+
+    $tempFileSpam = Invoke-IsolatedContainer $cppImage $normal 'dd if=/dev/zero of=/tmp/file-spam.bin bs=1M count=80 status=none' 64 8 -ReadOnlyWorkspace
+    if ($tempFileSpam.ExitCode -eq 0) { throw "Temporary filesystem/file-size quota did not block file spam." }
 
     $workspaceA = Join-Path $tempRoot "submission-a"
     $workspaceB = Join-Path $tempRoot "submission-b"
     New-Item -ItemType Directory -Path $workspaceA, $workspaceB | Out-Null
     Set-Content -LiteralPath (Join-Path $workspaceA "secret.txt") -Value "submission-a-only"
-    $cross = Invoke-IsolatedContainer $cppImage $workspaceB 'test ! -e /workspace/secret.txt && test ! -e /var/run/docker.sock && test ! -e /host'
+    $cross = Invoke-IsolatedContainer $cppImage $workspaceB 'test ! -e /workspace/secret.txt && test ! -e /var/run/docker.sock && test ! -e /host' -ReadOnlyWorkspace
     if ($cross.ExitCode -ne 0) { throw "Cross-submission or host filesystem isolation failed." }
 
     for ($index = 0; $index -lt $LeakRuns; $index++) {
-        $leak = Invoke-IsolatedContainer $cppImage $workspaceB "true"
+        $leak = Invoke-IsolatedContainer $cppImage $workspaceB "true" -ReadOnlyWorkspace
         if ($leak.ExitCode -ne 0) { throw "Leak-run container failed at iteration $index." }
     }
     Assert-NoManagedContainers
@@ -174,7 +184,9 @@ try {
 
     Write-Output "JUDGE_SANDBOX_SECURITY_SMOKE=PASS"
     Write-Output "LEAK_RUNS=$LeakRuns"
-    Write-Output "FILE_SPAM_DISK_QUOTA=REMAINING_RISK"
+    Write-Output "RUNTIME_WORKSPACE_READ_ONLY=PASS"
+    Write-Output "TEMP_FILE_SPAM_QUOTA=PASS"
+    Write-Output "FILE_SPAM_DISK_QUOTA=PASS"
 }
 finally {
     $resolved = [IO.Path]::GetFullPath($tempRoot)

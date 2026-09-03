@@ -186,6 +186,19 @@ public class JudgeMemoryTelemetryTests
     }
 
     [Fact]
+    public async Task CompileOutputLimit_ReturnsBoundedCompileErrorBeforeRuntime()
+    {
+        var client = new FakeDockerCommandClient(Result(exitCode: null, outputLimitExceeded: true));
+        var sandbox = CreateSandbox(client);
+
+        var result = await sandbox.RunAsync(RequestWithSingleCase(), Cpp17JudgeRunner.Profile);
+
+        Assert.Equal(JudgeStatus.CompileError, result.Status);
+        Assert.Equal("Compilation output limit exceeded.", result.ErrorMessage);
+        Assert.Single(client.CreatedNames);
+    }
+
+    [Fact]
     public async Task EmptyCaseList_PreservesAcceptedWithUnknownMemory()
     {
         var client = new FakeDockerCommandClient(Result(exitCode: 0, peakMemoryBytes: 200L * 1024 * 1024));
@@ -287,7 +300,8 @@ public class JudgeMemoryTelemetryTests
         bool timedOut = false,
         string standardOutput = "",
         string standardError = "",
-        string? telemetryWarning = null)
+        string? telemetryWarning = null,
+        bool outputLimitExceeded = false)
     {
         return new DockerCommandResult(
             exitCode,
@@ -297,7 +311,8 @@ public class JudgeMemoryTelemetryTests
             timedOut,
             peakMemoryBytes,
             oomKilled,
-            telemetryWarning);
+            telemetryWarning,
+            outputLimitExceeded);
     }
 
     private sealed class FakeDockerCommandClient : IDockerCommandClient

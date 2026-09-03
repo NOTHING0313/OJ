@@ -321,6 +321,27 @@ function Ensure-Problem {
     return Get-ProblemDetail -ProblemId $createdId
 }
 
+function Ensure-PublishedProblem {
+    param(
+        [object]$Problem,
+        [hashtable]$UpdateBody
+    )
+
+    $problemId = Get-PropertyValue -Object $Problem -Names @("id", "Id")
+    $isPublished = Get-PropertyValue -Object $Problem -Names @("isPublished", "IsPublished")
+    if ($isPublished -eq $true) {
+        return Get-ProblemDetail -ProblemId $problemId
+    }
+
+    $UpdateBody.isPublished = $true
+    $response = Invoke-ApiJson -Method "PUT" -Path "/api/problems/$problemId" -Body $UpdateBody -Token $script:AccessToken
+    if (-not $response.Ok) {
+        Stop-E2E -Name "Publish problem failed" -Details "problemId=$problemId HTTP $($response.StatusCode) $($response.ErrorMessage)"
+    }
+
+    return Get-ProblemDetail -ProblemId $problemId
+}
+
 function Get-TestCases {
     param([object]$Problem)
 
@@ -625,7 +646,7 @@ function New-TwoSumProblemBody {
         outputDescription = "Function mode does not use standard output"
         timeLimitMs = 1000
         memoryLimitMb = 128
-        isPublished = $true
+        isPublished = $false
         judgeMode = 2
         functionSpecJson = $spec
         starterCodeJson = $starter
@@ -654,7 +675,7 @@ function New-ReverseListProblemBody {
         outputDescription = "Linked list values are represented as JSON arrays"
         timeLimitMs = 1000
         memoryLimitMb = 128
-        isPublished = $true
+        isPublished = $false
         judgeMode = 2
         functionSpecJson = $spec
         starterCodeJson = $starter
@@ -683,7 +704,7 @@ function New-InvertTreeProblemBody {
         outputDescription = "Binary tree values are represented as level-order JSON arrays"
         timeLimitMs = 1000
         memoryLimitMb = 128
-        isPublished = $true
+        isPublished = $false
         judgeMode = 2
         functionSpecJson = $spec
         starterCodeJson = $starter
@@ -698,7 +719,7 @@ function New-StandardAbProblemBody {
         outputDescription = "Print the sum"
         timeLimitMs = 1000
         memoryLimitMb = 128
-        isPublished = $true
+        isPublished = $false
         judgeMode = 1
         functionSpecJson = $null
         starterCodeJson = $null
@@ -912,16 +933,20 @@ int main(void) {
 Login
 
 Write-Step "[2/10] Ensure problem: [E2E] Function Two Sum"
-$twoSumProblem = Ensure-Problem -Title "[E2E] Function Two Sum" -CreateBody (New-TwoSumProblemBody)
+$twoSumBody = New-TwoSumProblemBody
+$twoSumProblem = Ensure-Problem -Title "[E2E] Function Two Sum" -CreateBody $twoSumBody
 
 Write-Step "[3/10] Ensure problem: [E2E] Function Reverse List"
-$reverseListProblem = Ensure-Problem -Title "[E2E] Function Reverse List" -CreateBody (New-ReverseListProblemBody)
+$reverseListBody = New-ReverseListProblemBody
+$reverseListProblem = Ensure-Problem -Title "[E2E] Function Reverse List" -CreateBody $reverseListBody
 
 Write-Step "[4/10] Ensure problem: [E2E] Function Invert Tree"
-$invertTreeProblem = Ensure-Problem -Title "[E2E] Function Invert Tree" -CreateBody (New-InvertTreeProblemBody)
+$invertTreeBody = New-InvertTreeProblemBody
+$invertTreeProblem = Ensure-Problem -Title "[E2E] Function Invert Tree" -CreateBody $invertTreeBody
 
 Write-Step "[5/10] Ensure problem: [E2E] Standard A+B"
-$standardProblem = Ensure-Problem -Title "[E2E] Standard A+B" -CreateBody (New-StandardAbProblemBody)
+$standardBody = New-StandardAbProblemBody
+$standardProblem = Ensure-Problem -Title "[E2E] Standard A+B" -CreateBody $standardBody
 
 Write-Step "[6/10] Ensure test cases..."
 Ensure-FunctionTestCase -Problem $twoSumProblem -ArgumentsJson '{ "nums": [2,7,11,15], "target": 9 }' -ExpectedJson '[0,1]' -Score 100
@@ -939,6 +964,11 @@ $invertTreeProblem = Get-ProblemDetail -ProblemId (Get-PropertyValue -Object $in
 Ensure-StandardTestCase -Problem $standardProblem -InputText '1 2' -ExpectedOutput '3' -Score 100
 $standardProblem = Get-ProblemDetail -ProblemId (Get-PropertyValue -Object $standardProblem -Names @("id", "Id"))
 
+$twoSumProblem = Ensure-PublishedProblem -Problem $twoSumProblem -UpdateBody $twoSumBody
+$reverseListProblem = Ensure-PublishedProblem -Problem $reverseListProblem -UpdateBody $reverseListBody
+$invertTreeProblem = Ensure-PublishedProblem -Problem $invertTreeProblem -UpdateBody $invertTreeBody
+$standardProblem = Ensure-PublishedProblem -Problem $standardProblem -UpdateBody $standardBody
+
 $twoSumProblemId = Get-PropertyValue -Object $twoSumProblem -Names @("id", "Id")
 $reverseListProblemId = Get-PropertyValue -Object $reverseListProblem -Names @("id", "Id")
 $invertTreeProblemId = Get-PropertyValue -Object $invertTreeProblem -Names @("id", "Id")
@@ -950,12 +980,12 @@ Run-AcceptedScenario -Name "C# twoSum" -ProblemId $twoSumProblemId -Language $La
 Run-AcceptedScenario -Name "C11 twoSum" -ProblemId $twoSumProblemId -Language $LanguageC11 -SourceCode $TwoSumC11Source
 Run-AcceptedScenario -Name "C++17 reverseList" -ProblemId $reverseListProblemId -Language $LanguageCpp17 -SourceCode $ReverseListCpp17Source
 Run-AcceptedScenario -Name "C# reverseList" -ProblemId $reverseListProblemId -Language $LanguageCSharp -SourceCode $ReverseListCSharpSource
-Assert-FriendlyUnsupported -Name "C11 reverseList" -ProblemId $reverseListProblemId -SourceCode $ReverseListC11UnsupportedSource -ExpectedMessage "C11 function mode does not support type: ListNode<int>"
+Assert-FriendlyUnsupported -Name "C11 reverseList" -ProblemId $reverseListProblemId -SourceCode $ReverseListC11UnsupportedSource -ExpectedMessage "Selected language is not supported by this function problem."
 
 Write-Step "[8/10] Submit and verify TreeNode cases..."
 Run-AcceptedScenario -Name "C++17 invertTree" -ProblemId $invertTreeProblemId -Language $LanguageCpp17 -SourceCode $InvertTreeCpp17Source
 Run-AcceptedScenario -Name "C# invertTree" -ProblemId $invertTreeProblemId -Language $LanguageCSharp -SourceCode $InvertTreeCSharpSource
-Assert-FriendlyUnsupported -Name "C11 invertTree" -ProblemId $invertTreeProblemId -SourceCode $InvertTreeC11UnsupportedSource -ExpectedMessage "C11 function mode does not support type: TreeNode<int>"
+Assert-FriendlyUnsupported -Name "C11 invertTree" -ProblemId $invertTreeProblemId -SourceCode $InvertTreeC11UnsupportedSource -ExpectedMessage "Selected language is not supported by this function problem."
 
 Write-Step "[9/10] Submit and verify standard mode regression..."
 Run-AcceptedScenario -Name "C11 standard A+B" -ProblemId $standardProblemId -Language $LanguageC11 -SourceCode $StandardAbC11Source
