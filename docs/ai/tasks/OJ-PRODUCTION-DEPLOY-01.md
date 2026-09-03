@@ -2,7 +2,9 @@
 
 ## Status
 
-`READY_FOR_PLANNING`
+`LOCAL_ASSETS_IMPLEMENTED_TARGET_HOST_PENDING`
+
+Local implementation evidence is recorded in `RECRUITMENT-PRODUCTION-FRONTEND-04C-04E.md`. The original target-host acceptance gates below remain authoritative and are not reported as complete.
 
 This card defines the next task only. No production deployment change is authorized or implemented by `OJ-AGENTS-INIT-01`.
 

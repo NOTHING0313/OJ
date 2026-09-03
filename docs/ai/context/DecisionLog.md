@@ -160,7 +160,7 @@
 
 ## Decision: Password policy and hash evolution are versioned and shared
 
-- Status: Accepted
+- Status: Superseded by `Recruitment identity safeguards match the operating environment`
 - Date: 2026-09-03
 - Task: IDENTITY-SESSION-EXPORT-04C
 - Context: Registration and reset paths used inconsistent short minimums, and persisted hashes had no current algorithm version or automatic upgrade path.
@@ -169,6 +169,45 @@
   - Force all users to reset immediately: unnecessary disruption when legacy verification remains safe.
   - Validate contextual password weakness before reset-code validation: leaks whether the supplied account exists.
 - Consequences: Correct reset codes may be consumed before a context-specific weak-password error; this is accepted to preserve account-enumeration resistance.
+
+## Decision: Recruitment identity safeguards match the operating environment
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: RECRUITMENT-PRODUCTION-FRONTEND-04C-04E / 4C-R
+- Context: The platform is a student-club recruitment system used mainly from stable dormitory PC networks. A 15-character minimum and five registrations per shared IP per ten minutes would create more normal-user friction than useful protection, and phone verification is not part of the current product.
+- Decision: Keep the shared Unicode/common/context password policy and versioned hashes but set the minimum to 8. Remove the registration IP limiter without an API or Nginx replacement. Remove phone verification from the first-party UI while retaining backend routes and persisted fields for compatibility.
+- Rejected alternatives:
+  - Keep the 15-character minimum: exceeds the explicitly approved account requirement.
+  - Retain or relocate the five-per-IP registration limit: shared NAT/dorm traffic can block legitimate recruitment and the user explicitly rejected it.
+  - Delete phone routes and schema immediately: creates an unnecessary breaking API and persistence migration.
+- Consequences: Email-code cooldown/daily/attempt controls and all non-registration limiters remain; dormant phone calls fail closed in Production; permanent phone-contract removal requires a separately approved migration.
+
+## Decision: Production uses host services around loopback-only state containers
+
+- Status: Accepted locally; target-host verification pending
+- Date: 2026-09-03
+- Task: RECRUITMENT-PRODUCTION-FRONTEND-04C-04E / 4D
+- Context: The current Worker invokes the host Docker CLI and its sandbox relies on host-visible bind mounts. Containerizing the Worker would add Docker-socket and path-translation complexity without product benefit on the approved 2C4G single host.
+- Decision: Nginx terminates TLS and serves the SPA; API and Worker run as separate systemd users; PostgreSQL and Redis run in Docker with loopback-only published ports; only the Worker joins the Docker group; persistent data and secrets live outside immutable releases.
+- Rejected alternatives:
+  - Containerize API/Worker and mount the Docker socket: increases privilege and workspace-path complexity.
+  - Publish PostgreSQL/Redis publicly: violates the approved network contract.
+  - Treat Redis as backup authority: JudgeJob truth already belongs to PostgreSQL and Redis state is transient.
+- Consequences: Worker Docker-group membership remains root-equivalent and tightly scoped; target-host TLS, permissions, restore and resource gates are mandatory before launch.
+
+## Decision: Page routes are lazy and initial payload is a blocking build contract
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: RECRUITMENT-PRODUCTION-FRONTEND-04C-04E / 4E
+- Context: The eager frontend entry produced an approximately 3.45 MiB main chunk and loaded Monaco-related code before ordinary pages needed it.
+- Decision: Load every page route through `React.lazy` under one fallback and emit a Vite manifest. Production build fails if initial static JavaScript exceeds 1 MiB raw or 350 KiB gzip, or if the initial graph contains Monaco.
+- Rejected alternatives:
+  - Introduce another router/state framework: unnecessary for module splitting.
+  - Replace Monaco solely to remove its optional-route warning: disproportionate for the approved stable-PC environment.
+  - Raise the initial budget to hide regressions: would remove the executable acceptance contract.
+- Consequences: Initial JavaScript is 281.5 KiB raw / 89.4 KiB gzip; the code-editor route retains an explicit optional Monaco payload debt.
 
 ## Decision: First-party browsers use cookie transport over existing JWT authority
 

@@ -80,3 +80,13 @@ Stage 4C implementation and all executable code gates passed. A real Excel/Libre
 ## Stop Rule Confirmation
 
 Stage 4C stops here. Stage 4D/4E work was not started.
+
+## Subsequent Approved Correction
+
+The later continuous package `RECRUITMENT-PRODUCTION-FRONTEND-04C-04E` supersedes only these product-policy details:
+
+- the shared minimum password length is now 8 rather than 15 Unicode code points;
+- the `AuthRegister` per-IP limiter was removed without a replacement limiter;
+- phone binding/recovery was removed from the first-party frontend while backend routes and persisted fields were retained for compatibility.
+
+The original session, CSRF, hash-version, Redis atomicity and CSV-export results remain unchanged.
