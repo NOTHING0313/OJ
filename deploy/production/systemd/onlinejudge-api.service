@@ -1,0 +1,27 @@
+[Unit]
+Description=OnlineJudge API
+Requires=onlinejudge-infrastructure.service
+After=onlinejudge-infrastructure.service network-online.target
+
+[Service]
+Type=simple
+User=onlinejudge-api
+Group=onlinejudge-api
+SupplementaryGroups=onlinejudge-assets
+WorkingDirectory=/opt/onlinejudge/current/api
+EnvironmentFile=/etc/onlinejudge/api.env
+ExecStart=/opt/onlinejudge/current/api/OnlineJudge.Api
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/onlinejudge/uploads /var/lib/onlinejudge/challenge-files /var/lib/onlinejudge/theme-assets /var/lib/onlinejudge/team-repositories /var/lib/onlinejudge/judge-assets /var/lib/onlinejudge/api-home
+UMask=0027
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target

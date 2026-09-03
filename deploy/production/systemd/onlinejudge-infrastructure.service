@@ -1,0 +1,17 @@
+[Unit]
+Description=OnlineJudge PostgreSQL and Redis
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/onlinejudge/current/deploy/production
+ExecStart=/usr/bin/docker compose --project-name onlinejudge --env-file /etc/onlinejudge/infrastructure.env -f compose.infrastructure.yml up -d --wait --wait-timeout 90
+ExecStop=/usr/bin/docker compose --project-name onlinejudge --env-file /etc/onlinejudge/infrastructure.env -f compose.infrastructure.yml stop
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

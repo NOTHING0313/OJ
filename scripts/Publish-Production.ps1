@@ -7,6 +7,7 @@ $apiOutput = Join-Path $outputRoot "api"
 $workerOutput = Join-Path $outputRoot "worker"
 $frontendOutput = Join-Path $outputRoot "frontend"
 $sandboxOutput = Join-Path $outputRoot "sandbox"
+$deploymentOutput = Join-Path $outputRoot "deploy\production"
 $archivePath = Join-Path $artifactRoot "onlinejudge-release.tar.gz"
 $hashPath = "$archivePath.sha256"
 
@@ -76,6 +77,7 @@ New-Item -ItemType Directory -Path $apiOutput -Force | Out-Null
 New-Item -ItemType Directory -Path $workerOutput -Force | Out-Null
 New-Item -ItemType Directory -Path $frontendOutput -Force | Out-Null
 New-Item -ItemType Directory -Path $sandboxOutput -Force | Out-Null
+New-Item -ItemType Directory -Path $deploymentOutput -Force | Out-Null
 
 Write-Host ""
 Write-Host "=== Restore EF Tool ==="
@@ -277,6 +279,21 @@ Copy-Item `
     -Force
 
 Write-Host ""
+Write-Host "=== Copy Production Deployment Assets ==="
+
+$deploymentSource = Join-Path $root "deploy\production"
+
+if (!(Test-Path $deploymentSource)) {
+    throw "Production deployment assets were not found: $deploymentSource"
+}
+
+Copy-Item `
+    (Join-Path $deploymentSource "*") `
+    $deploymentOutput `
+    -Recurse `
+    -Force
+
+Write-Host ""
 Write-Host "=== Write Release Manifest ==="
 
 $manifest = @"
@@ -328,11 +345,24 @@ if (!(Test-Path (Join-Path $sandboxOutput "*"))) {
     throw "Judge sandbox definitions were not copied."
 }
 
+if (!(Test-Path (Join-Path $deploymentOutput "compose.infrastructure.yml"))) {
+    throw "Production infrastructure Compose file was not copied."
+}
+
+if (!(Test-Path (Join-Path $deploymentOutput "nginx\onlinejudge.conf"))) {
+    throw "Production Nginx configuration was not copied."
+}
+
+if (!(Test-Path (Join-Path $deploymentOutput "systemd\onlinejudge-worker.service"))) {
+    throw "Production systemd units were not copied."
+}
+
 Write-Host "[PASS] API Artifact"
 Write-Host "[PASS] JudgeWorker Artifact"
 Write-Host "[PASS] Frontend Artifact"
 Write-Host "[PASS] EF Migration Bundle"
 Write-Host "[PASS] Sandbox Definitions"
+Write-Host "[PASS] Production Deployment Assets"
 Write-Host "[PASS] Development Configuration Removed"
 
 Write-Host ""

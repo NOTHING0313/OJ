@@ -1,0 +1,28 @@
+[Unit]
+Description=OnlineJudge Judge Worker
+Requires=onlinejudge-infrastructure.service docker.service
+After=onlinejudge-infrastructure.service docker.service network-online.target
+
+[Service]
+Type=simple
+User=onlinejudge-worker
+Group=onlinejudge-worker
+SupplementaryGroups=docker onlinejudge-assets
+WorkingDirectory=/opt/onlinejudge/current/worker
+EnvironmentFile=/etc/onlinejudge/worker.env
+ExecStartPre=/usr/bin/docker info
+ExecStart=/opt/onlinejudge/current/worker/OnlineJudge.JudgeWorker
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/onlinejudge/judge-assets /var/lib/onlinejudge/worker-home /var/lib/onlinejudge/worker-tmp
+UMask=0027
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target
