@@ -14,7 +14,7 @@ public class DevSmsSender(ILogger<DevSmsSender> logger, IConfiguration configura
         }
         else
         {
-            logger.LogWarning("No production SMS sender is configured. Verification code for scene {Scene} was not sent.", scene);
+            throw new InvalidOperationException("The development SMS sender cannot be used outside Development.");
         }
 
         return Task.CompletedTask;

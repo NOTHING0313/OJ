@@ -59,7 +59,7 @@ public class AuthRegistrationEmailCodeTests
         {
             UserName = "answerer",
             Email = "answerer@example.test",
-            Password = "password",
+            Password = "A long unique password 2026!",
             EmailCode = "000000"
         });
 
@@ -79,7 +79,7 @@ public class AuthRegistrationEmailCodeTests
         {
             UserName = "answerer",
             Email = "Answerer@Example.Test",
-            Password = "password",
+            Password = "A long unique password 2026!",
             EmailCode = "123456"
         });
 
@@ -99,7 +99,7 @@ public class AuthRegistrationEmailCodeTests
         {
             UserName = "answerer",
             Email = "answerer@example.test",
-            Password = "password",
+            Password = "A long unique password 2026!",
             EmailCode = "123456"
         });
 

@@ -20,6 +20,15 @@ builder.Services.AddControllers(options => options.Filters.Add<SecurityAuditFail
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<SecurityAuditFailureFilter>();
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = BrowserSessionConstants.CsrfHeaderName;
+    options.Cookie.Name = BrowserSessionConstants.AntiforgeryCookieName;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.Path = "/";
+});
 
 if (builder.Environment.IsDevelopment())
 {
@@ -117,6 +126,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+app.UseMiddleware<CookieAntiforgeryMiddleware>();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();

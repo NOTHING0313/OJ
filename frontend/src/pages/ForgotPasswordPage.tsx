@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { confirmEmailPasswordReset, sendEmailPasswordResetCode } from "../api/accountApi";
 import { useAuth } from "../auth/AuthContext";
+import { getPasswordLengthError } from "../auth/passwordPolicy";
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -46,8 +47,9 @@ export function ForgotPasswordPage() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      setError("新密码至少需要 6 个字符");
+    const passwordLengthError = getPasswordLengthError(newPassword);
+    if (passwordLengthError) {
+      setError(passwordLengthError);
       return;
     }
 

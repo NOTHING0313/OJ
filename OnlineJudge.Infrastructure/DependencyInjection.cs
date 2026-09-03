@@ -142,6 +142,7 @@ public static class DependencyInjection
                 ? ActivatorUtilities.CreateInstance<SmtpEmailSender>(provider)
                 : ActivatorUtilities.CreateInstance<DevEmailSender>(provider);
         });
+        services.AddSingleton<PasswordPolicy>();
         services.AddScoped<PasswordHasher>();
         services.AddScoped<JwtTokenGenerator>();
         services.AddScoped<UserSessionValidator>();

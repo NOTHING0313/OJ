@@ -1,4 +1,4 @@
-import { baseUrl, request } from "./httpClient";
+import { apiFetch, baseUrl, request } from "./httpClient";
 import type { RankHistory } from "./leaderboardsApi";
 
 export type ChallengeTaskType = 1 | 2;
@@ -453,16 +453,7 @@ export async function downloadChallengeFileSubmission(challengeId: string, fileS
 }
 
 async function downloadChallengeCsv(path: string, fallbackFileName: string) {
-  const token = localStorage.getItem("accessToken");
-  const headers = new Headers();
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers
-  });
+  const response = await apiFetch(`${baseUrl}${path}`);
 
   if (!response.ok) {
     const message = await response.text();

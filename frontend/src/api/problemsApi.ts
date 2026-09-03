@@ -1,4 +1,4 @@
-import { baseUrl, request } from "./httpClient";
+import { apiFetch, baseUrl, request } from "./httpClient";
 
 export type TestCaseVisibility = 1 | 2;
 export type JudgeMode = 1 | 2;
@@ -197,17 +197,7 @@ export async function importTestCases(problemId: string, payload: ImportTestCase
 }
 
 export async function exportTestCases(problemId: string): Promise<ExportedTestCasesFile> {
-  const token = localStorage.getItem("accessToken");
-  const headers = new Headers();
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${baseUrl}/api/problems/${problemId}/test-cases/export`, {
-    method: "GET",
-    headers
-  });
+  const response = await apiFetch(`${baseUrl}/api/problems/${problemId}/test-cases/export`);
 
   if (!response.ok) {
     throw new Error(await response.text() || `Request failed with status ${response.status}`);

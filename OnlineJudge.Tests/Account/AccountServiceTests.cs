@@ -267,15 +267,40 @@ public class AccountServiceTests
         {
             PhoneNumber = "13800138000",
             Code = "123456",
-            NewPassword = "new-password"
+            NewPassword = "A new unique password 2026!"
         });
 
         var user = await dbContext.Users.FindAsync(userId);
         Assert.True(result.IsSuccess);
         Assert.False(hasher.VerifyPassword("old-password", user!.PasswordHash));
-        Assert.True(hasher.VerifyPassword("new-password", user.PasswordHash));
+        Assert.True(hasher.VerifyPassword("A new unique password 2026!", user.PasswordHash));
         Assert.Null(user.ActiveSessionId);
         Assert.Null(user.ActiveSessionIssuedAt);
+    }
+
+    [Fact]
+    public async Task ConfirmPasswordReset_InvalidCodeDoesNotRevealWhetherPhoneExistsWhenPasswordIsWeak()
+    {
+        await using var dbContext = CreateDbContext();
+        var userId = SeedUser(dbContext, "answerer", UserRole.Answerer, "13800138000");
+        var service = CreateService(dbContext, userId, new FakeSmsVerificationService());
+
+        var existing = await service.ConfirmPasswordResetAsync(new ConfirmPasswordResetRequest
+        {
+            PhoneNumber = "13800138000",
+            Code = "000000",
+            NewPassword = "short"
+        });
+        var missing = await service.ConfirmPasswordResetAsync(new ConfirmPasswordResetRequest
+        {
+            PhoneNumber = "13900139000",
+            Code = "000000",
+            NewPassword = "short"
+        });
+
+        Assert.True(existing.IsFailure);
+        Assert.True(missing.IsFailure);
+        Assert.Equal(missing.ErrorMessage, existing.ErrorMessage);
     }
 
     [Fact]

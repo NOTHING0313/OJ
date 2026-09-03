@@ -23,7 +23,8 @@ public partial class AccountService(
     ISmsVerificationService smsVerificationService,
     IEmailVerificationService emailVerificationService,
     PasswordHasher passwordHasher,
-    ISecurityAuditWriter? auditWriter = null) : IAccountService
+    ISecurityAuditWriter? auditWriter = null,
+    PasswordPolicy? passwordPolicy = null) : IAccountService
 {
     private const string BindPhoneScene = "BindPhone";
     private const string PasswordResetScene = "PasswordReset";
@@ -34,6 +35,7 @@ public partial class AccountService(
     private const string EmailPasswordResetGenericFailure = "验证码无效或已过期。";
     private const string PasswordResetGenericSuccess = "如果该手机号存在，验证码将会发送。";
     private const string PasswordResetGenericFailure = "验证码无效或已过期。";
+    private readonly PasswordPolicy passwordPolicy = passwordPolicy ?? new PasswordPolicy();
 
     public async Task<Result<AccountUserDto>> GetMeAsync(CancellationToken cancellationToken = default)
     {
@@ -270,11 +272,6 @@ public partial class AccountService(
             return Result.Failure(PasswordResetGenericFailure);
         }
 
-        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
-        {
-            return Result.Failure("Password must be at least 6 characters.");
-        }
-
         var user = await dbContext.Users
             .FirstOrDefaultAsync(user => user.PhoneNumber == phoneNumberResult.Value && user.PhoneNumberConfirmed && !user.IsBlacklisted && !user.IsDeleted, cancellationToken);
 
@@ -287,6 +284,12 @@ public partial class AccountService(
         if (verifyResult.IsFailure)
         {
             return Result.Failure(PasswordResetGenericFailure);
+        }
+
+        var passwordError = passwordPolicy.Validate(request.NewPassword, user.UserName, user.Email);
+        if (passwordError is not null)
+        {
+            return Result.Failure(passwordError);
         }
 
         user.PasswordHash = passwordHasher.HashPassword(request.NewPassword);
@@ -339,11 +342,6 @@ public partial class AccountService(
             return Result.Failure(EmailPasswordResetGenericFailure);
         }
 
-        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
-        {
-            return Result.Failure("Password must be at least 6 characters.");
-        }
-
         var user = await dbContext.Users
             .FirstOrDefaultAsync(user => user.Email.ToLower() == emailResult.Value && !user.IsBlacklisted && !user.IsDeleted, cancellationToken);
 
@@ -356,6 +354,12 @@ public partial class AccountService(
         if (verifyResult.IsFailure)
         {
             return Result.Failure(EmailPasswordResetGenericFailure);
+        }
+
+        var passwordError = passwordPolicy.Validate(request.NewPassword, user.UserName, user.Email);
+        if (passwordError is not null)
+        {
+            return Result.Failure(passwordError);
         }
 
         user.PasswordHash = passwordHasher.HashPassword(request.NewPassword);

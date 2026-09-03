@@ -17,9 +17,11 @@ public class AuthService(
     OnlineJudgeDbContext dbContext,
     PasswordHasher passwordHasher,
     JwtTokenGenerator jwtTokenGenerator,
-    IEmailVerificationService emailVerificationService) : IAuthService
+    IEmailVerificationService emailVerificationService,
+    PasswordPolicy? passwordPolicy = null) : IAuthService
 {
     private const string RegisterEmailScene = "register";
+    private readonly PasswordPolicy passwordPolicy = passwordPolicy ?? new PasswordPolicy();
 
     public async Task<Result<AuthUserDto>> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
@@ -29,6 +31,12 @@ public class AuthService(
         if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(request.Password))
         {
             return Result<AuthUserDto>.Failure("UserName, Email and Password are required.");
+        }
+
+        var passwordError = passwordPolicy.Validate(request.Password, userName, email);
+        if (passwordError is not null)
+        {
+            return Result<AuthUserDto>.Failure(passwordError);
         }
 
         var userNameExists = await dbContext.Users
@@ -137,6 +145,10 @@ public class AuthService(
         }
 
         var now = DateTimeOffset.UtcNow;
+        if (passwordHasher.NeedsRehash(user.PasswordHash))
+        {
+            user.PasswordHash = passwordHasher.HashPassword(request.Password);
+        }
         user.ActiveSessionId = Guid.NewGuid();
         user.ActiveSessionIssuedAt = now;
         user.UpdatedAt = now;

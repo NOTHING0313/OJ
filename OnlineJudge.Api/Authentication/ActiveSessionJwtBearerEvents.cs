@@ -9,6 +9,19 @@ public sealed class ActiveSessionJwtBearerEvents(
     UserSessionValidator sessionValidator,
     ILogger<ActiveSessionJwtBearerEvents> logger) : JwtBearerEvents
 {
+    public override Task MessageReceived(MessageReceivedContext context)
+    {
+        if (!context.Request.Headers.ContainsKey("Authorization")
+            && context.Request.Cookies.TryGetValue(BrowserSessionConstants.SessionCookieName, out var token)
+            && !string.IsNullOrWhiteSpace(token))
+        {
+            context.Token = token;
+            context.HttpContext.Items[BrowserSessionConstants.CookieAuthenticationItem] = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
     public override async Task TokenValidated(TokenValidatedContext context)
     {
         var userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -68,6 +81,11 @@ public sealed class ActiveSessionJwtBearerEvents(
         context.HandleResponse();
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
 
+        if (context.HttpContext.Items.ContainsKey(BrowserSessionConstants.CookieAuthenticationItem))
+        {
+            ClearBrowserCookies(context.Response);
+        }
+
         var errorCode = context.HttpContext.Items[AuthSessionConstants.ErrorCodeItem] as string;
         await context.Response.WriteAsJsonAsync(new
         {
@@ -80,6 +98,14 @@ public sealed class ActiveSessionJwtBearerEvents(
                 _ => "未授权访问。"
             }
         }, context.HttpContext.RequestAborted);
+    }
+
+    private static void ClearBrowserCookies(HttpResponse response)
+    {
+        var options = new CookieOptions { Path = "/", Secure = true, SameSite = SameSiteMode.Lax };
+        response.Cookies.Delete(BrowserSessionConstants.SessionCookieName, options);
+        response.Cookies.Delete(BrowserSessionConstants.CsrfCookieName, options);
+        response.Cookies.Delete(BrowserSessionConstants.AntiforgeryCookieName, options);
     }
 
     private void Reject(TokenValidatedContext context, string errorCode, string? userId)

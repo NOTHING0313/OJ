@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { register, sendRegisterEmailCode } from "../api/authApi";
 import { AuthStudioLayout } from "../components/auth/AuthStudioLayout";
 import { PasswordInput } from "../components/PasswordInput";
+import { getPasswordLengthError } from "../auth/passwordPolicy";
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -63,8 +64,9 @@ export function RegisterPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setError("密码至少需要 6 个字符");
+    const passwordLengthError = getPasswordLengthError(password);
+    if (passwordLengthError) {
+      setError(passwordLengthError);
       return;
     }
 

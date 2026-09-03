@@ -1,4 +1,6 @@
 export const baseUrl = "";
+const csrfCookieName = "__Host-OnlineJudge.Csrf";
+const csrfHeaderName = "X-CSRF-TOKEN";
 
 export class ApiError extends Error {
   constructor(
@@ -40,7 +42,6 @@ export function resetAuthenticationErrorGuard() {
 }
 
 export async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const token = localStorage.getItem("accessToken");
   const headers = new Headers(options.headers);
   const { suppressAuthenticationHandler = false, ...fetchOptions } = options;
 
@@ -48,11 +49,7 @@ export async function request<T>(path: string, options: ApiRequestOptions = {}):
     headers.set("Content-Type", "application/json");
   }
 
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await apiFetch(`${baseUrl}${path}`, {
     ...fetchOptions,
     headers
   });
@@ -77,6 +74,33 @@ export async function request<T>(path: string, options: ApiRequestOptions = {}):
   }
 
   return JSON.parse(text) as T;
+}
+
+export function apiFetch(input: RequestInfo | URL, options: RequestInit = {}) {
+  const headers = new Headers(options.headers);
+  const method = (options.method ?? "GET").toUpperCase();
+  const csrfToken = readCookie(csrfCookieName);
+
+  if (!headers.has("Authorization") && isUnsafeMethod(method) && csrfToken) {
+    headers.set(csrfHeaderName, csrfToken);
+  }
+
+  return fetch(input, {
+    ...options,
+    credentials: "same-origin",
+    headers
+  });
+}
+
+function isUnsafeMethod(method: string) {
+  return !["GET", "HEAD", "OPTIONS", "TRACE"].includes(method);
+}
+
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const prefix = `${encodeURIComponent(name)}=`;
+  const item = document.cookie.split(";").map((value) => value.trim()).find((value) => value.startsWith(prefix));
+  return item ? decodeURIComponent(item.slice(prefix.length)) : null;
 }
 
 async function readApiError(response: Response): Promise<ApiError> {

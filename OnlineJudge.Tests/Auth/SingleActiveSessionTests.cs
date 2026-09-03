@@ -339,7 +339,8 @@ public class SingleActiveSessionTests
         Assert.Contains("SecurityTokenExpiredException", events, StringComparison.Ordinal);
         Assert.Contains("user.Id == userId && user.ActiveSessionId == sessionId", authService, StringComparison.Ordinal);
         Assert.DoesNotContain("AccessToken", events, StringComparison.Ordinal);
-        Assert.DoesNotContain("Authorization", events, StringComparison.Ordinal);
+        Assert.DoesNotContain("{Token}", events, StringComparison.Ordinal);
+        Assert.DoesNotContain("{Authorization}", events, StringComparison.Ordinal);
         Assert.DoesNotContain("ActiveSessionId", workers, StringComparison.Ordinal);
     }
 

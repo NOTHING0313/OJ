@@ -1,4 +1,4 @@
-import { request } from "./httpClient";
+import { apiFetch, request } from "./httpClient";
 import { normalizeUploadedImagePath, resolveSiteAssetUrl } from "../utils/uploadedImageUrl";
 import {
   isThemeDecorationSlot,
@@ -244,10 +244,7 @@ export function applyThemePreset(presetId: string | null) {
 }
 
 export async function exportThemePreset(presetId: string, name: string) {
-  const token = localStorage.getItem("accessToken");
-  const response = await fetch(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}/export`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined
-  });
+  const response = await apiFetch(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}/export`);
   if (!response.ok) throw new Error((await response.text()) || "Theme preset export failed.");
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

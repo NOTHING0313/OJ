@@ -15,6 +15,7 @@ public static class RootAccountSeeder
 
         var dbContext = scope.ServiceProvider.GetRequiredService<OnlineJudgeDbContext>();
         var passwordHasher = scope.ServiceProvider.GetRequiredService<PasswordHasher>();
+        var passwordPolicy = scope.ServiceProvider.GetRequiredService<PasswordPolicy>();
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         await dbContext.Users
@@ -40,9 +41,10 @@ public static class RootAccountSeeder
         var email = GetRequiredConfiguration(configuration, "RootAccount:Email").ToLowerInvariant();
         var password = GetRequiredConfiguration(configuration, "RootAccount:Password");
 
-        if (password.Length < 12)
+        var passwordError = passwordPolicy.Validate(password, userName, email);
+        if (passwordError is not null)
         {
-            throw new InvalidOperationException("RootAccount:Password must contain at least 12 characters.");
+            throw new InvalidOperationException($"RootAccount:Password is invalid. {passwordError}");
         }
 
         var accountConflict = await dbContext.Users

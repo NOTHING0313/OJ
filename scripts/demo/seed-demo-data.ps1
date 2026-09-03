@@ -1,8 +1,8 @@
 ﻿param(
     [string]$ApiBaseUrl = "http://localhost:5101",
     [string]$RootAccount = "UnrealStudio",
-    [string]$RootPassword = "UnrealStudio",
-    [string]$DemoPassword = "123456",
+    [string]$RootPassword = "Local-only root access phrase 2026!",
+    [string]$DemoPassword = "Local-only demo passphrase 2026!",
     [switch]$SkipUsers,
     [switch]$SkipSubmissions,
     [switch]$SkipFileUploadDemo,

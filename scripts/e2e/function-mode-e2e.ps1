@@ -1,7 +1,7 @@
 param(
     [string]$ApiBaseUrl = "http://localhost:5101",
     [string]$Account = "UnrealStudio",
-    [string]$Password = "UnrealStudio",
+    [string]$Password = "Local-only root access phrase 2026!",
     [int]$TimeoutSeconds = 60,
     [int]$PollIntervalSeconds = 1
 )

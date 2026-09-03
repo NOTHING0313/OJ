@@ -1,10 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using OnlineJudge.Application.Account.Dtos;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Sms.Services;
+using OnlineJudge.Infrastructure.Verification;
 using StackExchange.Redis;
 
 namespace OnlineJudge.Infrastructure.Sms;
@@ -12,8 +13,10 @@ namespace OnlineJudge.Infrastructure.Sms;
 public class SmsVerificationService(
     IConnectionMultiplexer redis,
     ISmsSender smsSender,
-    IConfiguration configuration) : ISmsVerificationService
+    IConfiguration configuration,
+    ILogger<SmsVerificationService>? logger = null) : ISmsVerificationService
 {
+    private const string Channel = "sms";
     private const int CodeLength = 6;
     private const int MaxDailySendCount = 10;
     private const int MaxAttemptCount = 5;
@@ -23,36 +26,40 @@ public class SmsVerificationService(
     public async Task<Result<SmsSendResultDto>> SendCodeAsync(string scene, string phoneNumber, CancellationToken cancellationToken = default)
     {
         var database = redis.GetDatabase();
-        var codeKey = GetCodeKey(scene, phoneNumber);
-        var cooldownKey = GetCooldownKey(scene, phoneNumber);
-        var dailyKey = GetDailyKey(scene, phoneNumber);
+        var code = RandomNumberGenerator.GetInt32(0, (int)Math.Pow(10, CodeLength)).ToString($"D{CodeLength}");
+        var issuanceId = Guid.NewGuid().ToString("N");
+        var issueStatus = await RedisVerificationCodeStore.TryIssueAsync(
+            database,
+            Channel,
+            scene,
+            phoneNumber,
+            issuanceId,
+            HashCode(scene, phoneNumber, code),
+            MaxDailySendCount,
+            GetDailyTtl(),
+            CodeTtl,
+            CooldownTtl);
 
-        if (await database.KeyExistsAsync(cooldownKey))
+        if (issueStatus == VerificationCodeIssueStatus.Cooldown)
         {
             return Result<SmsSendResultDto>.Failure("Please wait before requesting another verification code.");
         }
 
-        var dailyCount = await database.StringIncrementAsync(dailyKey);
-        if (dailyCount == 1)
-        {
-            await database.KeyExpireAsync(dailyKey, GetDailyTtl());
-        }
-
-        if (dailyCount > MaxDailySendCount)
+        if (issueStatus == VerificationCodeIssueStatus.DailyLimitExceeded)
         {
             return Result<SmsSendResultDto>.Failure("Daily SMS verification limit exceeded.");
         }
 
-        var code = RandomNumberGenerator.GetInt32(0, (int)Math.Pow(10, CodeLength)).ToString($"D{CodeLength}");
-        var record = new SmsCodeRecord
+        try
         {
-            CodeHash = HashCode(scene, phoneNumber, code),
-            AttemptCount = 0
-        };
-
-        await database.StringSetAsync(codeKey, JsonSerializer.Serialize(record), CodeTtl);
-        await database.StringSetAsync(cooldownKey, "1", CooldownTtl);
-        await smsSender.SendVerificationCodeAsync(phoneNumber, code, scene, cancellationToken);
+            await smsSender.SendVerificationCodeAsync(phoneNumber, code, scene, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "Failed to send SMS verification code for scene {Scene}.", scene);
+            await RedisVerificationCodeStore.CleanupIssuanceAsync(database, Channel, scene, phoneNumber, issuanceId);
+            return Result<SmsSendResultDto>.Failure("SMS verification code could not be sent.");
+        }
 
         return Result<SmsSendResultDto>.Success(new SmsSendResultDto
         {
@@ -64,50 +71,10 @@ public class SmsVerificationService(
     public async Task<Result> VerifyCodeAsync(string scene, string phoneNumber, string code, CancellationToken cancellationToken = default)
     {
         var database = redis.GetDatabase();
-        var codeKey = GetCodeKey(scene, phoneNumber);
-        var raw = await database.StringGetAsync(codeKey);
-
-        if (raw.IsNullOrEmpty)
-        {
-            return Result.Failure("Invalid or expired verification code.");
-        }
-
-        SmsCodeRecord? record;
-        try
-        {
-            record = JsonSerializer.Deserialize<SmsCodeRecord>(raw.ToString());
-        }
-        catch (JsonException)
-        {
-            await database.KeyDeleteAsync(codeKey);
-            return Result.Failure("Invalid or expired verification code.");
-        }
-
-        if (record is null || record.AttemptCount >= MaxAttemptCount)
-        {
-            await database.KeyDeleteAsync(codeKey);
-            return Result.Failure("Invalid or expired verification code.");
-        }
-
         var actualHash = HashCode(scene, phoneNumber, code);
-        if (!FixedTimeEquals(record.CodeHash, actualHash))
-        {
-            record.AttemptCount++;
-            if (record.AttemptCount >= MaxAttemptCount)
-            {
-                await database.KeyDeleteAsync(codeKey);
-            }
-            else
-            {
-                var ttl = await database.KeyTimeToLiveAsync(codeKey) ?? CodeTtl;
-                await database.StringSetAsync(codeKey, JsonSerializer.Serialize(record), ttl);
-            }
-
-            return Result.Failure("Invalid or expired verification code.");
-        }
-
-        await database.KeyDeleteAsync(codeKey);
-        return Result.Success();
+        return await RedisVerificationCodeStore.TryConsumeAsync(database, Channel, scene, phoneNumber, actualHash, MaxAttemptCount)
+            ? Result.Success()
+            : Result.Failure("Invalid or expired verification code.");
     }
 
     private string HashCode(string scene, string phoneNumber, string code)
@@ -126,39 +93,10 @@ public class SmsVerificationService(
         return string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool FixedTimeEquals(string expected, string actual)
-    {
-        var expectedBytes = Encoding.UTF8.GetBytes(expected);
-        var actualBytes = Encoding.UTF8.GetBytes(actual);
-        return expectedBytes.Length == actualBytes.Length && CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
-    }
-
-    private static string GetCodeKey(string scene, string phoneNumber)
-    {
-        return $"sms:code:{scene}:{phoneNumber}";
-    }
-
-    private static string GetCooldownKey(string scene, string phoneNumber)
-    {
-        return $"sms:cooldown:{scene}:{phoneNumber}";
-    }
-
-    private static string GetDailyKey(string scene, string phoneNumber)
-    {
-        return $"sms:daily:{scene}:{phoneNumber}:{DateTimeOffset.UtcNow:yyyyMMdd}";
-    }
-
     private static TimeSpan GetDailyTtl()
     {
         var now = DateTimeOffset.UtcNow;
         var tomorrow = new DateTimeOffset(now.UtcDateTime.Date.AddDays(1), TimeSpan.Zero);
         return tomorrow - now;
-    }
-
-    private sealed class SmsCodeRecord
-    {
-        public string CodeHash { get; set; } = string.Empty;
-
-        public int AttemptCount { get; set; }
     }
 }

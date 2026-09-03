@@ -14,7 +14,7 @@ public class DevEmailSender(ILogger<DevEmailSender> logger, IConfiguration confi
         }
         else
         {
-            logger.LogWarning("No production email sender is configured. Verification code for scene {Scene} was not sent.", scene);
+            throw new InvalidOperationException("The development email sender cannot be used outside Development.");
         }
 
         return Task.CompletedTask;

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using OnlineJudge.Application.Challenges.Dtos;
 using OnlineJudge.Application.Challenges.Requests;
 using OnlineJudge.Application.Challenges.Services;
@@ -15,6 +16,7 @@ using OnlineJudge.Infrastructure.Storage;
 using OnlineJudge.Application.SecurityAudit;
 using OnlineJudge.Application.Uploads;
 using OnlineJudge.Infrastructure.Uploads;
+using OnlineJudge.Infrastructure.Exports;
 
 namespace OnlineJudge.Infrastructure.Challenges;
 
@@ -2056,16 +2058,19 @@ public class ChallengeService(
     private static string BuildAdminUsersCsv(ChallengeAdminSummaryDto summary)
     {
         var builder = new StringBuilder();
-        AppendCsvRow(builder, ["用户ID", "用户名", "完成题数", "总分", "最后完成时间"]);
+        SpreadsheetSafeCsvWriter.AppendRow(builder, [
+            CsvCell.Trusted("用户ID"), CsvCell.Trusted("用户名"), CsvCell.Trusted("完成题数"),
+            CsvCell.Trusted("总分"), CsvCell.Trusted("最后完成时间")
+        ]);
 
         foreach (var user in summary.Users)
         {
-            AppendCsvRow(builder, [
-                user.UserId.ToString(),
-                user.UserName,
-                user.CompletedTaskCount.ToString(),
-                user.TotalScore.ToString(),
-                FormatCsvDate(user.LastCompletedAt)
+            SpreadsheetSafeCsvWriter.AppendRow(builder, [
+                CsvCell.Trusted(user.UserId.ToString()),
+                CsvCell.Text(user.UserName),
+                CsvCell.Trusted(user.CompletedTaskCount.ToString(CultureInfo.InvariantCulture)),
+                CsvCell.Trusted(user.TotalScore.ToString(CultureInfo.InvariantCulture)),
+                CsvCell.Trusted(FormatCsvDate(user.LastCompletedAt))
             ]);
         }
 
@@ -2075,52 +2080,52 @@ public class ChallengeService(
     private static string BuildAdminTasksCsv(ChallengeAdminSummaryDto summary)
     {
         var builder = new StringBuilder();
-        AppendCsvRow(builder, [
-            "用户ID",
-            "用户名",
-            "题目ID",
-            "题目名称",
-            "题目类型",
-            "难度",
-            "满分",
-            "完成状态",
-            "得分",
-            "完成时间",
-            "SubmissionId",
-            "FileSubmissionId",
-            "文件名",
-            "文件大小",
-            "评分状态",
-            "评分分数",
-            "评分评语",
-            "评分人",
-            "评分时间"
+        SpreadsheetSafeCsvWriter.AppendRow(builder, [
+            CsvCell.Trusted("用户ID"),
+            CsvCell.Trusted("用户名"),
+            CsvCell.Trusted("题目ID"),
+            CsvCell.Trusted("题目名称"),
+            CsvCell.Trusted("题目类型"),
+            CsvCell.Trusted("难度"),
+            CsvCell.Trusted("满分"),
+            CsvCell.Trusted("完成状态"),
+            CsvCell.Trusted("得分"),
+            CsvCell.Trusted("完成时间"),
+            CsvCell.Trusted("SubmissionId"),
+            CsvCell.Trusted("FileSubmissionId"),
+            CsvCell.Trusted("文件名"),
+            CsvCell.Trusted("文件大小"),
+            CsvCell.Trusted("评分状态"),
+            CsvCell.Trusted("评分分数"),
+            CsvCell.Trusted("评分评语"),
+            CsvCell.Trusted("评分人"),
+            CsvCell.Trusted("评分时间")
         ]);
 
         foreach (var user in summary.Users)
         {
             foreach (var status in user.TaskStatuses)
             {
-                AppendCsvRow(builder, [
-                    user.UserId.ToString(),
-                    user.UserName,
-                    status.TaskId.ToString(),
-                    status.TaskTitle,
-                    FormatTaskType(status.TaskType),
-                    FormatDifficulty(status.Difficulty),
-                    status.Score.ToString(),
-                    status.IsCompleted ? "已完成" : "未完成",
-                    status.CompletedScore?.ToString() ?? string.Empty,
-                    FormatCsvDate(status.CompletedAt),
-                    status.SubmissionId?.ToString() ?? string.Empty,
-                    status.FileSubmissionId?.ToString() ?? string.Empty,
-                    status.OriginalFileName ?? string.Empty,
-                    status.FileSizeBytes?.ToString() ?? string.Empty,
-                    status.IsReviewed ? "已评分" : "未评分",
-                    status.ReviewScore?.ToString() ?? string.Empty,
-                    status.ReviewComment ?? string.Empty,
-                    status.ReviewedByUserName ?? string.Empty,
-                    FormatCsvDate(status.ReviewedAt)
+                SpreadsheetSafeCsvWriter.AppendRow(builder, [
+                    CsvCell.Trusted(user.UserId.ToString()),
+                    CsvCell.Text(user.UserName),
+                    CsvCell.Trusted(status.TaskId.ToString()),
+                    CsvCell.Text(status.TaskTitle),
+                    CsvCell.Trusted(FormatTaskType(status.TaskType)),
+                    CsvCell.Trusted(FormatDifficulty(status.Difficulty)),
+                    CsvCell.Trusted(status.Score.ToString(CultureInfo.InvariantCulture)),
+                    CsvCell.Trusted(status.IsCompleted ? "已完成" : "未完成"),
+                    CsvCell.Trusted(status.CompletedScore?.ToString(CultureInfo.InvariantCulture) ?? string.Empty),
+                    CsvCell.Trusted(FormatCsvDate(status.CompletedAt)),
+                    CsvCell.Trusted(status.SubmissionId?.ToString() ?? string.Empty),
+                    CsvCell.Trusted(status.FileSubmissionId?.ToString() ?? string.Empty),
+                    CsvCell.Text(status.OriginalFileName),
+                    CsvCell.Trusted(status.FileSizeBytes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty),
+                    CsvCell.Trusted(status.IsReviewed ? "已评分" : "未评分"),
+                    CsvCell.Trusted(status.ReviewScore?.ToString(CultureInfo.InvariantCulture) ?? string.Empty),
+                    CsvCell.Text(status.ReviewComment),
+                    CsvCell.Text(status.ReviewedByUserName),
+                    CsvCell.Trusted(FormatCsvDate(status.ReviewedAt))
                 ]);
             }
         }
@@ -2138,28 +2143,9 @@ public class ChallengeService(
         return content;
     }
 
-    private static void AppendCsvRow(StringBuilder builder, IEnumerable<string?> values)
-    {
-        builder.AppendJoin(',', values.Select(EscapeCsvValue));
-        builder.AppendLine();
-    }
-
-    private static string EscapeCsvValue(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        var escaped = value.Replace("\"", "\"\"");
-        return escaped.IndexOfAny([',', '"', '\r', '\n']) >= 0
-            ? $"\"{escaped}\""
-            : escaped;
-    }
-
     private static string FormatCsvDate(DateTimeOffset? value)
     {
-        return value?.ToString("yyyy-MM-dd HH:mm:ss zzz") ?? string.Empty;
+        return value?.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
     private static string FormatTaskType(int taskType)

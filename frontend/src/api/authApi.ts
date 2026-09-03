@@ -49,6 +49,13 @@ export function login(account: string, password: string) {
   });
 }
 
+export function createSession(account: string, password: string) {
+  return request<AuthUserDto>("/api/auth/session", {
+    method: "POST",
+    body: JSON.stringify({ account, password })
+  });
+}
+
 export function logout() {
   return request<void>("/api/auth/logout", {
     method: "POST",

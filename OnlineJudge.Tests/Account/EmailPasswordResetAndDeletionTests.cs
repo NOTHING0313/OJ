@@ -55,13 +55,13 @@ public class EmailPasswordResetAndDeletionTests
         {
             Email = "answerer@example.test",
             Code = "123456",
-            NewPassword = "new-password"
+            NewPassword = "A new unique password 2026!"
         });
 
         var user = await dbContext.Users.FindAsync(userId);
         Assert.True(result.IsSuccess);
         Assert.False(hasher.VerifyPassword("old-password", user!.PasswordHash));
-        Assert.True(hasher.VerifyPassword("new-password", user.PasswordHash));
+        Assert.True(hasher.VerifyPassword("A new unique password 2026!", user.PasswordHash));
         Assert.Null(user.ActiveSessionId);
         Assert.Null(user.ActiveSessionIssuedAt);
     }
@@ -78,13 +78,38 @@ public class EmailPasswordResetAndDeletionTests
         {
             Email = "answerer@example.test",
             Code = "000000",
-            NewPassword = "new-password"
+            NewPassword = "A new unique password 2026!"
         });
 
         var user = await dbContext.Users.FindAsync(userId);
         Assert.True(result.IsFailure);
         Assert.Equal("验证码无效或已过期。", result.ErrorMessage);
         Assert.True(hasher.VerifyPassword("old-password", user!.PasswordHash));
+    }
+
+    [Fact]
+    public async Task ConfirmEmailPasswordReset_InvalidCodeDoesNotRevealWhetherEmailExistsWhenPasswordIsWeak()
+    {
+        await using var dbContext = CreateDbContext();
+        var userId = SeedUser(dbContext, "answerer", "answerer@example.test");
+        var service = CreateAccountService(dbContext, userId, new FakeEmailVerificationService());
+
+        var existing = await service.ConfirmEmailPasswordResetAsync(new ConfirmEmailPasswordResetRequest
+        {
+            Email = "answerer@example.test",
+            Code = "000000",
+            NewPassword = "short"
+        });
+        var missing = await service.ConfirmEmailPasswordResetAsync(new ConfirmEmailPasswordResetRequest
+        {
+            Email = "missing@example.test",
+            Code = "000000",
+            NewPassword = "short"
+        });
+
+        Assert.True(existing.IsFailure);
+        Assert.True(missing.IsFailure);
+        Assert.Equal(missing.ErrorMessage, existing.ErrorMessage);
     }
 
     [Fact]

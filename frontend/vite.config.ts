@@ -8,15 +8,18 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://localhost:5101",
-        changeOrigin: true
+        changeOrigin: true,
+        headers: { "X-Forwarded-Proto": "https" }
       },
       "/uploads": {
         target: "http://localhost:5101",
-        changeOrigin: true
+        changeOrigin: true,
+        headers: { "X-Forwarded-Proto": "https" }
       },
       "/theme-assets": {
         target: "http://localhost:5101",
-        changeOrigin: true
+        changeOrigin: true,
+        headers: { "X-Forwarded-Proto": "https" }
       }
     }
   }

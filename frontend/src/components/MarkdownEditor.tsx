@@ -1,6 +1,7 @@
 import { ChangeEvent, useRef, useState } from "react";
 import { uploadImage } from "../api/uploadsApi";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { useAuth } from "../auth/AuthContext";
 
 interface MarkdownEditorProps {
   label: string;
@@ -10,6 +11,7 @@ interface MarkdownEditorProps {
 }
 
 export function MarkdownEditor({ label, value, onChange, required }: MarkdownEditorProps) {
+  const { isAuthenticated } = useAuth();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -23,8 +25,7 @@ export function MarkdownEditor({ label, value, onChange, required }: MarkdownEdi
       return;
     }
 
-    const token = localStorage.getItem("accessToken");
-    if (!token) {
+    if (!isAuthenticated) {
       setMessage("请先登录后再上传图片。");
       return;
     }
