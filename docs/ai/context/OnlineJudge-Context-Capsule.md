@@ -65,6 +65,7 @@ Preserve the verified application and judge baseline while carrying the versione
 - Frontend production build: passed; initial static JavaScript is 281.5 KiB raw / 89.4 KiB gzip and excludes Monaco.
 - Production publisher: passed for commit `52731b7`; archive includes API, Worker, frontend, EF bundle, sandbox and `deploy/production` assets; SHA-256 `5f8aaaf398f29d6c9a0c71f7c9275298bca4c186198a80c0a874220d91f76424`.
 - Local 4D runtime: isolated PostgreSQL/Redis health and loopback bindings passed; Bash and Nginx syntax passed.
+- Active development PostgreSQL/Redis containers also bind only to loopback; PostgreSQL data volume was retained during recreation.
 - Judge Docker smoke: 7 / 7 passed, including C11/C++17/C# Accepted, C++17 Wrong Answer/Compile Error, combined-output termination, and read-only runtime workspace.
 - Function-mode Docker regression: 10 / 10 main E2E scenarios and 3 / 3 custom-struct language scenarios passed.
 - Sandbox security smoke: passed with 50 leak-cleanup runs; runtime host writes and oversized `/tmp` file writes are blocking assertions.

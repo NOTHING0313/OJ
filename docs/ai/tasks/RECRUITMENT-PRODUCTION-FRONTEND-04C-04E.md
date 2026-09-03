@@ -47,6 +47,7 @@ The approved continuous package is complete for local code and versioned deploym
 | Production publisher | Passed | Linux x64 API/Worker, frontend, EF bundle, sandbox and deployment assets archived from commit `52731b7` |
 | Release archive integrity | Passed | SHA-256 `5f8aaaf398f29d6c9a0c71f7c9275298bca4c186198a80c0a874220d91f76424` |
 | Isolated infrastructure runtime | Passed | Dedicated containers returned PostgreSQL `SELECT 1` and Redis `PONG`; bindings were `127.0.0.1:55432` and `127.0.0.1:56379`; dedicated containers/network/volumes removed |
+| Active development infrastructure binding | Passed | Existing PostgreSQL/Redis services were recreated without deleting the PostgreSQL volume; both probes passed and ports now bind only to `127.0.0.1` |
 | Bash script syntax | Passed | Repository scripts parsed by `bash:5.2` container |
 | Nginx syntax | Passed | TLS config passed `nginx -t` with an ephemeral verification certificate |
 | Target-host TLS/systemd/SMTP/restore/sandbox/resource gates | NotRun | No remote deployment or production authority was granted |
@@ -65,6 +66,7 @@ The approved continuous package is complete for local code and versioned deploym
 | Password/rate-limit/auth tests | Semantic correction | Match explicitly approved recruitment policy | Yes |
 | Account frontend/API wrappers | UI removal with backend compatibility | Remove phone verification from the current product | Yes |
 | `deploy/production` and publisher | Additive operations contract | Make topology, secrets, persistence, backup and restore reproducible | Yes |
+| Development Compose bindings | Network-boundary correction | Keep the actively used local PostgreSQL/Redis ports on loopback as well | Yes |
 | Frontend entry, hooks and helpers | Internal refactor | Route splitting and enabled correctness lint | Yes |
 | Vite manifest/budget check | Build gate | Prevent initial-bundle regression and Monaco leakage | Yes |
 | `output/` | Unchanged user artifact | Explicitly excluded | Yes |
