@@ -4,58 +4,59 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./AppLayout";
 import { AuthProvider } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
-import { AdminChallengeEditorPage } from "./pages/AdminChallengeEditorPage";
-import { AdminChallengeListPage } from "./pages/AdminChallengeListPage";
-import { AdminChallengeTaskEditorPage } from "./pages/AdminChallengeTaskEditorPage";
-import { AdminSubmissionsPage } from "./pages/AdminSubmissionsPage";
-import { AdminProblemEditorPage } from "./pages/AdminProblemEditorPage";
-import { AdminProblemListPage } from "./pages/AdminProblemListPage";
-import { AdminTestCaseEditorPage } from "./pages/AdminTestCaseEditorPage";
-import { AdminUserListPage } from "./pages/AdminUserListPage";
-import { AdminSecurityAuditPage } from "./pages/AdminSecurityAuditPage";
-import { AdminTeamListPage } from "./pages/AdminTeamListPage";
-import { AdminLeaderboardSeasonPage } from "./pages/AdminLeaderboardSeasonPage";
-import { AccountSettingsPage } from "./pages/AccountSettingsPage";
-import { AccountCompetitionPage } from "./pages/AccountCompetitionPage";
-import { LeaderboardSeasonHistoryPage } from "./pages/LeaderboardSeasonHistoryPage";
-import { LeaderboardSeasonHistoryDetailPage } from "./pages/LeaderboardSeasonHistoryDetailPage";
-import { ChallengeAdminSummaryPage } from "./pages/ChallengeAdminSummaryPage";
-import { ChallengeAdminTaskDetailPage } from "./pages/ChallengeAdminTaskDetailPage";
-import { ChallengeDetailPage } from "./pages/ChallengeDetailPage";
-import { ChallengeLeaderboardIndexPage } from "./pages/ChallengeLeaderboardIndexPage";
-import { ChallengeLeaderboardPage } from "./pages/ChallengeLeaderboardPage";
-import { ChallengePeerReviewPage } from "./pages/ChallengePeerReviewPage";
-import { ChallengePeerReviewAuditPage } from "./pages/ChallengePeerReviewAuditPage";
-import { ChallengeListPage } from "./pages/ChallengeListPage";
-import { ChallengeTaskAnswerPage } from "./pages/ChallengeTaskAnswerPage";
-import { ChallengeTaskDetailPage } from "./pages/ChallengeTaskDetailPage";
-import { ForbiddenPage } from "./pages/ForbiddenPage";
-import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
-import { SeasonLeaderboardPage } from "./pages/SeasonLeaderboardPage";
-import { SeasonProblemLeaderboardPage } from "./pages/SeasonProblemLeaderboardPage";
-import { LeaderboardHomePage } from "./pages/LeaderboardHomePage";
-import { LoginPage } from "./pages/LoginPage";
-import { MySubmissionsPage } from "./pages/MySubmissionsPage";
-import { MyProfilePage } from "./pages/MyProfilePage";
-import { ProblemDetailPage } from "./pages/ProblemDetailPage";
-import { ProblemListPage } from "./pages/ProblemListPage";
-import { RegisterPage } from "./pages/RegisterPage";
-import { SubmissionDetailPage } from "./pages/SubmissionDetailPage";
 import { ThemeProvider } from "./theme/ThemeContext";
-import { TeamPage } from "./pages/TeamPage";
-import { TeamProjectHistoryPage } from "./pages/TeamProjectHistoryPage";
-import { HelpCenterPage } from "./pages/HelpCenterPage";
-import { HelpDocumentManagePage } from "./pages/HelpDocumentManagePage";
-import { HelpDocumentEditorPage } from "./pages/HelpDocumentEditorPage";
 import "./styles.css";
 
+const AccountCompetitionPage = lazy(() => import("./pages/AccountCompetitionPage").then((module) => ({ default: module.AccountCompetitionPage })));
+const AccountSettingsPage = lazy(() => import("./pages/AccountSettingsPage").then((module) => ({ default: module.AccountSettingsPage })));
+const AdminChallengeEditorPage = lazy(() => import("./pages/AdminChallengeEditorPage").then((module) => ({ default: module.AdminChallengeEditorPage })));
+const AdminChallengeListPage = lazy(() => import("./pages/AdminChallengeListPage").then((module) => ({ default: module.AdminChallengeListPage })));
+const AdminChallengeTaskEditorPage = lazy(() => import("./pages/AdminChallengeTaskEditorPage").then((module) => ({ default: module.AdminChallengeTaskEditorPage })));
+const AdminLeaderboardSeasonPage = lazy(() => import("./pages/AdminLeaderboardSeasonPage").then((module) => ({ default: module.AdminLeaderboardSeasonPage })));
+const AdminProblemEditorPage = lazy(() => import("./pages/AdminProblemEditorPage").then((module) => ({ default: module.AdminProblemEditorPage })));
+const AdminProblemListPage = lazy(() => import("./pages/AdminProblemListPage").then((module) => ({ default: module.AdminProblemListPage })));
+const AdminSecurityAuditPage = lazy(() => import("./pages/AdminSecurityAuditPage").then((module) => ({ default: module.AdminSecurityAuditPage })));
 const AdminSiteSettingsPage = lazy(() => import("./pages/AdminSiteSettingsPage"));
+const AdminSubmissionsPage = lazy(() => import("./pages/AdminSubmissionsPage").then((module) => ({ default: module.AdminSubmissionsPage })));
+const AdminTeamListPage = lazy(() => import("./pages/AdminTeamListPage").then((module) => ({ default: module.AdminTeamListPage })));
+const AdminTestCaseEditorPage = lazy(() => import("./pages/AdminTestCaseEditorPage").then((module) => ({ default: module.AdminTestCaseEditorPage })));
+const AdminUserListPage = lazy(() => import("./pages/AdminUserListPage").then((module) => ({ default: module.AdminUserListPage })));
+const ChallengeAdminSummaryPage = lazy(() => import("./pages/ChallengeAdminSummaryPage").then((module) => ({ default: module.ChallengeAdminSummaryPage })));
+const ChallengeAdminTaskDetailPage = lazy(() => import("./pages/ChallengeAdminTaskDetailPage").then((module) => ({ default: module.ChallengeAdminTaskDetailPage })));
+const ChallengeDetailPage = lazy(() => import("./pages/ChallengeDetailPage").then((module) => ({ default: module.ChallengeDetailPage })));
+const ChallengeLeaderboardIndexPage = lazy(() => import("./pages/ChallengeLeaderboardIndexPage").then((module) => ({ default: module.ChallengeLeaderboardIndexPage })));
+const ChallengeLeaderboardPage = lazy(() => import("./pages/ChallengeLeaderboardPage").then((module) => ({ default: module.ChallengeLeaderboardPage })));
+const ChallengeListPage = lazy(() => import("./pages/ChallengeListPage").then((module) => ({ default: module.ChallengeListPage })));
+const ChallengePeerReviewAuditPage = lazy(() => import("./pages/ChallengePeerReviewAuditPage").then((module) => ({ default: module.ChallengePeerReviewAuditPage })));
+const ChallengePeerReviewPage = lazy(() => import("./pages/ChallengePeerReviewPage").then((module) => ({ default: module.ChallengePeerReviewPage })));
+const ChallengeTaskAnswerPage = lazy(() => import("./pages/ChallengeTaskAnswerPage").then((module) => ({ default: module.ChallengeTaskAnswerPage })));
+const ChallengeTaskDetailPage = lazy(() => import("./pages/ChallengeTaskDetailPage").then((module) => ({ default: module.ChallengeTaskDetailPage })));
+const ForbiddenPage = lazy(() => import("./pages/ForbiddenPage").then((module) => ({ default: module.ForbiddenPage })));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage").then((module) => ({ default: module.ForgotPasswordPage })));
+const HelpCenterPage = lazy(() => import("./pages/HelpCenterPage").then((module) => ({ default: module.HelpCenterPage })));
+const HelpDocumentEditorPage = lazy(() => import("./pages/HelpDocumentEditorPage").then((module) => ({ default: module.HelpDocumentEditorPage })));
+const HelpDocumentManagePage = lazy(() => import("./pages/HelpDocumentManagePage").then((module) => ({ default: module.HelpDocumentManagePage })));
+const LeaderboardHomePage = lazy(() => import("./pages/LeaderboardHomePage").then((module) => ({ default: module.LeaderboardHomePage })));
+const LeaderboardSeasonHistoryDetailPage = lazy(() => import("./pages/LeaderboardSeasonHistoryDetailPage").then((module) => ({ default: module.LeaderboardSeasonHistoryDetailPage })));
+const LeaderboardSeasonHistoryPage = lazy(() => import("./pages/LeaderboardSeasonHistoryPage").then((module) => ({ default: module.LeaderboardSeasonHistoryPage })));
+const LoginPage = lazy(() => import("./pages/LoginPage").then((module) => ({ default: module.LoginPage })));
+const MyProfilePage = lazy(() => import("./pages/MyProfilePage").then((module) => ({ default: module.MyProfilePage })));
+const MySubmissionsPage = lazy(() => import("./pages/MySubmissionsPage").then((module) => ({ default: module.MySubmissionsPage })));
+const ProblemDetailPage = lazy(() => import("./pages/ProblemDetailPage").then((module) => ({ default: module.ProblemDetailPage })));
+const ProblemListPage = lazy(() => import("./pages/ProblemListPage").then((module) => ({ default: module.ProblemListPage })));
+const RegisterPage = lazy(() => import("./pages/RegisterPage").then((module) => ({ default: module.RegisterPage })));
+const SeasonLeaderboardPage = lazy(() => import("./pages/SeasonLeaderboardPage").then((module) => ({ default: module.SeasonLeaderboardPage })));
+const SeasonProblemLeaderboardPage = lazy(() => import("./pages/SeasonProblemLeaderboardPage").then((module) => ({ default: module.SeasonProblemLeaderboardPage })));
+const SubmissionDetailPage = lazy(() => import("./pages/SubmissionDetailPage").then((module) => ({ default: module.SubmissionDetailPage })));
+const TeamPage = lazy(() => import("./pages/TeamPage").then((module) => ({ default: module.TeamPage })));
+const TeamProjectHistoryPage = lazy(() => import("./pages/TeamProjectHistoryPage").then((module) => ({ default: module.TeamProjectHistoryPage })));
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
+export function App() {
+  return (
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
+          <Suspense fallback={<div className="state-line">正在加载页面...</div>}>
           <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
@@ -266,9 +267,7 @@ createRoot(document.getElementById("root")!).render(
               path="/admin/site-settings"
               element={(
                 <ProtectedRoute allowedRoles={[3]}>
-                  <Suspense fallback={<div className="state-line">正在加载 Visual Theme Editor...</div>}>
-                    <AdminSiteSettingsPage />
-                  </Suspense>
+                  <AdminSiteSettingsPage />
                 </ProtectedRoute>
               )}
             />
@@ -282,8 +281,15 @@ createRoot(document.getElementById("root")!).render(
             />
           </Route>
           </Routes>
+          </Suspense>
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
+  );
+}
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
   </StrictMode>
 );

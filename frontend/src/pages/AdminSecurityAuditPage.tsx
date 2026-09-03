@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getSecurityAuditDetail, querySecurityAudit, type SecurityAuditLog } from "../api/securityAuditApi";
 
 const pageSize = 20;
@@ -17,12 +17,7 @@ export function AdminSecurityAuditPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const handle = window.setTimeout(() => void load(), 180);
-    return () => window.clearTimeout(handle);
-  }, [actor, action, result, target, from, to, page]);
-
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       const response = await querySecurityAudit({
@@ -37,7 +32,12 @@ export function AdminSecurityAuditPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [actor, action, result, target, from, to, page]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => void load(), 180);
+    return () => window.clearTimeout(handle);
+  }, [load]);
 
   async function showDetail(id: string) {
     try {

@@ -1,6 +1,6 @@
 import { type MouseEvent, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
-import { isRoot } from "../auth/AuthContext";
+import { isRoot } from "../auth/roles";
 import { ThemeQuickSwitch } from "./ThemeQuickSwitch";
 
 interface AppHeaderViewProps {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   querySubmissions,
@@ -7,6 +7,7 @@ import {
   type SubmissionQueryItem
 } from "../api/submissionsApi";
 import { languageLabel, statusLabel } from "../utils/labels";
+import { parseLanguage, parseStatus } from "../utils/submissionFilters";
 
 const pageSize = 20;
 
@@ -22,19 +23,7 @@ export function MySubmissionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const handle = window.setTimeout(() => {
-      void loadSubmissions();
-    }, 180);
-
-    return () => window.clearTimeout(handle);
-  }, [problemId, problemKeyword, status, language, page]);
-
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const filtersAreDefault = !problemKeyword && status === "" && language === "";
-
-  async function loadSubmissions() {
+  const loadSubmissions = useCallback(async () => {
     try {
       setIsLoading(true);
       const result = await querySubmissions({
@@ -54,7 +43,19 @@ export function MySubmissionsPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [problemId, problemKeyword, status, language, page]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void loadSubmissions();
+    }, 180);
+
+    return () => window.clearTimeout(handle);
+  }, [loadSubmissions]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const filtersAreDefault = !problemKeyword && status === "" && language === "";
 
   function resetFilters(update: () => void) {
     update();
@@ -278,14 +279,6 @@ export function StatusOptions() {
       <option value={9}>系统错误</option>
     </>
   );
-}
-
-export function parseLanguage(value: string): JudgeLanguage | "" {
-  return value ? (Number(value) as JudgeLanguage) : "";
-}
-
-export function parseStatus(value: string): JudgeStatus | "" {
-  return value ? (Number(value) as JudgeStatus) : "";
 }
 
 export function Pagination({

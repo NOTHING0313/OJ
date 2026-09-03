@@ -1,4 +1,4 @@
-import { createContext, type CSSProperties, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, type CSSProperties, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   getMyAppearance,
@@ -45,25 +45,26 @@ type EffectiveBackground = SitePageBackground & {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { currentUser, isAuthenticated } = useAuth();
+  const currentUserId = currentUser?.id;
   const [currentTheme, setCurrentTheme] = useState<ThemeName>(() => readStoredTheme());
   const [siteAppearance, setSiteAppearance] = useState<SiteAppearance>(() => createDefaultSiteAppearance());
   const [userAppearance, setUserAppearance] = useState<UserAppearance | null>(null);
 
-  async function reloadSiteAppearance() {
+  const reloadSiteAppearance = useCallback(async () => {
     try {
       const appearance = await getSiteAppearance();
       setSiteAppearance(appearance);
     } catch {
       setSiteAppearance(createDefaultSiteAppearance());
     }
-  }
+  }, []);
 
   useEffect(() => {
     void reloadSiteAppearance();
-  }, []);
+  }, [reloadSiteAppearance]);
 
-  async function reloadUserAppearance() {
-    if (!isAuthenticated || !currentUser) {
+  const reloadUserAppearance = useCallback(async () => {
+    if (!isAuthenticated || !currentUserId) {
       setUserAppearance(null);
       return;
     }
@@ -74,17 +75,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {
       setUserAppearance(null);
     }
-  }
+  }, [isAuthenticated, currentUserId]);
 
   useEffect(() => {
-    if (!isAuthenticated || !currentUser) {
-      setUserAppearance(null);
-      return;
-    }
-
     setUserAppearance(null);
     void reloadUserAppearance();
-  }, [isAuthenticated, currentUser?.id]);
+  }, [reloadUserAppearance]);
 
   useEffect(() => {
     localStorage.setItem(ThemeStorageKey, currentTheme);
@@ -160,7 +156,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     reloadSiteAppearance,
     reloadUserAppearance,
     updateUserAppearanceLocal: setUserAppearance
-  }), [currentTheme, siteAppearance, userAppearance, activePageKey, activeBackground, effectiveBackground, availableThemeAssetUrls]);
+  }), [currentTheme, siteAppearance, userAppearance, activePageKey, activeBackground, effectiveBackground, availableThemeAssetUrls, reloadSiteAppearance, reloadUserAppearance]);
 
   return (
     <ThemeContext.Provider value={value}>
@@ -335,7 +331,7 @@ export function useTheme() {
   return context;
 }
 
-export function resolvePageThemeKey(pathname: string): SitePageKey {
+function resolvePageThemeKey(pathname: string): SitePageKey {
   if (pathname === "/" || pathname.startsWith("/home")) {
     return "global";
   }

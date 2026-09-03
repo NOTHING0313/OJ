@@ -8,7 +8,8 @@ import {
   type LeaderboardSeasonPublicSummary,
   type SeasonLeaderboard
 } from "../api/leaderboardsApi";
-import { canManageContent, useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/AuthContext";
+import { canManageContent } from "../auth/roles";
 import { LeaderboardHomeView } from "../components/leaderboards/LeaderboardHomeView";
 
 export function LeaderboardHomePage() {

@@ -3,7 +3,8 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { getProblem, type ProblemDetailDto } from "../api/problemsApi";
 import { getCurrentSeasonProblemLeaderboard, type SeasonProblemLeaderboard } from "../api/leaderboardsApi";
 import { createSubmission, type JudgeLanguage } from "../api/submissionsApi";
-import { canManageContent, useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/AuthContext";
+import { canManageContent } from "../auth/roles";
 import { CodeEditor } from "../components/CodeEditor";
 import { ProblemDetailView } from "../components/problems/ProblemDetailView";
 

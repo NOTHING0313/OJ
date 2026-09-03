@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { getChallenge, getChallengePeerReview, joinChallenge, registerChallengeTeam, type ChallengeDetailDto, type ChallengePeerReviewWorkspace, type ChallengeTaskDto } from "../api/challengesApi";
 import { getMyTeam, type TeamProjectDto } from "../api/teamsApi";
-import { canManageContent, useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/AuthContext";
+import { canManageContent } from "../auth/roles";
 import { MarkdownRenderer } from "../components/MarkdownRenderer";
 
 const difficultySymbols = {

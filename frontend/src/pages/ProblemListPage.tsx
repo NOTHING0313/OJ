@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getProblems, type ProblemListItemDto } from "../api/problemsApi";
-import { canManageContent, useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/AuthContext";
+import { canManageContent } from "../auth/roles";
 import { formatDate } from "../utils/labels";
 
 export function ProblemListPage() {

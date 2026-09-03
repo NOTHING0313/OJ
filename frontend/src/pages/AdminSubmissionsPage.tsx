@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   querySubmissions,
@@ -10,10 +10,9 @@ import {
   LanguageOptions,
   Pagination,
   StatusOptions,
-  SubmissionTable,
-  parseLanguage,
-  parseStatus
+  SubmissionTable
 } from "./MySubmissionsPage";
+import { parseLanguage, parseStatus } from "../utils/submissionFilters";
 
 const pageSize = 20;
 
@@ -32,19 +31,7 @@ export function AdminSubmissionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const handle = window.setTimeout(() => {
-      void loadSubmissions();
-    }, 180);
-
-    return () => window.clearTimeout(handle);
-  }, [problemId, userKeyword, problemKeyword, status, language, from, to, page]);
-
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const filtersAreDefault = !userKeyword && !problemKeyword && status === "" && language === "" && !from && !to;
-
-  async function loadSubmissions() {
+  const loadSubmissions = useCallback(async () => {
     try {
       setIsLoading(true);
       const result = await querySubmissions({
@@ -66,7 +53,19 @@ export function AdminSubmissionsPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [problemId, userKeyword, problemKeyword, status, language, from, to, page]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void loadSubmissions();
+    }, 180);
+
+    return () => window.clearTimeout(handle);
+  }, [loadSubmissions]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const filtersAreDefault = !userKeyword && !problemKeyword && status === "" && language === "" && !from && !to;
 
   function resetFilters(update: () => void) {
     update();

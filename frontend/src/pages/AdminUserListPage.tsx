@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   blacklistUser,
@@ -34,13 +34,34 @@ export function AdminUserListPage() {
   const [operatingUserId, setOperatingUserId] = useState<string | null>(null);
   const [openMenuUserId, setOpenMenuUserId] = useState<string | null>(null);
 
+  const refreshUsers = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const data = await getUsers({
+        keyword,
+        role: roleFilter,
+        isBlacklisted: toBlacklistQuery(blacklistFilter),
+        page,
+        pageSize
+      });
+      setUsers(data.items);
+      setTotalCount(data.totalCount);
+      setOpenMenuUserId(null);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "用户列表加载失败");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [keyword, roleFilter, blacklistFilter, page]);
+
   useEffect(() => {
     const handle = window.setTimeout(() => {
       void refreshUsers();
     }, 200);
 
     return () => window.clearTimeout(handle);
-  }, [keyword, roleFilter, blacklistFilter, page]);
+  }, [refreshUsers]);
 
   useEffect(() => {
     if (!openMenuUserId) {
@@ -70,27 +91,6 @@ export function AdminUserListPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(page, totalPages);
   const filtersAreDefault = !keyword && roleFilter === "all" && blacklistFilter === "all";
-
-  async function refreshUsers() {
-    try {
-      setIsLoading(true);
-      const data = await getUsers({
-        keyword,
-        role: roleFilter,
-        isBlacklisted: toBlacklistQuery(blacklistFilter),
-        page,
-        pageSize
-      });
-      setUsers(data.items);
-      setTotalCount(data.totalCount);
-      setOpenMenuUserId(null);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "用户列表加载失败");
-    } finally {
-      setIsLoading(false);
-    }
-  }
 
   async function handlePromote(user: AdminUserDto) {
     if (!window.confirm(`确定将「${user.userName}」提升为出题人吗？`)) {

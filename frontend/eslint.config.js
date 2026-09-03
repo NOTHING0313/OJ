@@ -20,8 +20,11 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "off",
-      "react-refresh/only-export-components": "off",
+      "react-hooks/exhaustive-deps": "error",
+      "react-refresh/only-export-components": ["error", {
+        allowConstantExport: true,
+        allowExportNames: ["useAuth", "useTheme"],
+      }],
     },
   },
 );

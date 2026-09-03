@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getPublishedHelpDocument, getPublishedHelpDocuments, type HelpDocument, type HelpDocumentListItem } from "../api/helpDocumentsApi";
 import { getApiErrorMessage } from "../api/httpClient";
-import { canManageContent, useAuth } from "../auth/AuthContext";
+import { useAuth } from "../auth/AuthContext";
+import { canManageContent } from "../auth/roles";
 import { HelpCenterView } from "../components/help/HelpCenterView";
 
 export function HelpCenterPage() {
