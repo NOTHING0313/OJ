@@ -57,6 +57,11 @@ public class Problem
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>
+    /// Current immutable judge definition used for future submissions. Draft problems may not have one.
+    /// </summary>
+    public Guid? CurrentJudgeRevisionId { get; set; }
+
     public List<TestCase> TestCases { get; set; } = [];
 
     public List<Submission> Submissions { get; set; } = [];
@@ -64,6 +69,10 @@ public class Problem
     public List<ProblemCollaborator> Collaborators { get; set; } = [];
 
     public List<ProblemJudgeAsset> JudgeAssets { get; set; } = [];
+
+    public ProblemJudgeRevision? CurrentJudgeRevision { get; set; }
+
+    public List<ProblemJudgeRevision> JudgeRevisions { get; set; } = [];
 
     public List<ChallengeTask> ChallengeTasks { get; set; } = [];
 

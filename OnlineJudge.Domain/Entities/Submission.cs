@@ -8,6 +8,11 @@ public class Submission
 
     public Guid ProblemId { get; set; }
 
+    /// <summary>
+    /// Immutable judge definition captured when the submission is created. Legacy completed submissions may not have one.
+    /// </summary>
+    public Guid? ProblemJudgeRevisionId { get; set; }
+
     public Guid UserId { get; set; }
 
     public Guid? ChallengeTaskId { get; set; }
@@ -38,11 +43,15 @@ public class Submission
 
     public Problem? Problem { get; set; }
 
+    public ProblemJudgeRevision? ProblemJudgeRevision { get; set; }
+
     public User? User { get; set; }
 
     public ChallengeTask? ChallengeTask { get; set; }
 
     public ChallengeTeamParticipant? ChallengeTeamParticipant { get; set; }
+
+    public JudgeJob? JudgeJob { get; set; }
 
     public List<SubmissionCaseResult> CaseResults { get; set; } = [];
 }

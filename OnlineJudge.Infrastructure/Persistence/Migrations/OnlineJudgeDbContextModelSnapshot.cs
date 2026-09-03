@@ -619,6 +619,67 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.ToTable("HelpDocuments", (string)null);
                 });
 
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.JudgeJob", b =>
+                {
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastAttemptStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int?>("LastFailureKind")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("SubmissionId");
+
+                    b.HasIndex("Status", "AvailableAt", "CreatedAt", "SubmissionId");
+
+                    b.HasIndex("Status", "LeaseExpiresAt", "CreatedAt", "SubmissionId");
+
+                    b.ToTable("JudgeJobs", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_JudgeJobs_AttemptCount", "\"AttemptCount\" >= 0");
+
+                            t.HasCheckConstraint("CK_JudgeJobs_FailureKind", "\"LastFailureKind\" IS NULL OR \"LastFailureKind\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_JudgeJobs_LeaseState", "(\"Status\" = 1 AND \"LeaseToken\" IS NULL AND \"LeaseOwner\" IS NULL AND \"LeaseExpiresAt\" IS NULL AND \"FinishedAt\" IS NULL) OR (\"Status\" = 2 AND \"LeaseToken\" IS NOT NULL AND \"LeaseOwner\" IS NOT NULL AND length(\"LeaseOwner\") > 0 AND \"LeaseExpiresAt\" IS NOT NULL AND \"FinishedAt\" IS NULL) OR (\"Status\" IN (3, 4) AND \"LeaseToken\" IS NULL AND \"LeaseOwner\" IS NULL AND \"LeaseExpiresAt\" IS NULL AND \"FinishedAt\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_JudgeJobs_Status", "\"Status\" BETWEEN 1 AND 4");
+                        });
+                });
+
             modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeason", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1087,6 +1148,9 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CurrentJudgeRevisionId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1137,6 +1201,8 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CurrentJudgeRevisionId");
+
                     b.ToTable("Problems", (string)null);
                 });
 
@@ -1185,8 +1251,16 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<long>("FileSizeBytes")
                         .HasColumnType("bigint");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<int>("Language")
                         .HasColumnType("integer");
@@ -1228,9 +1302,117 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("ProblemId", "Language", "NormalizedFileName")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = FALSE");
 
                     b.ToTable("ProblemJudgeAssets", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AllowedLanguagesMask")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FunctionSpecJson")
+                        .HasColumnType("text");
+
+                    b.Property<int>("JudgeMode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MemoryLimitMb")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ProblemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TimeLimitMs")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProblemId", "RevisionNumber")
+                        .IsUnique();
+
+                    b.ToTable("ProblemJudgeRevisions", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionAsset", b =>
+                {
+                    b.Property<Guid>("ProblemJudgeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProblemJudgeAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ProblemJudgeRevisionId", "ProblemJudgeAssetId");
+
+                    b.HasIndex("ProblemJudgeAssetId");
+
+                    b.HasIndex("ProblemJudgeRevisionId", "Order")
+                        .IsUnique();
+
+                    b.ToTable("ProblemJudgeRevisionAssets", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionTestCase", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ArgumentsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExpectedJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExpectedOutput")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Input")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ProblemJudgeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SourceTestCaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Visibility")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceTestCaseId");
+
+                    b.HasIndex("ProblemJudgeRevisionId", "Order")
+                        .IsUnique();
+
+                    b.HasIndex("ProblemJudgeRevisionId", "SourceTestCaseId")
+                        .IsUnique();
+
+                    b.ToTable("ProblemJudgeRevisionTestCases", (string)null);
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.SecurityAuditLog", b =>
@@ -1351,6 +1533,9 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ProblemId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ProblemJudgeRevisionId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("SourceCode")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1371,6 +1556,8 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.HasIndex("ChallengeTeamParticipantId");
 
                     b.HasIndex("ProblemId");
+
+                    b.HasIndex("ProblemJudgeRevisionId");
 
                     b.HasIndex("UserId");
 
@@ -2183,6 +2370,17 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.JudgeJob", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.Submission", "Submission")
+                        .WithOne("JudgeJob")
+                        .HasForeignKey("OnlineJudge.Domain.Entities.JudgeJob", "SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Submission");
+                });
+
             modelBuilder.Entity("OnlineJudge.Domain.Entities.LeaderboardSeason", b =>
                 {
                     b.HasOne("OnlineJudge.Domain.Entities.User", "CreatedByUser")
@@ -2359,6 +2557,16 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.Problem", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeRevision", "CurrentJudgeRevision")
+                        .WithMany()
+                        .HasForeignKey("CurrentJudgeRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CurrentJudgeRevision");
+                });
+
             modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemCollaborator", b =>
                 {
                     b.HasOne("OnlineJudge.Domain.Entities.User", "GrantedByUser")
@@ -2397,6 +2605,55 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Navigation("Problem");
                 });
 
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevision", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.Problem", "Problem")
+                        .WithMany("JudgeRevisions")
+                        .HasForeignKey("ProblemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Problem");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionAsset", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeAsset", "ProblemJudgeAsset")
+                        .WithMany("JudgeRevisionAssets")
+                        .HasForeignKey("ProblemJudgeAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeRevision", "ProblemJudgeRevision")
+                        .WithMany("Assets")
+                        .HasForeignKey("ProblemJudgeRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProblemJudgeAsset");
+
+                    b.Navigation("ProblemJudgeRevision");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionTestCase", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeRevision", "ProblemJudgeRevision")
+                        .WithMany("TestCases")
+                        .HasForeignKey("ProblemJudgeRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.TestCase", "SourceTestCase")
+                        .WithMany("JudgeRevisionTestCases")
+                        .HasForeignKey("SourceTestCaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProblemJudgeRevision");
+
+                    b.Navigation("SourceTestCase");
+                });
+
             modelBuilder.Entity("OnlineJudge.Domain.Entities.SecurityAuditLog", b =>
                 {
                     b.HasOne("OnlineJudge.Domain.Entities.User", null)
@@ -2423,6 +2680,11 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeRevision", "ProblemJudgeRevision")
+                        .WithMany()
+                        .HasForeignKey("ProblemJudgeRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("OnlineJudge.Domain.Entities.User", "User")
                         .WithMany("Submissions")
                         .HasForeignKey("UserId")
@@ -2434,6 +2696,8 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Navigation("ChallengeTeamParticipant");
 
                     b.Navigation("Problem");
+
+                    b.Navigation("ProblemJudgeRevision");
 
                     b.Navigation("User");
                 });
@@ -2676,7 +2940,21 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
 
                     b.Navigation("JudgeAssets");
 
+                    b.Navigation("JudgeRevisions");
+
                     b.Navigation("Submissions");
+
+                    b.Navigation("TestCases");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeAsset", b =>
+                {
+                    b.Navigation("JudgeRevisionAssets");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevision", b =>
+                {
+                    b.Navigation("Assets");
 
                     b.Navigation("TestCases");
                 });
@@ -2684,6 +2962,8 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("OnlineJudge.Domain.Entities.Submission", b =>
                 {
                     b.Navigation("CaseResults");
+
+                    b.Navigation("JudgeJob");
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.Team", b =>
@@ -2702,6 +2982,11 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("OnlineJudge.Domain.Entities.TeamProject", b =>
                 {
                     b.Navigation("ChallengeParticipations");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.TestCase", b =>
+                {
+                    b.Navigation("JudgeRevisionTestCases");
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.User", b =>

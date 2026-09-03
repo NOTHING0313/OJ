@@ -53,11 +53,19 @@ public class ProblemEditorSourceTests
     }
 
     [Fact]
-    public void JudgeWorker_FiltersDeletedCasesAndPersistsImmutableSnapshots()
+    public void JudgeWorker_UsesBoundRevisionAndPersistsImmutableResultSnapshots()
     {
-        var source = File.ReadAllText(ResolveRepoFile("OnlineJudge.JudgeWorker", "Worker.cs"));
+        var source = File.ReadAllText(ResolveRepoFile("OnlineJudge.JudgeWorker", "JudgeJobProcessor.cs"));
+        var factorySource = File.ReadAllText(ResolveRepoFile("OnlineJudge.Infrastructure", "Judging", "SubmissionJudgeRequestFactory.cs"));
 
-        Assert.Contains("TestCases.Where(testCase => !testCase.IsDeleted)", source);
+        Assert.Contains("submission.ProblemJudgeRevision", source);
+        Assert.Contains("LoadRevisionAsync", source);
+        Assert.Contains("SubmissionJudgeRequestFactory.Create", source);
+        Assert.DoesNotContain("problem.TestCases", source);
+        Assert.DoesNotContain("compileAssetLoader.LoadAsync(submission.ProblemId", source);
+        Assert.Contains("OrderBy(testCase => testCase.Order)", factorySource);
+        Assert.Contains("TestCaseId = testCase.SourceTestCaseId", factorySource);
+        Assert.DoesNotContain("submission.Problem.TestCases", factorySource);
         Assert.Contains("ExpectedOutputSnapshot = judgedCases[caseResult.TestCaseId].ExpectedOutput", source);
         Assert.Contains("ExpectedJsonSnapshot = judgedCases[caseResult.TestCaseId].ExpectedJson", source);
         Assert.Contains("VisibilitySnapshot = judgedCases[caseResult.TestCaseId].Visibility", source);

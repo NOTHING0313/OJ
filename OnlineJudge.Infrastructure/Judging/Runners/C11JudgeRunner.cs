@@ -110,6 +110,7 @@ public partial class C11JudgeRunner(IJudgeSandbox judgeSandbox, C11FunctionJudge
             ErrorMessage = judgeResult.Status == JudgeStatus.WrongAnswer
                 ? "Function return value does not match expected value."
                 : judgeResult.ErrorMessage,
+            FailureKind = judgeResult.FailureKind,
             CaseResults = processedCases
         };
     }

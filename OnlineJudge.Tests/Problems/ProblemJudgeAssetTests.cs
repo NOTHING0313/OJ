@@ -139,7 +139,7 @@ public class ProblemJudgeAssetTests : IDisposable
     }
 
     [Fact]
-    public async Task DeleteAsset_WhenDatabaseSaveFails_RestoresStoredFile()
+    public async Task DeleteAsset_WhenDatabaseSaveFails_RetainsStoredFile()
     {
         await using var dbContext = CreateFailingDbContext();
         var ids = SeedProblem(dbContext);
@@ -156,6 +156,52 @@ public class ProblemJudgeAssetTests : IDisposable
 
         Assert.True(result.IsFailure);
         Assert.Equal("static class Geometry {}", await storage.ReadTextAsync(stored.StorageRelativePath, stored.FileSizeBytes, stored.Sha256));
+    }
+
+    [Fact]
+    public async Task PublishedAssetChanges_CreateRevisionsAndRetainSoftDeletedAssetContent()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedProblem(dbContext);
+        var problem = await dbContext.Problems.SingleAsync();
+        problem.IsPublished = true;
+        dbContext.TestCases.Add(new TestCase
+        {
+            Id = Guid.NewGuid(),
+            ProblemId = problem.Id,
+            Input = "1",
+            ExpectedOutput = "1",
+            Visibility = TestCaseVisibility.Hidden,
+            Score = 100,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await dbContext.SaveChangesAsync();
+        var storage = CreateStorage();
+        var service = new ProblemJudgeAssetService(dbContext, CurrentUser(ids.Root, UserRole.Root), storage);
+
+        var created = await service.CreateAssetAsync(ids.Problem, Request(JudgeLanguage.CSharp, "Geometry.cs", Encoding.UTF8.GetBytes("static class Geometry {}")));
+        Assert.True(created.IsSuccess);
+        var deleted = await service.DeleteAssetAsync(ids.Problem, created.Value!.Id);
+
+        Assert.True(deleted.IsSuccess);
+        var revisions = await dbContext.ProblemJudgeRevisions.AsNoTracking()
+            .Include(revision => revision.Assets)
+            .OrderBy(revision => revision.RevisionNumber)
+            .ToListAsync();
+        Assert.Equal(2, revisions.Count);
+        Assert.Single(revisions[0].Assets);
+        Assert.Empty(revisions[1].Assets);
+        var storedAsset = await dbContext.ProblemJudgeAssets.AsNoTracking().SingleAsync();
+        Assert.True(storedAsset.IsDeleted);
+        Assert.NotNull(storedAsset.DeletedAt);
+        Assert.Empty((await service.GetAssetsAsync(ids.Problem)).Value!);
+        Assert.Equal("static class Geometry {}", await storage.ReadTextAsync(storedAsset.StorageRelativePath, storedAsset.FileSizeBytes, storedAsset.Sha256));
+
+        var loader = new JudgeCompileAssetLoader(dbContext, storage);
+        Assert.Empty(await loader.LoadAsync(ids.Problem, JudgeLanguage.CSharp));
+        var historicalAssets = await loader.LoadRevisionAsync(revisions[0].Id, JudgeLanguage.CSharp);
+        Assert.Equal("static class Geometry {}", Assert.Single(historicalAssets).Content);
     }
 
     [Fact]

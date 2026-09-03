@@ -138,7 +138,11 @@ function Invoke-Api {
         return Invoke-RestMethod @parameters
     }
     catch {
-        $detail = $_.ErrorDetails.Message
+        $detail = ""
+
+        if ($null -ne $_.ErrorDetails) {
+            $detail = [string]$_.ErrorDetails.Message
+        }
 
         if ([string]::IsNullOrWhiteSpace($detail)) {
             $detail = ""
@@ -806,8 +810,9 @@ try {
             outputDescription = "Print a + b."
             timeLimitMs       = 3000
             memoryLimitMb     = 512
-            isPublished       = $true
+            isPublished       = $false
             judgeMode         = 1
+            allowedLanguagesMask = 0
             functionSpecJson  = $null
             starterCodeJson   = $null
         }
@@ -848,6 +853,25 @@ try {
             expectedJson   = $null
             visibility     = 2
             score          = 50
+        } |
+        Out-Null
+
+    Invoke-Api `
+        -Method Put `
+        -Path "/api/problems/$problemId" `
+        -Headers $headers `
+        -Body @{
+            title                = "Judge Smoke $runId"
+            description          = "Automatic judge smoke test."
+            inputDescription     = "Two integers a and b."
+            outputDescription    = "Print a + b."
+            timeLimitMs          = 3000
+            memoryLimitMb        = 512
+            isPublished          = $true
+            judgeMode            = 1
+            allowedLanguagesMask = 0
+            functionSpecJson     = $null
+            starterCodeJson      = $null
         } |
         Out-Null
 

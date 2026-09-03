@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using OnlineJudge.Application.Common.CurrentUser;
+using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Judging.Services;
 using OnlineJudge.Application.Submissions.Requests;
 using OnlineJudge.Domain.Entities;
@@ -345,6 +346,22 @@ public class ContentEmbargoTests
             UpdatedAt = Now
         };
         db.Problems.Add(problem);
+        if (published)
+        {
+            var revision = new ProblemJudgeRevision
+            {
+                Id = Guid.NewGuid(),
+                ProblemId = problem.Id,
+                RevisionNumber = 1,
+                JudgeMode = problem.JudgeMode,
+                AllowedLanguagesMask = problem.AllowedLanguagesMask,
+                TimeLimitMs = problem.TimeLimitMs,
+                MemoryLimitMb = problem.MemoryLimitMb,
+                CreatedAt = Now
+            };
+            problem.CurrentJudgeRevisionId = revision.Id;
+            db.ProblemJudgeRevisions.Add(revision);
+        }
         return problem;
     }
 
@@ -441,7 +458,9 @@ public class ContentEmbargoTests
 
     private sealed class NoopJudgeQueue : IJudgeQueue
     {
-        public Task EnqueueSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<bool> TryEnqueueSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+        public Task<JudgeQueueReadResult> TryDequeueSubmissionAsync(CancellationToken cancellationToken = default) => Task.FromResult(JudgeQueueReadResult.Empty);
     }
 
     private sealed class TestUsers

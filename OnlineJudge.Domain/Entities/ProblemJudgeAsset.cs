@@ -26,5 +26,11 @@ public class ProblemJudgeAsset
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    public bool IsDeleted { get; set; }
+
+    public DateTimeOffset? DeletedAt { get; set; }
+
     public Problem? Problem { get; set; }
+
+    public List<ProblemJudgeRevisionAsset> JudgeRevisionAssets { get; set; } = [];
 }

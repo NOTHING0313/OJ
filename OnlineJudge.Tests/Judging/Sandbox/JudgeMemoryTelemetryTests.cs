@@ -360,5 +360,7 @@ public class JudgeMemoryTelemetryTests
         }
 
         public Task<int> RemoveManagedContainersAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+
+        public Task<int> RemoveSubmissionContainersAsync(Guid submissionId, CancellationToken cancellationToken) => Task.FromResult(0);
     }
 }

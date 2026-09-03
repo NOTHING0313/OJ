@@ -13,7 +13,8 @@ public class ProblemJudgeAssetConfiguration : IEntityTypeConfiguration<ProblemJu
         builder.HasKey(asset => asset.Id);
 
         builder.HasIndex(asset => new { asset.ProblemId, asset.Language, asset.NormalizedFileName })
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("\"IsDeleted\" = FALSE");
 
         builder.HasIndex(asset => asset.StoredFileName)
             .IsUnique();
@@ -50,6 +51,12 @@ public class ProblemJudgeAssetConfiguration : IEntityTypeConfiguration<ProblemJu
 
         builder.Property(asset => asset.UpdatedAt)
             .IsRequired();
+
+        builder.Property(asset => asset.IsDeleted)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(asset => asset.DeletedAt);
 
         builder.HasOne(asset => asset.Problem)
             .WithMany(problem => problem.JudgeAssets)

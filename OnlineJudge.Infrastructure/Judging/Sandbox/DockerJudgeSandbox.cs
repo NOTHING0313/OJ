@@ -67,7 +67,8 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 profile.DockerImageName,
                 BuildCompileCommand(profile, request.CompileAssets),
                 timeout: TimeSpan.FromSeconds(30),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken,
+                submissionId: request.SubmissionId);
 
             if (compileResult.TimedOut)
             {
@@ -101,7 +102,8 @@ public class DockerJudgeSandbox : IJudgeSandbox
             return new JudgeResult
             {
                 Status = JudgeStatus.SystemError,
-                ErrorMessage = "Judge execution failed."
+                ErrorMessage = "Judge execution failed.",
+                FailureKind = JudgeFailureKind.TransientInfrastructure
             };
         }
         finally
@@ -126,7 +128,8 @@ public class DockerJudgeSandbox : IJudgeSandbox
                 profile.DockerImageName,
                 $"{profile.RunCommand} < {inputFileName}",
                 timeout: TimeSpan.FromMilliseconds(Math.Max(request.TimeLimitMs, 1)),
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken,
+                submissionId: request.SubmissionId);
 
             totalTimeUsedMs += runResult.ElapsedMs;
             var caseResult = CreateCaseResult(testCase, runResult);
@@ -168,10 +171,11 @@ public class DockerJudgeSandbox : IJudgeSandbox
         string dockerImageName,
         string command,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? submissionId = null)
     {
         var containerName = CreateContainerName();
-        var request = new DockerContainerRequest(workspaceDirectory, memoryLimitMb, dockerImageName, command);
+        var request = new DockerContainerRequest(workspaceDirectory, memoryLimitMb, dockerImageName, command, submissionId);
 
         try
         {

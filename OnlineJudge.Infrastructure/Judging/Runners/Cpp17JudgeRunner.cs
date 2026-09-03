@@ -51,7 +51,8 @@ public partial class Cpp17JudgeRunner(IJudgeSandbox judgeSandbox, IFunctionJudge
             return new JudgeResult
             {
                 Status = JudgeStatus.SystemError,
-                ErrorMessage = buildResult.ErrorMessage ?? "Function judge request is invalid."
+                ErrorMessage = buildResult.ErrorMessage ?? "Function judge request is invalid.",
+                FailureKind = JudgeFailureKind.PermanentConfiguration
             };
         }
 
@@ -109,6 +110,7 @@ public partial class Cpp17JudgeRunner(IJudgeSandbox judgeSandbox, IFunctionJudge
             ErrorMessage = judgeResult.Status == JudgeStatus.WrongAnswer
                 ? "Function return value does not match expected value."
                 : judgeResult.ErrorMessage,
+            FailureKind = judgeResult.FailureKind,
             CaseResults = processedCases
         };
     }

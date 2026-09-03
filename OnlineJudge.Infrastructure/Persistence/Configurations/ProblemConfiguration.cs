@@ -68,6 +68,11 @@ public class ProblemConfiguration : IEntityTypeConfiguration<Problem>
         builder.Property(problem => problem.UpdatedAt)
             .IsRequired();
 
+        builder.HasOne(problem => problem.CurrentJudgeRevision)
+            .WithMany()
+            .HasForeignKey(problem => problem.CurrentJudgeRevisionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasMany(problem => problem.TestCases)
             .WithOne(testCase => testCase.Problem)
             .HasForeignKey(testCase => testCase.ProblemId)

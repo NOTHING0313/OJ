@@ -2,7 +2,7 @@ param(
     [string]$ApiBase = "http://127.0.0.1:5101",
     [int]$LeakRuns = 50,
     [int]$PostgreSqlPort = 5433,
-    [int]$RedisPort = 6380
+    [int]$RedisPort = 6379
 )
 
 Set-StrictMode -Version Latest

@@ -55,7 +55,7 @@ public class ProblemJudgeAssetService(
 
         var assets = await dbContext.ProblemJudgeAssets
             .AsNoTracking()
-            .Where(asset => asset.ProblemId == problemId)
+            .Where(asset => asset.ProblemId == problemId && !asset.IsDeleted)
             .OrderBy(asset => asset.Language)
             .ThenBy(asset => asset.OriginalFileName)
             .ToListAsync(cancellationToken);
@@ -99,21 +99,6 @@ public class ProblemJudgeAssetService(
             return Result<ProblemJudgeAssetDto>.Failure("File size must be 512 KB or less.");
         }
 
-        var normalizedFileName = request.OriginalFileName.ToUpperInvariant();
-        var existingAssets = await dbContext.ProblemJudgeAssets
-            .Where(asset => asset.ProblemId == problemId && asset.Language == request.Language)
-            .ToListAsync(cancellationToken);
-
-        if (existingAssets.Count >= MaxAssetsPerLanguage)
-        {
-            return Result<ProblemJudgeAssetDto>.Failure("A problem can have at most 8 judge assets per language.");
-        }
-
-        if (existingAssets.Any(asset => asset.NormalizedFileName == normalizedFileName))
-        {
-            return Result<ProblemJudgeAssetDto>.Failure("A judge asset with the same file name already exists for this language.");
-        }
-
         byte[] content;
         try
         {
@@ -136,6 +121,33 @@ public class ProblemJudgeAssetService(
         catch (InvalidDataException ex)
         {
             return Result<ProblemJudgeAssetDto>.Failure(ex.Message);
+        }
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await ProblemJudgeRevisionPublisher.AcquireProblemLockAsync(dbContext, problemId, cancellationToken);
+
+        var problem = await dbContext.Problems
+            .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
+        if (problem is null)
+        {
+            return Result<ProblemJudgeAssetDto>.Failure("Problem not found.");
+        }
+
+        var normalizedFileName = request.OriginalFileName.ToUpperInvariant();
+        var existingAssets = await dbContext.ProblemJudgeAssets
+            .Where(asset => asset.ProblemId == problemId && asset.Language == request.Language && !asset.IsDeleted)
+            .ToListAsync(cancellationToken);
+
+        if (existingAssets.Count >= MaxAssetsPerLanguage)
+        {
+            return Result<ProblemJudgeAssetDto>.Failure("A problem can have at most 8 judge assets per language.");
+        }
+
+        if (existingAssets.Any(asset => asset.NormalizedFileName == normalizedFileName))
+        {
+            return Result<ProblemJudgeAssetDto>.Failure("A judge asset with the same file name already exists for this language.");
         }
 
         var extension = Path.GetExtension(request.OriginalFileName).ToLowerInvariant();
@@ -168,15 +180,35 @@ public class ProblemJudgeAssetService(
         dbContext.ProblemJudgeAssets.Add(asset);
         try
         {
-            await dbContext.SaveChangesAsync(cancellationToken);
+            if (problem.IsPublished)
+            {
+                var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+                if (revisionResult.IsFailure)
+                {
+                    if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                    dbContext.ChangeTracker.Clear();
+                    await storage.DeleteIfExistsAsync(storedFile.StorageRelativePath, CancellationToken.None);
+                    return Result<ProblemJudgeAssetDto>.Failure(revisionResult.ErrorMessage!);
+                }
+            }
+            else
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
+            if (transaction is not null) await transaction.RollbackAsync(CancellationToken.None);
+            dbContext.ChangeTracker.Clear();
             await storage.DeleteIfExistsAsync(storedFile.StorageRelativePath, CancellationToken.None);
             throw;
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
+            if (transaction is not null) await transaction.RollbackAsync(CancellationToken.None);
+            dbContext.ChangeTracker.Clear();
             await storage.DeleteIfExistsAsync(storedFile.StorageRelativePath, CancellationToken.None);
             return Result<ProblemJudgeAssetDto>.Failure("Judge asset metadata could not be saved.");
         }
@@ -192,44 +224,52 @@ public class ProblemJudgeAssetService(
             return Result.Failure(access.ErrorMessage!);
         }
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await ProblemJudgeRevisionPublisher.AcquireProblemLockAsync(dbContext, problemId, cancellationToken);
+
+        var problem = await dbContext.Problems
+            .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
+        if (problem is null)
+        {
+            return Result.Failure("Problem not found.");
+        }
+
         var asset = await dbContext.ProblemJudgeAssets
-            .FirstOrDefaultAsync(asset => asset.Id == assetId && asset.ProblemId == problemId, cancellationToken);
+            .FirstOrDefaultAsync(asset => asset.Id == assetId && asset.ProblemId == problemId && !asset.IsDeleted, cancellationToken);
         if (asset is null)
         {
             return Result.Failure("Judge asset not found.");
         }
 
-        byte[]? backup;
+        var now = DateTimeOffset.UtcNow;
+        asset.IsDeleted = true;
+        asset.DeletedAt = now;
+        asset.UpdatedAt = now;
         try
         {
-            backup = await storage.DeleteWithBackupAsync(asset.StorageRelativePath, cancellationToken);
+            if (problem.IsPublished)
+            {
+                var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+                if (revisionResult.IsFailure)
+                {
+                    if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                    dbContext.ChangeTracker.Clear();
+                    return Result.Failure(revisionResult.ErrorMessage!);
+                }
+            }
+            else
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
-            return Result.Failure("Judge asset file could not be deleted.");
-        }
-
-        dbContext.ProblemJudgeAssets.Remove(asset);
-        try
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (backup is not null)
-            {
-                await storage.RestoreAsync(asset.StorageRelativePath, backup, CancellationToken.None);
-            }
-
-            throw;
-        }
-        catch (Exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            if (backup is not null)
-            {
-                await storage.RestoreAsync(asset.StorageRelativePath, backup, CancellationToken.None);
-            }
-
+            if (transaction is not null) await transaction.RollbackAsync(CancellationToken.None);
+            dbContext.ChangeTracker.Clear();
             return Result.Failure("Judge asset metadata could not be deleted.");
         }
 

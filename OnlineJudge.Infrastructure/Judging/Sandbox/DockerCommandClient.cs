@@ -13,12 +13,15 @@ internal interface IDockerCommandClient
     Task RemoveAsync(string containerName, CancellationToken cancellationToken);
 
     Task<int> RemoveManagedContainersAsync(CancellationToken cancellationToken);
+
+    Task<int> RemoveSubmissionContainersAsync(Guid submissionId, CancellationToken cancellationToken);
 }
 
 internal sealed class DockerCommandClient : IDockerCommandClient
 {
     internal const string ManagedLabel = "onlinejudge.managed=true";
     internal const string JudgeKindLabel = "onlinejudge.kind=judge";
+    internal const string SubmissionLabel = "onlinejudge.submission";
     private readonly JudgeSandboxOptions options;
 
     public DockerCommandClient()
@@ -159,11 +162,45 @@ internal sealed class DockerCommandClient : IDockerCommandClient
     public async Task<int> RemoveManagedContainersAsync(CancellationToken cancellationToken)
     {
         var list = await RunCliAsync(
-            ["ps", "-aq", "--filter", $"label={ManagedLabel}", "--filter", $"label={JudgeKindLabel}"],
+            [
+                "ps", "-aq",
+                "--filter", $"label={ManagedLabel}",
+                "--filter", $"label={JudgeKindLabel}",
+                "--filter", "status=exited",
+                "--filter", "status=dead"
+            ],
             cancellationToken);
         if (list.ExitCode != 0)
         {
             throw new InvalidOperationException("Managed judge container discovery failed.");
+        }
+
+        var containerIds = list.StandardOutput
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(IsSafeContainerId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        foreach (var containerId in containerIds)
+        {
+            await RemoveAsync(containerId, cancellationToken);
+        }
+
+        return containerIds.Count;
+    }
+
+    public async Task<int> RemoveSubmissionContainersAsync(Guid submissionId, CancellationToken cancellationToken)
+    {
+        var list = await RunCliAsync(
+            [
+                "ps", "-aq",
+                "--filter", $"label={ManagedLabel}",
+                "--filter", $"label={JudgeKindLabel}",
+                "--filter", $"label={SubmissionLabel}={submissionId:N}"
+            ],
+            cancellationToken);
+        if (list.ExitCode != 0)
+        {
+            throw new InvalidOperationException("Submission judge container discovery failed.");
         }
 
         var containerIds = list.StandardOutput
@@ -185,6 +222,9 @@ internal sealed class DockerCommandClient : IDockerCommandClient
     internal static IReadOnlyList<string> BuildCreateArguments(string containerName, DockerContainerRequest request, JudgeSandboxOptions options)
     {
         var memoryLimitMb = Math.Max(request.MemoryLimitMb, 16);
+        IReadOnlyList<string> submissionLabel = request.SubmissionId.HasValue
+            ? ["--label", $"{SubmissionLabel}={request.SubmissionId.Value:N}"]
+            : [];
         return
         [
             "create",
@@ -211,6 +251,7 @@ internal sealed class DockerCommandClient : IDockerCommandClient
             ManagedLabel,
             "--label",
             JudgeKindLabel,
+            ..submissionLabel,
             "--env",
             "HOME=/tmp",
             "--env",
@@ -508,7 +549,8 @@ internal sealed record DockerContainerRequest(
     string WorkspaceDirectory,
     int MemoryLimitMb,
     string DockerImageName,
-    string Command);
+    string Command,
+    Guid? SubmissionId = null);
 
 internal sealed record DockerCommandResult(
     int? ExitCode,

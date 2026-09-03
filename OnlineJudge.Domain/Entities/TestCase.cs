@@ -41,4 +41,6 @@ public class TestCase
     public DateTimeOffset? DeletedAt { get; set; }
 
     public Problem? Problem { get; set; }
+
+    public List<ProblemJudgeRevisionTestCase> JudgeRevisionTestCases { get; set; } = [];
 }

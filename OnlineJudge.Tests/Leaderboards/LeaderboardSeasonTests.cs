@@ -499,7 +499,7 @@ public class LeaderboardSeasonTests
     [Fact]
     public void Worker_UsesUnifiedSeasonScoreServiceAfterJudgeResult()
     {
-        var source = File.ReadAllText(Path.Combine(ProjectRoot(), "OnlineJudge.JudgeWorker", "Worker.cs"));
+        var source = File.ReadAllText(Path.Combine(ProjectRoot(), "OnlineJudge.JudgeWorker", "JudgeJobProcessor.cs"));
         Assert.Contains("ISeasonScoreService", source, StringComparison.Ordinal);
         Assert.Contains("ApplySubmissionResultAsync", source, StringComparison.Ordinal);
         Assert.Equal(1, Count(source, "ApplySubmissionResultAsync"));

@@ -16,7 +16,6 @@ namespace OnlineJudge.Infrastructure.Problems;
 
 public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy, ISecurityAuditWriter? auditWriter = null) : IProblemService
 {
-    private const int AllAllowedLanguagesMask = 0b111;
     private const string ProblemReferencedByChallengeTaskMessage = "该题目已被挑战任务引用，请先移除相关挑战任务后再删除。";
 
     public ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser)
@@ -89,10 +88,15 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<ProblemDetailDto>.Failure("Forbidden.");
         }
 
-        var validation = ValidateProblemRequest(request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
+        var validation = ProblemJudgeDefinitionValidator.ValidateProblem(request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
         if (validation.IsFailure)
         {
             return Result<ProblemDetailDto>.Failure(validation.ErrorMessage!);
+        }
+
+        if (request.IsPublished)
+        {
+            return Result<ProblemDetailDto>.Failure(ProblemJudgeRevisionPublisher.NoActiveTestCasesMessage);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -105,7 +109,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             OutputDescription = request.OutputDescription,
             TimeLimitMs = request.TimeLimitMs,
             MemoryLimitMb = request.MemoryLimitMb,
-            IsPublished = request.IsPublished,
+            IsPublished = false,
             JudgeMode = request.JudgeMode,
             AllowedLanguagesMask = request.AllowedLanguagesMask,
             FunctionSpecJson = request.JudgeMode == JudgeMode.Function ? request.FunctionSpecJson : null,
@@ -130,6 +134,11 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<ProblemDetailDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
         }
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await ProblemJudgeRevisionPublisher.AcquireProblemLockAsync(dbContext, id, cancellationToken);
+
         var problem = await dbContext.Problems
             .Include(problem => problem.TestCases.Where(testCase => !testCase.IsDeleted))
             .FirstOrDefaultAsync(problem => problem.Id == id && !problem.IsDeleted, cancellationToken);
@@ -144,11 +153,19 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<ProblemDetailDto>.Failure("Forbidden.");
         }
 
-        var validation = ValidateProblemRequest(request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
+        var validation = ProblemJudgeDefinitionValidator.ValidateProblem(request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
         if (validation.IsFailure)
         {
             return Result<ProblemDetailDto>.Failure(validation.ErrorMessage!);
         }
+
+        var judgeDefinitionChanged = problem.JudgeMode != request.JudgeMode
+            || problem.AllowedLanguagesMask != request.AllowedLanguagesMask
+            || !string.Equals(problem.FunctionSpecJson, request.JudgeMode == JudgeMode.Function ? request.FunctionSpecJson : null, StringComparison.Ordinal)
+            || problem.TimeLimitMs != request.TimeLimitMs
+            || problem.MemoryLimitMb != request.MemoryLimitMb;
+        var requiresRevision = request.IsPublished
+            && (!problem.IsPublished || problem.CurrentJudgeRevisionId is null || judgeDefinitionChanged);
 
         problem.Title = request.Title;
         problem.Description = request.Description;
@@ -164,7 +181,22 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         problem.UpdatedAt = DateTimeOffset.UtcNow;
 
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemUpdated, "Problem", problem.Id.ToString()));
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (requiresRevision)
+        {
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            if (revisionResult.IsFailure)
+            {
+                if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return Result<ProblemDetailDto>.Failure(revisionResult.ErrorMessage!);
+            }
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         return Result<ProblemDetailDto>.Success(ToDetailDto(problem, includeHiddenTestCases: true));
     }
@@ -218,8 +250,12 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<TestCaseDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
         }
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await ProblemJudgeRevisionPublisher.AcquireProblemLockAsync(dbContext, problemId, cancellationToken);
+
         var problem = await dbContext.Problems
-            .AsNoTracking()
             .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
 
         if (problem is null)
@@ -232,7 +268,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<TestCaseDto>.Failure("Forbidden.");
         }
 
-        var validation = ValidateTestCaseValues(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score);
+        var validation = ProblemJudgeDefinitionValidator.ValidateTestCase(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score);
         if (validation.IsFailure)
         {
             return Result<TestCaseDto>.Failure(validation.ErrorMessage!);
@@ -257,7 +293,22 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
 
         dbContext.TestCases.Add(testCase);
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "1" }));
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (problem.IsPublished)
+        {
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            if (revisionResult.IsFailure)
+            {
+                if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return Result<TestCaseDto>.Failure(revisionResult.ErrorMessage!);
+            }
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         return Result<TestCaseDto>.Success(ToTestCaseDto(testCase));
     }
@@ -270,8 +321,12 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<TestCaseDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
         }
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await ProblemJudgeRevisionPublisher.AcquireProblemLockAsync(dbContext, problemId, cancellationToken);
+
         var problem = await dbContext.Problems
-            .AsNoTracking()
             .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
 
         if (problem is null)
@@ -292,7 +347,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<TestCaseDto>.Failure("Test case not found.");
         }
 
-        var validation = ValidateTestCaseValues(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score);
+        var validation = ProblemJudgeDefinitionValidator.ValidateTestCase(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score);
         if (validation.IsFailure)
         {
             return Result<TestCaseDto>.Failure(validation.ErrorMessage!);
@@ -307,7 +362,22 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         testCase.UpdatedAt = DateTimeOffset.UtcNow;
 
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "0" }));
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (problem.IsPublished)
+        {
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            if (revisionResult.IsFailure)
+            {
+                if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return Result<TestCaseDto>.Failure(revisionResult.ErrorMessage!);
+            }
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return Result<TestCaseDto>.Success(ToTestCaseDto(testCase));
     }
 
@@ -319,8 +389,12 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result.Failure(userResult.ErrorMessage ?? "Unauthorized.");
         }
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await ProblemJudgeRevisionPublisher.AcquireProblemLockAsync(dbContext, problemId, cancellationToken);
+
         var problem = await dbContext.Problems
-            .AsNoTracking()
             .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
 
         if (problem is null)
@@ -341,12 +415,38 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result.Failure("Test case not found.");
         }
 
+        if (problem.IsPublished)
+        {
+            var activeTestCaseCount = await dbContext.TestCases.CountAsync(
+                item => item.ProblemId == problemId && !item.IsDeleted,
+                cancellationToken);
+            if (activeTestCaseCount <= 1)
+            {
+                return Result.Failure(ProblemJudgeRevisionPublisher.NoActiveTestCasesMessage);
+            }
+        }
+
         var now = DateTimeOffset.UtcNow;
         testCase.IsDeleted = true;
         testCase.DeletedAt = now;
         testCase.UpdatedAt = now;
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "-1" }));
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (problem.IsPublished)
+        {
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            if (revisionResult.IsFailure)
+            {
+                if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return Result.Failure(revisionResult.ErrorMessage!);
+            }
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return Result.Success();
     }
 
@@ -358,8 +458,12 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<ImportTestCasesResultDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
         }
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await ProblemJudgeRevisionPublisher.AcquireProblemLockAsync(dbContext, problemId, cancellationToken);
+
         var problem = await dbContext.Problems
-            .AsNoTracking()
             .FirstOrDefaultAsync(problem => problem.Id == problemId && !problem.IsDeleted, cancellationToken);
 
         if (problem is null)
@@ -448,11 +552,24 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             });
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         dbContext.TestCases.AddRange(testCases);
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = testCases.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) }));
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        if (problem.IsPublished)
+        {
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            if (revisionResult.IsFailure)
+            {
+                if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return Result<ImportTestCasesResultDto>.Failure(revisionResult.ErrorMessage!);
+            }
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         return Result<ImportTestCasesResultDto>.Success(new ImportTestCasesResultDto
         {
@@ -769,117 +886,6 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
     private static bool CanManageCollaborators(User user, Problem problem)
     {
         return user.Role == UserRole.Root || problem.CreatedByUserId == user.Id;
-    }
-
-    private static Result ValidateProblemRequest(JudgeMode judgeMode, int allowedLanguagesMask, string? functionSpecJson, string? starterCodeJson)
-    {
-        if (!Enum.IsDefined(judgeMode))
-        {
-            return Result.Failure("Unsupported judge mode.");
-        }
-
-        if (allowedLanguagesMask < 0 || (allowedLanguagesMask & ~AllAllowedLanguagesMask) != 0)
-        {
-            return Result.Failure("Unsupported allowed languages mask.");
-        }
-
-        if (judgeMode == JudgeMode.StandardInputOutput)
-        {
-            return Result.Success();
-        }
-
-        var specResult = FunctionJudgeSpecParser.Parse(functionSpecJson);
-        if (specResult.IsFailure)
-        {
-            return Result.Failure(specResult.ErrorMessage!);
-        }
-
-        var languageValidation = ValidateFunctionAllowedLanguages(allowedLanguagesMask, functionSpecJson);
-        if (languageValidation.IsFailure)
-        {
-            return languageValidation;
-        }
-
-        return FunctionJudgeSpecParser.ValidateStarterCode(starterCodeJson);
-    }
-
-    private static Result ValidateFunctionAllowedLanguages(int allowedLanguagesMask, string? functionSpecJson)
-    {
-        if (allowedLanguagesMask == 0 || string.IsNullOrWhiteSpace(functionSpecJson))
-        {
-            return Result.Success();
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(functionSpecJson);
-            if (!document.RootElement.TryGetProperty("supportedLanguages", out var supportedLanguages)
-                || supportedLanguages.ValueKind != JsonValueKind.Array)
-            {
-                return Result.Success();
-            }
-
-            var supportedMask = 0;
-            foreach (var item in supportedLanguages.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.String)
-                {
-                    continue;
-                }
-
-                supportedMask |= item.GetString()?.ToLowerInvariant() switch
-                {
-                    "cpp17" => 0b001,
-                    "c11" => 0b010,
-                    "csharp" => 0b100,
-                    _ => 0
-                };
-            }
-
-            return (allowedLanguagesMask & ~supportedMask) == 0
-                ? Result.Success()
-                : Result.Failure("Allowed languages include a language not supported by the function spec.");
-        }
-        catch (JsonException)
-        {
-            return Result.Success();
-        }
-    }
-
-    private static Result ValidateTestCaseValues(
-        Problem problem,
-        string input,
-        string expectedOutput,
-        string? argumentsJson,
-        string? expectedJson,
-        TestCaseVisibility visibility,
-        int score)
-    {
-        if (score < 0) return Result.Failure("Score cannot be negative.");
-        if (!Enum.IsDefined(visibility)) return Result.Failure("Unsupported test case visibility.");
-
-        if (problem.JudgeMode == JudgeMode.StandardInputOutput)
-        {
-            if (!string.IsNullOrWhiteSpace(argumentsJson) || !string.IsNullOrWhiteSpace(expectedJson))
-            {
-                return Result.Failure("Standard input/output test cases cannot use function JSON fields.");
-            }
-
-            return Result.Success();
-        }
-
-        if (!string.IsNullOrWhiteSpace(input) || !string.IsNullOrWhiteSpace(expectedOutput))
-        {
-            return Result.Failure("Function test cases cannot use standard input/output fields.");
-        }
-
-        var specResult = FunctionJudgeSpecParser.Parse(problem.FunctionSpecJson);
-        if (specResult.IsFailure || specResult.Value is null)
-        {
-            return Result.Failure(specResult.ErrorMessage ?? "Invalid function spec.");
-        }
-
-        return FunctionJudgeSpecParser.ValidateTestCase(specResult.Value, argumentsJson, expectedJson);
     }
 
     private static ProblemDetailDto ToDetailDto(Problem problem, bool includeHiddenTestCases)

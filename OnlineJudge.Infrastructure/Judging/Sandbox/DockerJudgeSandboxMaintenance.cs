@@ -6,4 +6,7 @@ internal sealed class DockerJudgeSandboxMaintenance(IDockerCommandClient dockerC
 {
     public Task<int> ReconcileStaleContainersAsync(CancellationToken cancellationToken = default) =>
         dockerCommandClient.RemoveManagedContainersAsync(cancellationToken);
+
+    public Task<int> ReconcileSubmissionContainersAsync(Guid submissionId, CancellationToken cancellationToken = default) =>
+        dockerCommandClient.RemoveSubmissionContainersAsync(submissionId, cancellationToken);
 }

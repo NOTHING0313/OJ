@@ -37,7 +37,7 @@ public class TeamChallengeTests
         var root = FindRepositoryRoot();
         var store = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Challenges", "ChallengeBestScoreStore.cs"));
         var season = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Leaderboards", "SeasonScoreService.cs"));
-        var worker = File.ReadAllText(Path.Combine(root, "OnlineJudge.JudgeWorker", "Worker.cs"));
+        var worker = File.ReadAllText(Path.Combine(root, "OnlineJudge.JudgeWorker", "JudgeJobProcessor.cs"));
 
         Assert.Contains("ON CONFLICT", store, StringComparison.Ordinal);
         Assert.Contains("GREATEST", store, StringComparison.Ordinal);
@@ -141,7 +141,7 @@ public class TeamChallengeTests
         var root = FindRepositoryRoot();
         var challengeService = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Challenges", "ChallengeService.cs"));
         var submissionService = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Submissions", "SubmissionService.cs"));
-        var worker = File.ReadAllText(Path.Combine(root, "OnlineJudge.JudgeWorker", "Worker.cs"));
+        var worker = File.ReadAllText(Path.Combine(root, "OnlineJudge.JudgeWorker", "JudgeJobProcessor.cs"));
         var scoreStore = File.ReadAllText(Path.Combine(root, "OnlineJudge.Infrastructure", "Challenges", "ChallengeBestScoreStore.cs"));
 
         Assert.Contains("member.IsActive", challengeService);

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using OnlineJudge.Application.Common.CurrentUser;
+using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Judging.Services;
 using OnlineJudge.Application.Problems.Requests;
 using OnlineJudge.Domain.Entities;
@@ -281,6 +282,7 @@ public class TestCaseManagementTests
         await using var dbContext = CreateDbContext();
         var ids = SeedUsersAndProblem(dbContext, JudgeMode.StandardInputOutput);
         var testCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Hidden, 20, "1 2", "3");
+        var remainingTestCase = AddTestCase(dbContext, ids.Problem, TestCaseVisibility.Hidden, 5, "4", "4");
         var service = CreateProblemService(dbContext, ids.Owner, UserRole.ProblemSetter);
 
         var updated = await service.UpdateTestCaseAsync(ids.Problem, testCase.Id, new UpdateTestCaseRequest
@@ -294,22 +296,22 @@ public class TestCaseManagementTests
         Assert.True(updated.IsSuccess);
         Assert.Equal("2 3", updated.Value!.Input);
         Assert.Equal(30, updated.Value.Score);
-        Assert.True(updated.Value.CreatedAt < (await dbContext.TestCases.SingleAsync()).UpdatedAt);
+        Assert.True(updated.Value.CreatedAt < (await dbContext.TestCases.SingleAsync(item => item.Id == testCase.Id)).UpdatedAt);
 
         var deleted = await service.DeleteTestCaseAsync(ids.Problem, testCase.Id);
         var repeated = await service.DeleteTestCaseAsync(ids.Problem, testCase.Id);
         var detail = await service.GetProblemAsync(ids.Problem);
         var export = await service.ExportTestCasesAsync(ids.Problem);
-        var stored = await dbContext.TestCases.SingleAsync();
+        var stored = await dbContext.TestCases.SingleAsync(item => item.Id == testCase.Id);
 
         Assert.True(deleted.IsSuccess);
         Assert.True(repeated.IsFailure);
         Assert.Equal("Test case not found.", repeated.ErrorMessage);
         Assert.True(stored.IsDeleted);
         Assert.NotNull(stored.DeletedAt);
-        Assert.Empty(detail.Value!.TestCases);
-        Assert.Equal(0, detail.Value.TotalScore);
-        Assert.Empty(export.Value!);
+        Assert.Equal(remainingTestCase.Id, Assert.Single(detail.Value!.TestCases).Id);
+        Assert.Equal(5, detail.Value.TotalScore);
+        Assert.Single(export.Value!);
     }
 
     [Fact]
@@ -765,10 +767,13 @@ public class TestCaseManagementTests
 
     private sealed class NoopJudgeQueue : IJudgeQueue
     {
-        public Task EnqueueSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default)
+        public Task<bool> TryEnqueueSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default)
         {
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
+
+        public Task<JudgeQueueReadResult> TryDequeueSubmissionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(JudgeQueueReadResult.Empty);
     }
 
     private sealed class TestIds

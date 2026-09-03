@@ -24,6 +24,7 @@
     <ProjectReference Include="..\OnlineJudge.Domain\OnlineJudge.Domain.csproj" />
     <ProjectReference Include="..\OnlineJudge.Application\OnlineJudge.Application.csproj" />
     <ProjectReference Include="..\OnlineJudge.Infrastructure\OnlineJudge.Infrastructure.csproj" />
+    <ProjectReference Include="..\OnlineJudge.JudgeWorker\OnlineJudge.JudgeWorker.csproj" />
   </ItemGroup>
 
 </Project>

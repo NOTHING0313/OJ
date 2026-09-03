@@ -61,6 +61,8 @@ public static class DependencyInjection
         services.AddSingleton<ISecureArchiveExtractor, SecureArchiveExtractor>();
         var judgeSandboxOptions = JudgeSandboxOptions.FromConfiguration(configuration);
         services.AddSingleton(judgeSandboxOptions);
+        var judgeJobOptions = JudgeJobOptions.FromConfiguration(configuration);
+        services.AddSingleton(judgeJobOptions);
         services.AddSingleton<IDockerCommandClient>(_ => new DockerCommandClient(judgeSandboxOptions));
         services.AddSingleton<IJudgeSandboxMaintenance, DockerJudgeSandboxMaintenance>();
         services.AddScoped<SecurityAuditRequestContext>();
@@ -95,7 +97,12 @@ public static class DependencyInjection
         services.AddSingleton<TeamGitSyncLockProvider>();
 
         var redisConnectionString = configuration["Redis:ConnectionString"] ?? "localhost:6379";
-        services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+        services.AddSingleton<IConnectionMultiplexer>(_ =>
+        {
+            var redisOptions = ConfigurationOptions.Parse(redisConnectionString);
+            redisOptions.AbortOnConnectFail = false;
+            return ConnectionMultiplexer.Connect(redisOptions);
+        });
         services.AddSingleton<ILoginAbuseStore, RedisLoginAbuseStore>();
         services.AddScoped<ILoginAbuseProtection, LoginAbuseProtection>();
 
@@ -138,7 +145,8 @@ public static class DependencyInjection
         services.AddScoped<PasswordHasher>();
         services.AddScoped<JwtTokenGenerator>();
         services.AddScoped<UserSessionValidator>();
-        services.AddScoped<IJudgeQueue, RedisJudgeQueue>();
+        services.AddSingleton<IJudgeQueue, RedisJudgeQueue>();
+        services.AddScoped<IJudgeJobStore, JudgeJobStore>();
         services.AddSingleton<IProblemJudgeAssetStorage, ProblemJudgeAssetStorage>();
         services.AddScoped<IJudgeCompileAssetLoader, JudgeCompileAssetLoader>();
         services.AddScoped<IJudgeSandbox>(provider => new DockerJudgeSandbox(

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using OnlineJudge.Application.Common.CurrentUser;
+using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Judging.Services;
 using OnlineJudge.Application.Problems.Requests;
 using OnlineJudge.Application.Submissions.Requests;
@@ -96,6 +97,97 @@ public class ProblemMetadataUxTests
         Assert.True(result.IsSuccess);
         var submission = Assert.Single(await dbContext.Submissions.ToListAsync());
         Assert.Equal(JudgeLanguage.C11, submission.Language);
+        Assert.Equal((await dbContext.Problems.SingleAsync()).CurrentJudgeRevisionId, submission.ProblemJudgeRevisionId);
+        var job = Assert.Single(await dbContext.JudgeJobs.ToListAsync());
+        Assert.Equal(submission.Id, job.SubmissionId);
+        Assert.Equal(JudgeJobStatus.Pending, job.Status);
+        Assert.Equal(0, job.AttemptCount);
+    }
+
+    [Fact]
+    public async Task Submission_RedisSignalFailure_DoesNotRollbackPersistedJob()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedProblem(dbContext, JudgeMode.StandardInputOutput, allowedLanguagesMask: 0);
+        var service = new SubmissionService(
+            dbContext,
+            new UnavailableJudgeQueue(),
+            new TestCurrentUser(ids.AnswererId, UserRole.Answerer));
+
+        var result = await service.CreateSubmissionAsync(new CreateSubmissionRequest
+        {
+            ProblemId = ids.ProblemId,
+            Language = JudgeLanguage.Cpp17,
+            SourceCode = "int main(){}"
+        });
+
+        Assert.True(result.IsSuccess);
+        var submission = Assert.Single(await dbContext.Submissions.ToListAsync());
+        var job = Assert.Single(await dbContext.JudgeJobs.ToListAsync());
+        Assert.Equal(submission.Id, job.SubmissionId);
+        Assert.Equal(JudgeJobStatus.Pending, job.Status);
+    }
+
+    [Fact]
+    public async Task Submission_JudgeRevisionBinding_CannotBeChangedAfterCreation()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedProblem(dbContext, JudgeMode.StandardInputOutput, allowedLanguagesMask: 0);
+        var service = CreateSubmissionService(dbContext, ids.AnswererId);
+        var result = await service.CreateSubmissionAsync(new CreateSubmissionRequest
+        {
+            ProblemId = ids.ProblemId,
+            Language = JudgeLanguage.Cpp17,
+            SourceCode = "int main(){}"
+        });
+        Assert.True(result.IsSuccess);
+
+        var submission = await dbContext.Submissions.SingleAsync();
+        submission.ProblemJudgeRevisionId = Guid.NewGuid();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => dbContext.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Submission_LanguageValidation_UsesBoundRevisionInsteadOfMutableProblemFields()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedProblem(dbContext, JudgeMode.StandardInputOutput, allowedLanguagesMask: 0b010);
+        var problem = await dbContext.Problems.SingleAsync();
+        problem.AllowedLanguagesMask = 0b001;
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateSubmissionService(dbContext, ids.AnswererId).CreateSubmissionAsync(new CreateSubmissionRequest
+        {
+            ProblemId = ids.ProblemId,
+            Language = JudgeLanguage.C11,
+            SourceCode = "int main(void){return 0;}"
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull((await dbContext.Submissions.SingleAsync()).ProblemJudgeRevisionId);
+    }
+
+    [Fact]
+    public async Task Submission_WithoutCurrentJudgeRevision_IsRejected()
+    {
+        await using var dbContext = CreateDbContext();
+        var ids = SeedProblem(dbContext, JudgeMode.StandardInputOutput, allowedLanguagesMask: 0);
+        var problem = await dbContext.Problems.SingleAsync();
+        problem.CurrentJudgeRevisionId = null;
+        problem.CurrentJudgeRevision = null;
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateSubmissionService(dbContext, ids.AnswererId).CreateSubmissionAsync(new CreateSubmissionRequest
+        {
+            ProblemId = ids.ProblemId,
+            Language = JudgeLanguage.Cpp17,
+            SourceCode = "int main(){}"
+        });
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Problem judge definition is unavailable.", result.ErrorMessage);
+        Assert.Empty(await dbContext.Submissions.ToListAsync());
     }
 
     [Fact]
@@ -214,6 +306,18 @@ public class ProblemMetadataUxTests
     {
         var users = SeedUsers(dbContext);
         var problemId = Guid.NewGuid();
+        var revision = new ProblemJudgeRevision
+        {
+            Id = Guid.NewGuid(),
+            ProblemId = problemId,
+            RevisionNumber = 1,
+            JudgeMode = judgeMode,
+            AllowedLanguagesMask = allowedLanguagesMask,
+            FunctionSpecJson = judgeMode == JudgeMode.Function ? functionSpecJson : null,
+            TimeLimitMs = 1000,
+            MemoryLimitMb = 128,
+            CreatedAt = BaseTime
+        };
         dbContext.Problems.Add(new Problem
         {
             Id = problemId,
@@ -234,6 +338,8 @@ public class ProblemMetadataUxTests
             CreatedAt = BaseTime,
             UpdatedAt = BaseTime
         });
+        dbContext.ProblemJudgeRevisions.Add(revision);
+        dbContext.Problems.Local.Single(problem => problem.Id == problemId).CurrentJudgeRevisionId = revision.Id;
         dbContext.SaveChanges();
         return (users.OwnerId, users.AnswererId, problemId);
     }
@@ -281,9 +387,20 @@ public class ProblemMetadataUxTests
 
     private sealed class NoopJudgeQueue : IJudgeQueue
     {
-        public Task EnqueueSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default)
+        public Task<bool> TryEnqueueSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default)
         {
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
+
+        public Task<JudgeQueueReadResult> TryDequeueSubmissionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(JudgeQueueReadResult.Empty);
+    }
+
+    private sealed class UnavailableJudgeQueue : IJudgeQueue
+    {
+        public Task<bool> TryEnqueueSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+        public Task<JudgeQueueReadResult> TryDequeueSubmissionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(JudgeQueueReadResult.Unavailable);
     }
 }

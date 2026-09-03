@@ -146,7 +146,7 @@ export function AdminProblemEditorPage() {
       outputDescription: judgeMode === 1 ? outputDescription : "",
       timeLimitMs,
       memoryLimitMb,
-      isPublished,
+      isPublished: isEditMode ? isPublished : false,
       judgeMode,
       allowedLanguagesMask: selectedAllowedLanguagesMask,
       functionSpecJson: functionConfig.functionSpecJson,
@@ -453,9 +453,10 @@ export function AdminProblemEditorPage() {
         </div>
 
         <label className="checkbox-line">
-          <input type="checkbox" checked={isPublished} onChange={(event) => setIsPublished(event.target.checked)} />
+          <input type="checkbox" checked={isPublished} disabled={!isEditMode} onChange={(event) => setIsPublished(event.target.checked)} />
           发布题目
         </label>
+        {!isEditMode && <p className="quiet-note">新题目会先保存为草稿；添加至少一个有效测试用例后才能发布。</p>}
         <button className="button primary" type="submit" disabled={isSaving}>
           {isSaving ? "保存中..." : isEditMode ? "保存题目" : "创建题目"}
         </button>

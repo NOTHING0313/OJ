@@ -15,6 +15,8 @@ public class SubmissionConfiguration : IEntityTypeConfiguration<Submission>
         builder.Property(submission => submission.ProblemId)
             .IsRequired();
 
+        builder.Property(submission => submission.ProblemJudgeRevisionId);
+
         builder.Property(submission => submission.UserId)
             .IsRequired();
 
@@ -51,6 +53,11 @@ public class SubmissionConfiguration : IEntityTypeConfiguration<Submission>
             .WithOne(caseResult => caseResult.Submission)
             .HasForeignKey(caseResult => caseResult.SubmissionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(submission => submission.ProblemJudgeRevision)
+            .WithMany()
+            .HasForeignKey(submission => submission.ProblemJudgeRevisionId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(submission => submission.ChallengeTask)
             .WithMany()

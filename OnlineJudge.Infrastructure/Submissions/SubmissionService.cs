@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Judging.Services;
@@ -13,10 +15,37 @@ using OnlineJudge.Infrastructure.ContentVisibility;
 
 namespace OnlineJudge.Infrastructure.Submissions;
 
-public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judgeQueue, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy) : ISubmissionService
+public class SubmissionService(
+    OnlineJudgeDbContext dbContext,
+    IJudgeQueue judgeQueue,
+    ICurrentUser currentUser,
+    ContentVisibilityPolicy visibilityPolicy,
+    TimeProvider timeProvider,
+    ILogger<SubmissionService> logger) : ISubmissionService
 {
     public SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judgeQueue, ICurrentUser currentUser)
-        : this(dbContext, judgeQueue, currentUser, new ContentVisibilityPolicy(TimeProvider.System))
+        : this(
+            dbContext,
+            judgeQueue,
+            currentUser,
+            new ContentVisibilityPolicy(TimeProvider.System),
+            TimeProvider.System,
+            NullLogger<SubmissionService>.Instance)
+    {
+    }
+
+    public SubmissionService(
+        OnlineJudgeDbContext dbContext,
+        IJudgeQueue judgeQueue,
+        ICurrentUser currentUser,
+        ContentVisibilityPolicy visibilityPolicy)
+        : this(
+            dbContext,
+            judgeQueue,
+            currentUser,
+            visibilityPolicy,
+            TimeProvider.System,
+            NullLogger<SubmissionService>.Instance)
     {
     }
 
@@ -38,8 +67,16 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             return Result<SubmissionDto>.Failure("Unsupported judge language.");
         }
 
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await ScoringIdentityTransactionLock.AcquireAsync(
+            dbContext,
+            "problem-judge-revision",
+            [request.ProblemId],
+            cancellationToken);
+
         var problemQuery = dbContext.Problems
             .AsNoTracking()
+            .Include(problem => problem.CurrentJudgeRevision)
             .Where(problem => !problem.IsDeleted);
 
         var problem = await visibilityPolicy.ApplyProblemVisibility(problemQuery, userResult.Value.Role)
@@ -50,17 +87,23 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             return Result<SubmissionDto>.Failure("Problem not found.");
         }
 
-        if (!IsLanguageAllowed(problem.AllowedLanguagesMask, request.Language))
+        var judgeRevision = problem.CurrentJudgeRevision;
+        if (judgeRevision is null || judgeRevision.ProblemId != problem.Id)
+        {
+            return Result<SubmissionDto>.Failure("Problem judge definition is unavailable.");
+        }
+
+        if (!IsLanguageAllowed(judgeRevision.AllowedLanguagesMask, request.Language))
         {
             return Result<SubmissionDto>.Failure("Selected language is not allowed for this problem.");
         }
 
-        if (problem.JudgeMode == JudgeMode.Function && !IsFunctionLanguageSupported(problem.FunctionSpecJson, request.Language))
+        if (judgeRevision.JudgeMode == JudgeMode.Function && !IsFunctionLanguageSupported(judgeRevision.FunctionSpecJson, request.Language))
         {
             return Result<SubmissionDto>.Failure("Selected language is not supported by this function problem.");
         }
 
-        if (problem.JudgeMode == JudgeMode.Function
+        if (judgeRevision.JudgeMode == JudgeMode.Function
             && request.Language is not JudgeLanguage.Cpp17 and not JudgeLanguage.CSharp and not JudgeLanguage.C11)
         {
             return Result<SubmissionDto>.Failure("Function mode currently supports C++17, C# and C11 only.");
@@ -99,38 +142,53 @@ public class SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judge
             }
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-
+        var now = timeProvider.GetUtcNow();
         if (request.ChallengeTaskId.HasValue && challengeParticipationMode == ChallengeParticipationMode.Individual)
         {
-            await EnsureParticipantForChallengeTaskAsync(request.ChallengeTaskId.Value, userResult.Value.Id, DateTimeOffset.UtcNow, cancellationToken);
+            await EnsureParticipantForChallengeTaskAsync(request.ChallengeTaskId.Value, userResult.Value.Id, now, cancellationToken);
         }
 
         var submission = new Submission
         {
             Id = Guid.NewGuid(),
             ProblemId = request.ProblemId,
+            ProblemJudgeRevisionId = judgeRevision.Id,
             UserId = userResult.Value.Id,
             ChallengeTaskId = request.ChallengeTaskId,
             ChallengeTeamParticipantId = challengeTeamParticipantId,
             Language = request.Language,
             SourceCode = request.SourceCode,
             Status = JudgeStatus.Pending,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = now
         };
 
         dbContext.Submissions.Add(submission);
+        dbContext.JudgeJobs.Add(new JudgeJob
+        {
+            SubmissionId = submission.Id,
+            Status = JudgeJobStatus.Pending,
+            AvailableAt = now,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        await transaction.CommitAsync(cancellationToken);
         try
         {
-            await judgeQueue.EnqueueSubmissionAsync(submission.Id, cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            if (!await judgeQueue.TryEnqueueSubmissionAsync(submission.Id, CancellationToken.None))
+            {
+                logger.LogWarning(
+                    "Submission persisted without a Redis wake-up signal; database polling will recover it. SubmissionId={SubmissionId}",
+                    submission.Id);
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            await transaction.RollbackAsync(cancellationToken);
-            return Result<SubmissionDto>.Failure("Failed to enqueue submission for judging.");
+            logger.LogWarning(
+                ex,
+                "Submission persisted but the judge wake-up signal failed unexpectedly; database polling will recover it. SubmissionId={SubmissionId}",
+                submission.Id);
         }
 
         return Result<SubmissionDto>.Success(ToDto(submission, canViewHiddenCaseResults: false));

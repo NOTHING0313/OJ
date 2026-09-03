@@ -50,6 +50,7 @@ public class JudgeSandboxSecurityTests
 
         AssertOption(arguments, "--label", DockerCommandClient.ManagedLabel);
         Assert.Contains(DockerCommandClient.JudgeKindLabel, arguments);
+        Assert.Contains($"{DockerCommandClient.SubmissionLabel}=77777777777777777777777777777777", arguments);
         Assert.DoesNotContain("--privileged", arguments);
         Assert.DoesNotContain("--device", arguments);
         Assert.DoesNotContain("--pid", arguments);
@@ -118,6 +119,17 @@ public class JudgeSandboxSecurityTests
     }
 
     [Fact]
+    public async Task DockerInfrastructureFailure_IsExplicitlyRetryable()
+    {
+        var sandbox = new DockerJudgeSandbox(new FailingCreateClient(), NullLogger<DockerJudgeSandbox>.Instance);
+
+        var result = await sandbox.RunAsync(Request(Guid.NewGuid()), Cpp17JudgeRunner.Profile);
+
+        Assert.Equal(JudgeStatus.SystemError, result.Status);
+        Assert.Equal(JudgeFailureKind.TransientInfrastructure, result.FailureKind);
+    }
+
+    [Fact]
     public void WorkerStartup_InvokesOnlyManagedJudgeContainerReconciliation()
     {
         var workerSource = File.ReadAllText(Path.Combine(ProjectRoot(), "OnlineJudge.JudgeWorker", "Worker.cs"));
@@ -126,12 +138,19 @@ public class JudgeSandboxSecurityTests
         Assert.Contains("ReconcileStaleContainersAsync", workerSource, StringComparison.Ordinal);
         Assert.Contains("label={ManagedLabel}", clientSource, StringComparison.Ordinal);
         Assert.Contains("label={JudgeKindLabel}", clientSource, StringComparison.Ordinal);
+        Assert.Contains("status=exited", clientSource, StringComparison.Ordinal);
+        Assert.Contains("RemoveSubmissionContainersAsync", clientSource, StringComparison.Ordinal);
         Assert.DoesNotContain("docker rm $(docker ps", clientSource, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<string> Arguments() => DockerCommandClient.BuildCreateArguments(
         "oj-00000000000000000000000000000000",
-        new DockerContainerRequest("C:/safe/workspace", 128, "sandbox", "./main"),
+        new DockerContainerRequest(
+            "C:/safe/workspace",
+            128,
+            "sandbox",
+            "./main",
+            Guid.Parse("77777777-7777-7777-7777-777777777777")),
         new JudgeSandboxOptions());
 
     private static void AssertOption(IReadOnlyList<string> arguments, string option, string value)
@@ -189,6 +208,23 @@ public class JudgeSandboxSecurityTests
         }
 
         public Task<int> RemoveManagedContainersAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+
+        public Task<int> RemoveSubmissionContainersAsync(Guid submissionId, CancellationToken cancellationToken) => Task.FromResult(0);
+    }
+
+    private sealed class FailingCreateClient : IDockerCommandClient
+    {
+        public Task<string> CreateAsync(string containerName, DockerContainerRequest request, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Docker is unavailable.");
+
+        public Task<DockerCommandResult> StartAsync(string containerName, string containerId, TimeSpan timeout, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task RemoveAsync(string containerName, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<int> RemoveManagedContainersAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+
+        public Task<int> RemoveSubmissionContainersAsync(Guid submissionId, CancellationToken cancellationToken) => Task.FromResult(0);
     }
 
     private sealed class BlockingOverflowStream(int firstReadSize) : Stream
