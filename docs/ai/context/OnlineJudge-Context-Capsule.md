@@ -1,90 +1,82 @@
-# OnlineJudge Initial Context Capsule
+# OnlineJudge Context Capsule
 
 ## 1. Scope
 
 - Project: OnlineJudge
-- Module / Stage: Managed Project Agents initialization
-- Updated: 2026-08-17
-- Prepared for: `OJ-PRODUCTION-DEPLOY-01`
+- Module / Stage: Platform improvement Stage 4A
+- Updated: 2026-09-03
+- Current task: `PLATFORM-BASELINE-04A`
 
 ## 2. Current Goal
 
-Establish a production-ready deployment plan and implementation for the existing OnlineJudge on a small Ubuntu server without redesigning judge algorithms, database schema, or UI features.
+Complete the approved 4A platform baseline: preserve the verified Stage 0-3 judge reliability work, standardize the repository on .NET 10, and establish reusable local/hosted fast quality gates before sandbox and operations changes.
 
 ## 3. Current Git Baseline
 
-- Root: `E:/Github/OJ`
+- Root: `H:/GitHub/OJ`
 - Branch: `main`
-- Baseline HEAD: `f88e9fa7f18a3b0b0e2bf74d29e20e8492346269`
-- Baseline commit: `chore: establish repository baseline`
-- Agents initialization is intentionally left uncommitted for user review.
+- Stage 0-3 baseline commit: `35576d2` (`feat: harden judge revisions and durable job processing`)
+- Remote writes: none; no push was performed.
+- `output/` contains a local PDF artifact and remains untracked and untouched.
 
-## 4. Current Architecture Invariants
+## 4. Architecture Invariants
 
 - Domain models stay in `OnlineJudge.Domain`; application contracts and DTOs stay in `OnlineJudge.Application`.
 - EF Core, PostgreSQL, Redis, Docker, and external integrations stay in `OnlineJudge.Infrastructure`.
 - HTTP controllers remain thin and never execute submitted code.
-- `OnlineJudge.JudgeWorker` consumes judge work and invokes the sandbox.
-- Judge languages currently supported by enum, DI, runner code, and tests are C11, C++17, and C#.
+- `OnlineJudge.JudgeWorker` is the only submitted-code execution process.
+- PostgreSQL `JudgeJob` rows are durable work authority; Redis is a best-effort wake-up hint.
+- Every new submission binds to an immutable `ProblemJudgeRevision`; Workers must never reconstruct judge input from mutable authoring rows.
+- Judge languages remain C11, C++17, and C#.
 
 ## 5. Current Architecture Snapshot
 
-- Backend: ASP.NET Core and EF Core on `net9.0`, PostgreSQL persistence, Redis queue.
-- Frontend: React 19, TypeScript 5.7, Vite 6, Monaco Editor.
-- Queue: submission IDs are pushed right and popped left from `judge:submissions:pending`.
-- Worker: one hosted worker per process; submissions and their test cases are processed sequentially in current source.
-- Sandbox: host `docker run`, disposable compile and per-test-case containers, no container network, bounded memory/CPU/PIDs, transient bind-mounted workspace.
-- Persistent files: API uploads below `wwwroot/uploads/images`; challenge files below `App_Data/challenge-file-submissions`; PostgreSQL uses a named Compose volume.
+- Backend runtime: .NET 10 (`net10.0`) with SDK `10.0.400` pinned by `global.json`.
+- Data access: EF Core `10.0.11`, Npgsql EF provider `10.0.3`, PostgreSQL.
+- Queue/recovery: PostgreSQL lease/heartbeat/retry/dead-letter state machine with Redis wake hints and database polling fallback.
+- Frontend: React 19, TypeScript 5.7, Vite 6, Monaco Editor; ESLint and Vitest fast gates are available.
+- Sandbox: host Docker execution, no container network, bounded memory/CPU/PIDs, read-only container root, submission-scoped labels and cleanup.
+- C# submissions compile against the .NET 10 SDK sandbox image and generated `net10.0` project.
 
-## 6. Known Deployment State
+## 6. Verification Baseline
 
-- `docker-compose.yml` currently defines PostgreSQL and Redis only.
-- PostgreSQL and Redis currently publish host ports.
-- Database and JWT configuration contains development-only credential material that production must externalize.
-- Frontend API base URL is fixed to a localhost development endpoint.
-- API CORS currently allows Vite localhost origins.
-- No repository-managed Nginx, systemd, HTTPS, production orchestration, or backup configuration was found.
-- Runtime upload and challenge-file persistence require explicit production mounts and backup policy.
-- JudgeWorker production access to the host Docker daemon is not yet designed or security-reviewed.
+- Release solution build: passed with 0 warnings and 0 errors.
+- Backend tests: 962 / 962 passed on `net10.0`.
+- EF model drift: no pending model changes.
+- Frontend lint: passed under the 4A stable baseline rule set.
+- Frontend tests: 3 / 3 Vitest tests passed.
+- Frontend production build: passed; the existing 3.45 MB main-chunk advisory remains.
+- Judge Docker smoke: C11, C++17, and C# Accepted; C++17 Wrong Answer and Compile Error paths passed.
+- Sandbox security smoke: passed with 50 leak-cleanup runs; disk quota remains an explicit 4B risk.
+- GitHub Actions workflow exists for push/pull-request backend and frontend fast gates; hosted execution is not locally verifiable.
 
 ## 7. Known Technical Debt And Risks
 
-- Redis list pop has no explicit acknowledgement/retry ledger in the current queue path.
-- Worker concurrency is sequential and has no configured multi-worker policy.
-- Sandbox creates a new container for compilation and each test case; optimization is deferred.
-- One submission memory limit currently feeds sandbox execution; compile/runtime limit separation is deferred.
-- Production security, resource budgeting, observability, backup, and rollback are unverified.
+- Per-submission sandbox disk/output quota is not enforced; tracked as `SANDBOX-04B-D001`.
+- Safe garbage collection for soft-deleted judge assets is still open as `JUDGE-REV-FND-D001`.
+- React Hooks compiler-level lint findings and Fast Refresh boundaries are deferred to 4E as `PLATFORM-04A-D001`.
+- Hosted Docker judge CI needs a confirmed Docker-capable runner; tracked as `PLATFORM-04A-D002`.
+- The frontend main bundle remains about 3.45 MB before gzip and is assigned to 4E.
+- Production exposure, backup/restore, monitoring, and Docker daemon permissions remain later-stage work.
 
 ## 8. Current Immediate Task
 
-`OJ-PRODUCTION-DEPLOY-01`
+Finish `PLATFORM-BASELINE-04A` by validating the clean-commit production release artifact and recording the final stage ledger. Stop after 4A; do not begin 4B without the next explicit stage instruction.
 
 Read first:
 
-1. `.agent/AGENTS.md`
+1. `AGENTS.md`
 2. `.agents/skills/onlinejudge-project-context/SKILL.md`
-3. `docs/ai/tasks/OJ-PRODUCTION-DEPLOY-01.md`
-4. Current source/configuration files explicitly named by the task card
+3. `docs/ai/tasks/PLATFORM-BASELINE-04A.md` once created
+4. Current source/configuration files explicitly named by the next task card
 
-## 9. Explicit Out Of Scope
+## 9. Next Approved Stage Boundary
 
-- Judge core algorithm refactoring
-- Per-test-case container lifecycle optimization
-- Compile/runtime memory-limit separation
-- In-process parallel judging or multiple workers
-- .NET 9 to .NET 10 upgrade
-- Database schema redesign
-- UI feature work
+Stage 4B is sandbox/data-plane hardening and function-judge reliability. It may implement disk/output budgets, lifecycle tightening, data-plane isolation, and function-mode regression coverage, but it must preserve the Stage 1-3 revision and durable-job contracts.
 
-## 10. Verification Baseline
+## 10. Stop Rules
 
-- Git baseline: verified at `f88e9fa7f18a3b0b0e2bf74d29e20e8492346269` before initialization.
-- Initialization verification: static Git, JSON, Skill, scope, and secret checks only.
-- Build, tests, frontend build, Docker execution, and deployment validation: NotRun by design for initialization.
-
-## 11. Handoff Notes
-
-- Treat deployment items as pending requirements, not implemented facts.
-- Revalidate current HEAD and working-tree ownership before the deployment task.
-- Never copy credential values into plans, logs, or governance documentation.
-- Stop before any public exposure, remote write, dependency upgrade, persistent-data migration, or Docker permission expansion not explicitly authorized.
+- Do not push, publish externally, merge, or expose services without explicit authorization.
+- Do not change public HTTP DTOs, persisted formats, or core judge authority boundaries outside an approved stage contract.
+- Do not claim hosted CI passed until GitHub Actions actually executes.
+- Mandatory gate failures block stage completion; skipped checks must be reported as NotRun.

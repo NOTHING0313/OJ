@@ -121,7 +121,7 @@ try {
     $c = Invoke-IsolatedContainer $cppImage $normal "gcc main.c -std=c11 -O2 -o main-c && ./main-c"
     if ($c.ExitCode -ne 0) { throw "Normal C sandbox regression failed." }
 
-    Set-Content -LiteralPath (Join-Path $normal "Main.csproj") -Value '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>' -NoNewline
+    Set-Content -LiteralPath (Join-Path $normal "Main.csproj") -Value '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>' -NoNewline
     Set-Content -LiteralPath (Join-Path $normal "Program.cs") -Value 'System.Console.Write("OK");' -NoNewline
     $csharp = Invoke-IsolatedContainer $csharpImage $normal "dotnet build Main.csproj -c Release -o out --nologo --verbosity quiet && dotnet out/Main.dll" 1024 30
     if ($csharp.ExitCode -ne 0) { throw "Normal C# sandbox regression failed." }

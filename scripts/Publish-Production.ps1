@@ -34,7 +34,7 @@ Write-Host "========================================"
 
 Set-Location $root
 
-$gitStatus = git status --porcelain
+$gitStatus = git status --porcelain --untracked-files=no
 
 if ($LASTEXITCODE -ne 0) {
     throw "Unable to read Git status."
@@ -105,6 +105,21 @@ Invoke-Checked `
         "test",
         "OnlineJudge.sln",
         "-c",
+        "Release",
+        "--no-build"
+    )
+
+Invoke-Checked `
+    -FilePath "dotnet" `
+    -ArgumentList @(
+        "ef",
+        "migrations",
+        "has-pending-model-changes",
+        "--project",
+        "OnlineJudge.Infrastructure/OnlineJudge.Infrastructure.csproj",
+        "--startup-project",
+        "OnlineJudge.Api/OnlineJudge.Api.csproj",
+        "--configuration",
         "Release",
         "--no-build"
     )
@@ -184,6 +199,20 @@ try {
         -FilePath "npm.cmd" `
         -ArgumentList @(
             "ci"
+        )
+
+    Invoke-Checked `
+        -FilePath "npm.cmd" `
+        -ArgumentList @(
+            "run",
+            "lint"
+        )
+
+    Invoke-Checked `
+        -FilePath "npm.cmd" `
+        -ArgumentList @(
+            "run",
+            "test"
         )
 
     Invoke-Checked `

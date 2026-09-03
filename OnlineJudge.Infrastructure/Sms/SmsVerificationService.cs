@@ -75,7 +75,7 @@ public class SmsVerificationService(
         SmsCodeRecord? record;
         try
         {
-            record = JsonSerializer.Deserialize<SmsCodeRecord>(raw!);
+            record = JsonSerializer.Deserialize<SmsCodeRecord>(raw.ToString());
         }
         catch (JsonException)
         {

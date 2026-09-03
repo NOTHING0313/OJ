@@ -96,3 +96,27 @@
   - Delete every managed container at Worker startup: unsafe with multiple Workers.
   - Leave all orphan cleanup to operators: leaks resources and can interfere with retries.
 - Consequences: Concurrent Workers do not delete one another's active containers, while lease recovery cleans prior-attempt leftovers deterministically.
+
+## Decision: .NET 10 is the repository-wide runtime baseline
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: PLATFORM-BASELINE-04A
+- Context: Host projects, EF tooling, and the C# sandbox must target one supported runtime before deeper sandbox and operations work.
+- Decision: Pin SDK `10.0.400`; target `net10.0` in every project and generated C# submission project; align ASP.NET Core and EF Core packages/tools to `10.0.11`, Npgsql EF provider to `10.0.3`, and the C# sandbox to the .NET 10 SDK image.
+- Rejected alternatives:
+  - Upgrade only API/Worker: leaves test, launcher, and submitted C# compilation on mixed runtime contracts.
+  - Defer the upgrade until after sandbox changes: forces 4B to validate two runtime baselines and increases rework risk.
+- Consequences: .NET 10 restore/build/test, EF drift, release packaging, and Docker judge smoke are mandatory gates for subsequent stages.
+
+## Decision: One repository verification entry point backs local and hosted CI
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: PLATFORM-BASELINE-04A
+- Context: Backend, frontend, and EF checks previously lived in separate ad hoc commands, while the production publisher did not run frontend lint/tests or EF model drift.
+- Decision: Extend `scripts/e2e/run-all-checks.ps1` as the reusable fast verification entry point, invoke its scoped modes from GitHub Actions, and make the production publisher enforce the same frontend and EF gates.
+- Rejected alternatives:
+  - Duplicate all commands directly in CI YAML: local and hosted verification would drift.
+  - Add hosted Docker judge CI without a confirmed Docker-capable runner: creates a permanently queued or misleading gate.
+- Consequences: Push and pull-request CI cover backend and frontend fast gates; real Docker judge/security checks remain mandatory local gates until runner ownership is established.

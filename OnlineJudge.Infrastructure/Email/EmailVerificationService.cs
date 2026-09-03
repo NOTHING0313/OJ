@@ -90,7 +90,7 @@ public class EmailVerificationService(
         EmailCodeRecord? record;
         try
         {
-            record = JsonSerializer.Deserialize<EmailCodeRecord>(raw!);
+            record = JsonSerializer.Deserialize<EmailCodeRecord>(raw.ToString());
         }
         catch (JsonException)
         {

@@ -1,6 +1,7 @@
 ﻿param(
     [switch]$SkipBuild,
     [switch]$SkipTests,
+    [switch]$SkipModelCheck,
     [switch]$SkipFrontend,
     [switch]$SkipE2E,
     [switch]$SkipDemoSmoke,
@@ -20,6 +21,7 @@ $script:TotalSteps = 0
 
 if (-not $SkipBuild) { $script:TotalSteps++ }
 if (-not $SkipTests) { $script:TotalSteps++ }
+if (-not $SkipModelCheck) { $script:TotalSteps++ }
 if (-not $SkipFrontend) { $script:TotalSteps++ }
 if (-not $SkipE2E) { $script:TotalSteps++ }
 if (-not $SkipDemoSmoke) { $script:TotalSteps++ }
@@ -79,10 +81,30 @@ if (-not $SkipTests) {
     }
 }
 
+if (-not $SkipModelCheck) {
+    Invoke-CheckStep -Name "EF Core model drift" -Action {
+        Invoke-Process -FilePath "dotnet" -Arguments @("tool", "restore")
+        Invoke-Process -FilePath "dotnet" -Arguments @(
+            "ef",
+            "migrations",
+            "has-pending-model-changes",
+            "--project",
+            ".\OnlineJudge.Infrastructure\OnlineJudge.Infrastructure.csproj",
+            "--startup-project",
+            ".\OnlineJudge.Api\OnlineJudge.Api.csproj",
+            "--configuration",
+            $Configuration
+        )
+    }
+}
+
 if (-not $SkipFrontend) {
-    Invoke-CheckStep -Name "Frontend build" -Action {
-        Invoke-Process -FilePath "npm.cmd" -Arguments @("install") -WorkingDirectory (Join-Path $Root "frontend")
-        Invoke-Process -FilePath "npm.cmd" -Arguments @("run", "build") -WorkingDirectory (Join-Path $Root "frontend")
+    Invoke-CheckStep -Name "Frontend quality gates" -Action {
+        $npm = if (Get-Command "npm.cmd" -ErrorAction SilentlyContinue) { "npm.cmd" } else { "npm" }
+        Invoke-Process -FilePath $npm -Arguments @("ci") -WorkingDirectory (Join-Path $Root "frontend")
+        Invoke-Process -FilePath $npm -Arguments @("run", "lint") -WorkingDirectory (Join-Path $Root "frontend")
+        Invoke-Process -FilePath $npm -Arguments @("run", "test") -WorkingDirectory (Join-Path $Root "frontend")
+        Invoke-Process -FilePath $npm -Arguments @("run", "build") -WorkingDirectory (Join-Path $Root "frontend")
     }
 }
 
