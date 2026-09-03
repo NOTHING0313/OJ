@@ -16,6 +16,7 @@ Complete the approved 4A platform baseline: preserve the verified Stage 0-3 judg
 - Root: `H:/GitHub/OJ`
 - Branch: `main`
 - Stage 0-3 baseline commit: `35576d2` (`feat: harden judge revisions and durable job processing`)
+- Stage 4A implementation commit: `6511486` (`build: establish net10 and continuous verification baseline`)
 - Remote writes: none; no push was performed.
 - `output/` contains a local PDF artifact and remains untracked and untouched.
 
@@ -61,13 +62,13 @@ Complete the approved 4A platform baseline: preserve the verified Stage 0-3 judg
 
 ## 8. Current Immediate Task
 
-Finish `PLATFORM-BASELINE-04A` by validating the clean-commit production release artifact and recording the final stage ledger. Stop after 4A; do not begin 4B without the next explicit stage instruction.
+`PLATFORM-BASELINE-04A` is complete. Await the next explicit instruction before starting Stage 4B sandbox/data-plane hardening and function-judge reliability work.
 
 Read first:
 
 1. `AGENTS.md`
 2. `.agents/skills/onlinejudge-project-context/SKILL.md`
-3. `docs/ai/tasks/PLATFORM-BASELINE-04A.md` once created
+3. `docs/ai/tasks/PLATFORM-BASELINE-04A.md`
 4. Current source/configuration files explicitly named by the next task card
 
 ## 9. Next Approved Stage Boundary
