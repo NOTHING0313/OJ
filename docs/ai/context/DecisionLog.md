@@ -145,3 +145,51 @@
   - Remove preflight entirely: loses the existing fast, friendly function-mode error contract.
   - Add language parser dependencies: disproportionate for a narrow preflight and introduces new toolchain coupling.
 - Consequences: Real entry points are still rejected before Docker, while harmless explanatory text no longer causes false compile errors.
+
+## Decision: Verification-code state transitions are atomic in Redis
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: IDENTITY-SESSION-EXPORT-04C
+- Context: Separate read/increment/write operations allowed concurrent requests to bypass cooldown, attempt, daily, or single-consumption guarantees.
+- Decision: One shared Redis store uses Lua scripts for issuance and consumption, hashes codes, preserves original TTL on wrong attempts, and cleans only a matching issuance after delivery failure.
+- Rejected alternatives:
+  - Process-local locks: do not coordinate multiple API instances.
+  - Database-backed verification rows: introduce durable schema and cleanup work for short-lived state already owned by Redis.
+- Consequences: Verification fails closed when Redis is unavailable; the current scripts assume a single Redis deployment rather than arbitrary Redis Cluster slots.
+
+## Decision: Password policy and hash evolution are versioned and shared
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: IDENTITY-SESSION-EXPORT-04C
+- Context: Registration and reset paths used inconsistent short minimums, and persisted hashes had no current algorithm version or automatic upgrade path.
+- Decision: Use one 15-128 Unicode-code-point policy with common/contextual-password rejection. New hashes use `v2` PBKDF2-SHA256 at 600,000 iterations with NFC normalization; successful legacy `v1` login upgrades the hash in the same save.
+- Rejected alternatives:
+  - Force all users to reset immediately: unnecessary disruption when legacy verification remains safe.
+  - Validate contextual password weakness before reset-code validation: leaks whether the supplied account exists.
+- Consequences: Correct reset codes may be consumed before a context-specific weak-password error; this is accepted to preserve account-enumeration resistance.
+
+## Decision: First-party browsers use cookie transport over existing JWT authority
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: IDENTITY-SESSION-EXPORT-04C
+- Context: The frontend persisted bearer credentials in Web Storage, while external/API compatibility and the existing single-active-session JWT authority had to remain intact.
+- Decision: Keep `/api/auth/login` unchanged for Bearer clients and add `/api/auth/session` for a Secure, HttpOnly, SameSite=Lax host-only cookie. Unsafe cookie-authenticated requests require antiforgery tokens; explicit Bearer authorization remains exempt and takes precedence.
+- Rejected alternatives:
+  - Replace JWTs with a new server-side session model: duplicates current session authority and expands persistence scope.
+  - Expose the cookie over HTTP in development/production: weakens the production contract and hides missing TLS configuration.
+- Consequences: The browser starts through `/api/auth/me`, credentials no longer enter Web Storage, and production deployment must terminate HTTPS correctly.
+
+## Decision: CSV exports classify trusted and untrusted cells explicitly
+
+- Status: Accepted
+- Date: 2026-09-03
+- Task: IDENTITY-SESSION-EXPORT-04C
+- Context: RFC CSV quoting alone does not prevent spreadsheet applications from evaluating attacker-controlled cells as formulas.
+- Decision: Route challenge exports through one writer. Neutralize formula-like untrusted text before CSV quoting; preserve explicitly trusted numbers, dates, enums, and identifiers.
+- Rejected alternatives:
+  - Prefix every cell: corrupts trusted numeric/date typing and identifiers.
+  - Rely only on quotes: spreadsheet programs may still evaluate quoted formula cells.
+- Consequences: Existing columns and order remain stable, while user-controlled text opens as inert content.
