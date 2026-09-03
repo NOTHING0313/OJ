@@ -7,7 +7,6 @@ namespace OnlineJudge.Api.RateLimiting;
 public static class RateLimitPolicies
 {
     public const string AuthLogin = "AuthLogin";
-    public const string AuthRegister = "AuthRegister";
     public const string PasswordReset = "PasswordReset";
     public const string Submission = "Submission";
     public const string TeamChat = "TeamChat";
@@ -52,7 +51,6 @@ public static class RateLimitPolicies
     public static PartitionedRateLimiter<HttpContext> CreateGlobalLimiter() =>
         PartitionedRateLimiter.CreateChained(
             FixedWindow(AuthLogin, 10, TimeSpan.FromMinutes(1), ClientIp),
-            FixedWindow(AuthRegister, 5, TimeSpan.FromMinutes(10), ClientIp),
             FixedWindow(PasswordReset, 20, TimeSpan.FromMinutes(10), ClientIp),
             TokenBucket(Submission, 10, 1, TimeSpan.FromSeconds(6), UserId),
             TokenBucket(TeamChat, 10, 1, TimeSpan.FromSeconds(1), UserId),

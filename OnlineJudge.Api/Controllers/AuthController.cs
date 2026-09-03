@@ -26,7 +26,6 @@ public class AuthController(
     IConfiguration configuration,
     ILogger<AuthController> logger) : ControllerBase
 {
-    [RiskRateLimit(RateLimitPolicies.AuthRegister)]
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
@@ -40,7 +39,6 @@ public class AuthController(
         return Ok(result.Value);
     }
 
-    [RiskRateLimit(RateLimitPolicies.AuthRegister)]
     [HttpPost("register/send-code")]
     public async Task<IActionResult> SendRegisterEmailCode(SendRegisterEmailCodeRequest request, CancellationToken cancellationToken)
     {

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
+using OnlineJudge.Api.Controllers;
 using OnlineJudge.Api.RateLimiting;
 using OnlineJudge.Infrastructure.Auth;
 
@@ -12,7 +13,6 @@ public class RiskBasedRateLimitingTests
 {
     [Theory]
     [InlineData(RateLimitPolicies.AuthLogin, 10)]
-    [InlineData(RateLimitPolicies.AuthRegister, 5)]
     [InlineData(RateLimitPolicies.PasswordReset, 20)]
     [InlineData(RateLimitPolicies.Submission, 10)]
     [InlineData(RateLimitPolicies.TeamChat, 10)]
@@ -33,6 +33,30 @@ public class RiskBasedRateLimitingTests
         Assert.False(rejected.IsAcquired);
         Assert.True(rejected.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter));
         Assert.True(retryAfter > TimeSpan.Zero);
+    }
+
+    [Theory]
+    [InlineData(nameof(AuthController.Register))]
+    [InlineData(nameof(AuthController.SendRegisterEmailCode))]
+    public async Task RegistrationEndpoints_DoNotApplyAnIpRateLimit(string actionName)
+    {
+        var action = typeof(AuthController).GetMethod(actionName);
+        Assert.NotNull(action);
+        Assert.Empty(action.GetCustomAttributes(typeof(RiskRateLimitAttribute), inherit: true));
+
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.10");
+        context.SetEndpoint(new Endpoint(
+            _ => Task.CompletedTask,
+            new EndpointMetadataCollection(action.GetCustomAttributes(inherit: true)),
+            actionName));
+
+        await using var limiter = RateLimitPolicies.CreateGlobalLimiter();
+        for (var index = 0; index < 20; index++)
+        {
+            using var lease = limiter.AttemptAcquire(context);
+            Assert.True(lease.IsAcquired);
+        }
     }
 
     [Fact]

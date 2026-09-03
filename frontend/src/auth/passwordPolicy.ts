@@ -1,4 +1,4 @@
-const minimumPasswordLength = 15;
+const minimumPasswordLength = 8;
 const maximumPasswordLength = 128;
 
 export function getPasswordLengthError(password: string): string | null {

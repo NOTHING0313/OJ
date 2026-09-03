@@ -5,7 +5,7 @@ namespace OnlineJudge.Infrastructure.Auth;
 
 public sealed class PasswordPolicy
 {
-    public const int MinimumLength = 15;
+    public const int MinimumLength = 8;
     public const int MaximumLength = 128;
 
     private static readonly string[] CommonPasswords =

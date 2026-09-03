@@ -7,11 +7,6 @@ export interface AccountUserDto extends AuthUserDto {
   phoneNumberConfirmed: boolean;
 }
 
-export interface SmsSendResultDto {
-  message: string;
-  debugCode: string | null;
-}
-
 export interface EmailSendResultDto {
   message: string;
   debugCode: string | null;
@@ -65,34 +60,6 @@ export function updateMyAppearance(payload: UpdateUserAppearanceRequest) {
       backgroundImageUrl: normalizeUploadedImagePath(payload.backgroundImageUrl)
     })
   }).then(normalizeUserAppearance);
-}
-
-export function sendPhoneCode(phoneNumber: string) {
-  return request<SmsSendResultDto>("/api/account/phone/send-code", {
-    method: "POST",
-    body: JSON.stringify({ phoneNumber })
-  });
-}
-
-export function verifyPhone(phoneNumber: string, code: string) {
-  return request<AccountUserDto>("/api/account/phone/verify", {
-    method: "POST",
-    body: JSON.stringify({ phoneNumber, code })
-  });
-}
-
-export function sendPasswordResetCode(phoneNumber: string) {
-  return request<SmsSendResultDto>("/api/auth/password-reset/send-code", {
-    method: "POST",
-    body: JSON.stringify({ phoneNumber })
-  });
-}
-
-export function confirmPasswordReset(phoneNumber: string, code: string, newPassword: string) {
-  return request<void>("/api/auth/password-reset/confirm", {
-    method: "POST",
-    body: JSON.stringify({ phoneNumber, code, newPassword })
-  });
 }
 
 export function sendEmailPasswordResetCode(email: string) {

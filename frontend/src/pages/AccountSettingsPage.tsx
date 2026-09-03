@@ -5,11 +5,9 @@ import {
   getAccountMe,
   getMyAppearance,
   sendAccountDeleteCode,
-  sendPhoneCode,
   updateAvatar,
   updateLeaderboardAnonymity,
   updateMyAppearance,
-  verifyPhone,
   type AccountUserDto,
   type UserAppearance
 } from "../api/accountApi";
@@ -26,9 +24,6 @@ export function AccountSettingsPage() {
   const privacySavedTimerRef = useRef<number | null>(null);
   const [account, setAccount] = useState<AccountUserDto | null>(null);
   const [appearance, setAppearance] = useState<UserAppearance>(() => createDefaultUserAppearance());
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [code, setCode] = useState("");
-  const [debugCode, setDebugCode] = useState<string | null>(null);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteCode, setDeleteCode] = useState("");
   const [deleteDebugCode, setDeleteDebugCode] = useState<string | null>(null);
@@ -40,8 +35,6 @@ export function AccountSettingsPage() {
   const [isSavingLeaderboardPrivacy, setIsSavingLeaderboardPrivacy] = useState(false);
   const [leaderboardPrivacyError, setLeaderboardPrivacyError] = useState<string | null>(null);
   const [leaderboardPrivacySaved, setLeaderboardPrivacySaved] = useState(false);
-  const [isSendingCode, setIsSendingCode] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
   const [isSendingDeleteCode, setIsSendingDeleteCode] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
@@ -58,7 +51,6 @@ export function AccountSettingsPage() {
         if (!ignore) {
           setAccount(data);
           setAppearance(appearanceData);
-          setPhoneNumber("");
           setError(null);
         }
       } catch (err) {
@@ -200,55 +192,6 @@ export function AccountSettingsPage() {
     overlayOpacity: appearance.overlayOpacity
   };
 
-  async function handleSendCode() {
-    if (!phoneNumber.trim()) {
-      setError("请输入手机号");
-      return;
-    }
-
-    setIsSendingCode(true);
-    setError(null);
-    setNotice(null);
-    setDebugCode(null);
-
-    try {
-      const result = await sendPhoneCode(phoneNumber.trim());
-      setDebugCode(result.debugCode ?? null);
-      setNotice(result.message || "验证码已发送");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "验证码发送失败");
-    } finally {
-      setIsSendingCode(false);
-    }
-  }
-
-  async function handleVerifyPhone(event: FormEvent) {
-    event.preventDefault();
-
-    if (!phoneNumber.trim() || !code.trim()) {
-      setError("请输入手机号和验证码");
-      return;
-    }
-
-    setIsVerifying(true);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const updated = await verifyPhone(phoneNumber.trim(), code.trim());
-      setAccount(updated);
-      updateCurrentUser(updated);
-      setPhoneNumber("");
-      setCode("");
-      setDebugCode(null);
-      setNotice("手机号已绑定");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "手机号绑定失败");
-    } finally {
-      setIsVerifying(false);
-    }
-  }
-
   async function handleSendDeleteCode() {
     setIsSendingDeleteCode(true);
     setError(null);
@@ -314,7 +257,7 @@ export function AccountSettingsPage() {
         <div>
           <p className="eyebrow">ACCOUNT</p>
           <h1>账号设置</h1>
-          <p>管理个人资料、界面偏好、手机号与账号安全。</p>
+          <p>管理个人资料、界面偏好与账号安全。</p>
         </div>
         <Link className="button" to="/profile/me">
           返回个人中心
@@ -341,9 +284,6 @@ export function AccountSettingsPage() {
                 <span className={`admin-user-badge ${roleClass}`}>{roleLabel}</span>
                 <span className={`admin-user-badge ${account.isBlacklisted ? "admin-user-status-blacklisted" : "admin-user-status-active"}`}>
                   {account.isBlacklisted ? "已限制" : "账号正常"}
-                </span>
-                <span className={`admin-user-badge ${account.phoneNumberConfirmed ? "admin-user-status-active" : "admin-user-role-answerer"}`}>
-                  {account.phoneNumberConfirmed ? "手机已绑定" : "手机未绑定"}
                 </span>
               </div>
             </div>
@@ -459,53 +399,10 @@ export function AccountSettingsPage() {
             <p className="eyebrow">SECURITY</p>
             <h2>登录与安全</h2>
           </div>
-          <p>管理手机号验证，并在需要时注销账号。</p>
+          <p>管理账号安全，并在需要时注销账号。</p>
         </div>
 
         <div className="account-security-grid-v3">
-          <section className="admin-panel account-card account-phone-card-v3">
-            <div className="admin-panel-header account-card-title-v3">
-              <div>
-                <span className="account-card-icon-v3">01</span>
-                <div>
-                  <h2>手机号绑定</h2>
-                  <p>用于身份验证与账号恢复。</p>
-                </div>
-              </div>
-              <span className={`admin-user-badge ${account.phoneNumberConfirmed ? "admin-user-status-active" : "admin-user-role-answerer"}`}>
-                {account.phoneNumberConfirmed ? "已绑定" : "未绑定"}
-              </span>
-            </div>
-
-            <form className="form-stack account-security-form account-security-form-v3" onSubmit={handleVerifyPhone}>
-              <div className="account-current-value-v3">
-                <span>当前手机号</span>
-                <strong>{account.phoneNumberConfirmed ? account.phoneNumberMasked ?? "已绑定" : "尚未绑定手机号"}</strong>
-              </div>
-
-              <label>
-                新手机号
-                <input value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="请输入 11 位手机号" inputMode="tel" />
-              </label>
-
-              <div className="inline-action-row">
-                <label>
-                  验证码
-                  <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="6 位验证码" inputMode="numeric" maxLength={6} />
-                </label>
-                <button className="button" type="button" disabled={isSendingCode} onClick={handleSendCode}>
-                  {isSendingCode ? "发送中..." : "发送验证码"}
-                </button>
-              </div>
-
-              {debugCode && <div className="quiet-note">开发环境验证码：{debugCode}</div>}
-
-              <button className="button primary" type="submit" disabled={isVerifying}>
-                {isVerifying ? "保存中..." : account.phoneNumberConfirmed ? "修改绑定手机号" : "绑定手机号"}
-              </button>
-            </form>
-          </section>
-
           <section className="admin-panel account-card account-danger-zone account-danger-zone-v3">
             <div className="admin-panel-header account-card-title-v3">
               <div>

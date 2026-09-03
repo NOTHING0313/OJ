@@ -28,8 +28,8 @@ public sealed class PasswordSecurityTests
     {
         var policy = new PasswordPolicy();
 
-        Assert.Contains("at least 15", policy.Validate(string.Concat(Enumerable.Repeat("🙂", 14))));
-        Assert.Null(policy.Validate(string.Concat(Enumerable.Repeat("🙂", 15))));
+        Assert.Contains("at least 8", policy.Validate(string.Concat(Enumerable.Repeat("🙂", 7))));
+        Assert.Null(policy.Validate(string.Concat(Enumerable.Repeat("🙂", 8))));
         Assert.Contains("128", policy.Validate(string.Concat(Enumerable.Repeat("🙂", 129))));
     }
 
