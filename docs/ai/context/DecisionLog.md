@@ -234,6 +234,19 @@
   - Copy the logo into the API web root: creates a second owner for a frontend asset.
 - Consequences: Certificate issuance and DNS must target `unrealstudiooj.top`; release artifacts retain the frontend as the only brand-asset owner; target-host verification now detects the observed failure before deployment is accepted.
 
+## Decision: The www hostname is a certificate-covered redirect alias
+
+- Status: Accepted locally; target-host verification pending
+- Date: 2026-09-04
+- Task: OJ-PRODUCTION-DEPLOY-01
+- Context: Both `unrealstudiooj.top` and `www.unrealstudiooj.top` resolve to the production host, while the root hostname remains the intended public origin. Omitting `www` from TLS would leave a reachable hostname with a certificate or routing mismatch.
+- Decision: Issue one certificate containing both hostnames. Serve application content only from `https://unrealstudiooj.top`; redirect HTTP requests for either hostname and HTTPS requests for `www.unrealstudiooj.top` directly to the canonical HTTPS origin while preserving the request URI.
+- Rejected alternatives:
+  - Serve the application independently on both hostnames: creates duplicate origins and inconsistent cookie, cache and indexing behavior.
+  - Delete the existing `www` DNS record: breaks a conventional entry point that already resolves to the host.
+  - Redirect HTTP `www` to HTTPS `www` before canonicalizing: adds an unnecessary second redirect.
+- Consequences: Certificate issuance and renewal must retain both SANs; target-host verification must prove the 301 status and exact canonical location before deployment is accepted.
+
 ## Decision: CSV exports classify trusted and untrusted cells explicitly
 
 - Status: Accepted

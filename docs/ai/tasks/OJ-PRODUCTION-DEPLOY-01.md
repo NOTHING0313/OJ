@@ -22,7 +22,8 @@ Prepare the current OnlineJudge for a production-ready deployment on a small pub
 - Approximately 50 GB SSD
 - Docker Engine and Docker Compose Plugin installed
 - UFW enabled
-- Domain: `unrealstudiooj.top`
+- Canonical domain: `unrealstudiooj.top`
+- Certificate-covered redirect alias: `www.unrealstudiooj.top`
 
 User-attested infrastructure state:
 
@@ -102,7 +103,7 @@ Must not be publicly exposed:
 
 - Define Nginx configuration and reload validation.
 - Define systemd or an explicitly chosen equivalent service lifecycle.
-- Configure HTTPS issuance and renewal for `unrealstudiooj.top`.
+- Configure HTTPS issuance and renewal for both hostnames, with `www.unrealstudiooj.top` redirecting to the canonical origin.
 - Define structured logging, rotation, health checks, startup order, and restart policy.
 - Define database/file backup, restore test, release rollback, and forward-fix procedures.
 
@@ -153,7 +154,7 @@ Stop for confirmation before:
 - Reviewed Task Delta limited to the approved deployment scope.
 - Production secrets remain external and redacted from evidence.
 - PostgreSQL, Redis, and Docker daemon are not publicly reachable.
-- API/frontend/domain routing and HTTPS are verified on the target host.
+- API/frontend/domain routing, HTTPS, HTTP/2, and the canonical `www` redirect are verified on the target host.
 - Persistent database, uploads, and challenge files survive a controlled restart/redeploy.
 - Targeted application tests and frontend build pass.
 - Sandbox smoke tests cover C11, C++17, and C# on the target architecture.

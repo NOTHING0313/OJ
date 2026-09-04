@@ -45,7 +45,13 @@ public sealed class ProductionDeploymentContractTests
 
         Assert.Contains("server 127.0.0.1:5101", nginx, StringComparison.Ordinal);
         Assert.Contains("server_name unrealstudiooj.top", nginx, StringComparison.Ordinal);
+        Assert.Contains("server_name unrealstudiooj.top www.unrealstudiooj.top;", nginx, StringComparison.Ordinal);
+        Assert.Contains("server_name www.unrealstudiooj.top;", nginx, StringComparison.Ordinal);
+        Assert.Contains("listen 443 ssl http2", nginx, StringComparison.Ordinal);
+        Assert.DoesNotContain("http2 on", nginx, StringComparison.Ordinal);
         Assert.Contains("/etc/letsencrypt/live/unrealstudiooj.top/fullchain.pem", nginx, StringComparison.Ordinal);
+        Assert.Contains("return 301 https://unrealstudiooj.top$request_uri;", nginx, StringComparison.Ordinal);
+        Assert.DoesNotContain("return 301 https://$host$request_uri;", nginx, StringComparison.Ordinal);
         Assert.Contains("proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for", nginx, StringComparison.Ordinal);
         Assert.Contains("proxy_set_header X-Forwarded-Proto $scheme", nginx, StringComparison.Ordinal);
         Assert.Contains("location ^~ /brand/ {\n        try_files $uri =404;", nginx.ReplaceLineEndings("\n"), StringComparison.Ordinal);
@@ -70,12 +76,21 @@ public sealed class ProductionDeploymentContractTests
     {
         var bootstrap = Read("nginx", "onlinejudge-bootstrap.conf");
         var verifier = Read("scripts", "verify-host.sh");
+        var readme = Read("README.md");
 
-        Assert.Contains("server_name unrealstudiooj.top", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("server_name unrealstudiooj.top www.unrealstudiooj.top;", bootstrap, StringComparison.Ordinal);
         Assert.Contains("domain=\"${1:-unrealstudiooj.top}\"", verifier, StringComparison.Ordinal);
+        Assert.Contains("alias_domain=\"www.$domain\"", verifier, StringComparison.Ordinal);
+        Assert.Contains("openssl s_client", verifier, StringComparison.Ordinal);
+        Assert.Contains("-alpn h2", verifier, StringComparison.Ordinal);
+        Assert.Contains("ALPN protocol:", verifier, StringComparison.Ordinal);
+        Assert.Contains("%{http_code}|%{redirect_url}", verifier, StringComparison.Ordinal);
+        Assert.Contains("https://$domain$alias_path", verifier, StringComparison.Ordinal);
         Assert.Contains("frontend/brand/unrealstudio-logo.png", verifier, StringComparison.Ordinal);
         Assert.Contains("--write-out '%{content_type}'", verifier, StringComparison.Ordinal);
         Assert.Contains("image/png", verifier, StringComparison.Ordinal);
+        Assert.Contains("--cert-name unrealstudiooj.top", readme, StringComparison.Ordinal);
+        Assert.Contains("-d unrealstudiooj.top -d www.unrealstudiooj.top", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("unrealstudioonlinejudge.de5.net", bootstrap + verifier, StringComparison.Ordinal);
     }
 
