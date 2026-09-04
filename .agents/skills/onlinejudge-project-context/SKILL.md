@@ -40,7 +40,7 @@ Use this context to orient work, then re-read the exact source files affected by
 
 ## Persistence
 
-- PostgreSQL stores EF Core data; Compose defines a named PostgreSQL volume.
+- PostgreSQL stores EF Core data; production Compose mounts operator-created external PostgreSQL and Redis volumes whose exact names are required in the infrastructure environment file.
 - Redis carries pending submission IDs; current source does not implement an acknowledgement/retry ledger around the list pop.
 - API image uploads are written below `OnlineJudge.Api/wwwroot/uploads/images`.
 - Challenge file submissions are written below `OnlineJudge.Api/App_Data/challenge-file-submissions`, with file paths stored in PostgreSQL.

@@ -16,6 +16,11 @@ public sealed class ProductionDeploymentContractTests
         Assert.DoesNotContain("0.0.0.0", compose, StringComparison.Ordinal);
         Assert.DoesNotContain("oj_password", compose, StringComparison.Ordinal);
         Assert.Contains("POSTGRES_PASSWORD=CHANGE_ME", environment, StringComparison.Ordinal);
+        Assert.Contains("name: ${POSTGRES_VOLUME_NAME:?POSTGRES_VOLUME_NAME is required}", compose, StringComparison.Ordinal);
+        Assert.Contains("name: ${REDIS_VOLUME_NAME:?REDIS_VOLUME_NAME is required}", compose, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(compose, "external: true"));
+        Assert.Contains("POSTGRES_VOLUME_NAME=onlinejudge_postgres_data", environment, StringComparison.Ordinal);
+        Assert.Contains("REDIS_VOLUME_NAME=onlinejudge_redis_data", environment, StringComparison.Ordinal);
         Assert.Contains("healthcheck:", compose, StringComparison.Ordinal);
         Assert.Contains("restart: unless-stopped", compose, StringComparison.Ordinal);
     }
@@ -89,6 +94,11 @@ public sealed class ProductionDeploymentContractTests
         Assert.Contains("frontend/brand/unrealstudio-logo.png", verifier, StringComparison.Ordinal);
         Assert.Contains("--write-out '%{content_type}'", verifier, StringComparison.Ordinal);
         Assert.Contains("image/png", verifier, StringComparison.Ordinal);
+        Assert.Contains("read_volume_name POSTGRES_VOLUME_NAME", verifier, StringComparison.Ordinal);
+        Assert.Contains("read_volume_name REDIS_VOLUME_NAME", verifier, StringComparison.Ordinal);
+        Assert.Contains("verify_volume_mount postgres /var/lib/postgresql/data", verifier, StringComparison.Ordinal);
+        Assert.Contains("verify_volume_mount redis /data", verifier, StringComparison.Ordinal);
+        Assert.Contains("docker volume inspect", verifier, StringComparison.Ordinal);
         Assert.Contains("--cert-name unrealstudiooj.top", readme, StringComparison.Ordinal);
         Assert.Contains("-d unrealstudiooj.top -d www.unrealstudiooj.top", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("unrealstudioonlinejudge.de5.net", bootstrap + verifier, StringComparison.Ordinal);
@@ -96,4 +106,7 @@ public sealed class ProductionDeploymentContractTests
 
     private static string Read(params string[] segments) =>
         File.ReadAllText(Path.Combine([DeploymentRoot, .. segments]));
+
+    private static int CountOccurrences(string value, string search) =>
+        value.Split(search, StringSplitOptions.None).Length - 1;
 }

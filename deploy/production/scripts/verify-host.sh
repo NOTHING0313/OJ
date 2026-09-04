@@ -4,9 +4,55 @@ set -euo pipefail
 domain="${1:-unrealstudiooj.top}"
 alias_domain="www.$domain"
 logo_path="/opt/onlinejudge/current/frontend/brand/unrealstudio-logo.png"
+infrastructure_env="/etc/onlinejudge/infrastructure.env"
+compose_file="/opt/onlinejudge/current/deploy/production/compose.infrastructure.yml"
+compose=(docker compose --project-name onlinejudge --env-file "$infrastructure_env" -f "$compose_file")
 
-docker compose --project-name onlinejudge --env-file /etc/onlinejudge/infrastructure.env \
-  -f /opt/onlinejudge/current/deploy/production/compose.infrastructure.yml ps
+read_volume_name() {
+  local key="$1"
+  local value
+  value="$(awk -v key="$key" '
+    index($0, key "=") == 1 {
+      sub(/^[^=]*=/, "")
+      value = $0
+    }
+    END { print value }
+  ' "$infrastructure_env")"
+  value="${value%$'\r'}"
+  value="${value#\"}"
+  value="${value%\"}"
+  value="${value#\'}"
+  value="${value%\'}"
+  if [[ ! "$value" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
+    echo "Missing or invalid $key in $infrastructure_env" >&2
+    exit 9
+  fi
+  printf '%s\n' "$value"
+}
+
+verify_volume_mount() {
+  local service="$1"
+  local destination="$2"
+  local expected_volume="$3"
+  local container_id
+  local actual_volume
+
+  docker volume inspect "$expected_volume" >/dev/null
+  container_id="$("${compose[@]}" ps -q "$service")"
+  [[ -n "$container_id" ]] || { echo "No running container found for $service" >&2; exit 9; }
+  actual_volume="$(docker inspect --format "{{range .Mounts}}{{if and (eq .Type \"volume\") (eq .Destination \"$destination\")}}{{.Name}}{{end}}{{end}}" "$container_id")"
+  if [[ "$actual_volume" != "$expected_volume" ]]; then
+    echo "Unexpected $service volume at $destination: expected=$expected_volume actual=${actual_volume:-none}" >&2
+    exit 9
+  fi
+}
+
+postgres_volume="$(read_volume_name POSTGRES_VOLUME_NAME)"
+redis_volume="$(read_volume_name REDIS_VOLUME_NAME)"
+
+"${compose[@]}" ps
+verify_volume_mount postgres /var/lib/postgresql/data "$postgres_volume"
+verify_volume_mount redis /data "$redis_volume"
 systemctl --quiet is-active onlinejudge-api.service
 systemctl --quiet is-active onlinejudge-worker.service
 nginx -t

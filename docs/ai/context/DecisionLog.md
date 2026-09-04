@@ -247,6 +247,19 @@
   - Redirect HTTP `www` to HTTPS `www` before canonicalizing: adds an unnecessary second redirect.
 - Consequences: Certificate issuance and renewal must retain both SANs; target-host verification must prove the 301 status and exact canonical location before deployment is accepted.
 
+## Decision: Production state volumes are explicit external resources
+
+- Status: Accepted
+- Date: 2026-09-04
+- Task: OJ-PRODUCTION-DEPLOY-01
+- Context: The existing host stores PostgreSQL and Redis data in volumes created by a legacy Compose project. A new Compose project name or volume key would otherwise create different empty volumes while appearing to start successfully.
+- Decision: Production Compose requires explicit `POSTGRES_VOLUME_NAME` and `REDIS_VOLUME_NAME` values and mounts both volumes with `external: true`. Operators create volumes for a first installation or select verified existing volumes during adoption; Compose never implicitly creates production state volumes.
+- Rejected alternatives:
+  - Keep project-scoped implicit volumes: a project rename can silently select an empty database.
+  - Add a host-specific override only on the current server: creates undocumented drift from the release artifact.
+  - Permanently retain the legacy Compose project: leaves infrastructure outside the versioned production contract.
+- Consequences: Missing or misspelled volumes fail startup before PostgreSQL or Redis is replaced. First installation requires an explicit volume-creation step, and legacy adoption requires a verified backup plus a controlled container handoff without `--volumes`.
+
 ## Decision: CSV exports classify trusted and untrusted cells explicitly
 
 - Status: Accepted

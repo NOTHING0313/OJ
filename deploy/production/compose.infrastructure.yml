@@ -54,4 +54,8 @@ services:
 
 volumes:
   postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:?POSTGRES_VOLUME_NAME is required}
+    external: true
   redis_data:
+    name: ${REDIS_VOLUME_NAME:?REDIS_VOLUME_NAME is required}
+    external: true
