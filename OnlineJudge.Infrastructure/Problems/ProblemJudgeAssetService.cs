@@ -19,8 +19,11 @@ public class ProblemJudgeAssetService(
     OnlineJudgeDbContext dbContext,
     ICurrentUser currentUser,
     IProblemJudgeAssetStorage storage,
-    ISecureUploadValidator uploadValidator) : IProblemJudgeAssetService
+    ISecureUploadValidator uploadValidator,
+    JudgeResourcePolicy? resourcePolicy = null) : IProblemJudgeAssetService
 {
+    private JudgeResourcePolicy ResourcePolicy { get; } = resourcePolicy ?? JudgeResourcePolicy.Default;
+
     public ProblemJudgeAssetService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, IProblemJudgeAssetStorage storage)
         : this(dbContext, currentUser, storage, new SecureUploadValidator(new SecureUploadOptions()))
     {
@@ -182,7 +185,7 @@ public class ProblemJudgeAssetService(
         {
             if (problem.IsPublished)
             {
-                var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+                var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, ResourcePolicy, cancellationToken);
                 if (revisionResult.IsFailure)
                 {
                     if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
@@ -251,7 +254,7 @@ public class ProblemJudgeAssetService(
         {
             if (problem.IsPublished)
             {
-                var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+                var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, ResourcePolicy, cancellationToken);
                 if (revisionResult.IsFailure)
                 {
                     if (transaction is not null) await transaction.RollbackAsync(cancellationToken);

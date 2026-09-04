@@ -123,6 +123,8 @@ def main() -> int:
             "actual": STATUS_NAMES.get(final_status, "Timeout"),
             "matched": matched,
             "latencyMs": round((time.perf_counter() - started) * 1000, 3),
+            "resourceEvaluation": current.get("evaluation") if final_status else None,
+            "measuredCaseCount": len(current.get("caseResults", [])) if final_status else 0,
         })
     rendered = json.dumps({"allExpected": all_expected, "cases": results}, indent=2, sort_keys=True)
     output = Path(args.output)

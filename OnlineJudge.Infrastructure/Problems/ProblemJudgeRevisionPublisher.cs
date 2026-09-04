@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OnlineJudge.Application.Common;
+using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Domain.Entities;
 using OnlineJudge.Infrastructure.Persistence;
 
@@ -19,13 +20,21 @@ internal static class ProblemJudgeRevisionPublisher
     public static async Task<Result<ProblemJudgeRevision>> PublishAsync(
         OnlineJudgeDbContext dbContext,
         Problem problem,
+        JudgeResourcePolicy resourcePolicy,
         CancellationToken cancellationToken)
     {
         var problemValidation = ProblemJudgeDefinitionValidator.ValidateProblem(
+            problem.Title,
+            problem.Description,
+            problem.InputDescription,
+            problem.OutputDescription,
+            problem.TimeLimitMs,
+            problem.MemoryLimitMb,
             problem.JudgeMode,
             problem.AllowedLanguagesMask,
             problem.FunctionSpecJson,
-            problem.StarterCodeJson);
+            problem.StarterCodeJson,
+            resourcePolicy);
         if (problemValidation.IsFailure)
         {
             return Result<ProblemJudgeRevision>.Failure(problemValidation.ErrorMessage!);
@@ -51,6 +60,16 @@ internal static class ProblemJudgeRevisionPublisher
             return Result<ProblemJudgeRevision>.Failure(NoActiveTestCasesMessage);
         }
 
+        var collectionValidation = ProblemJudgeDefinitionValidator.ValidateTestCaseCollection(
+            problem.TimeLimitMs,
+            testCases.Select(JudgeTestCasePayload.From).ToList(),
+            resourcePolicy,
+            requireAtLeastOne: true);
+        if (collectionValidation.IsFailure)
+        {
+            return Result<ProblemJudgeRevision>.Failure(collectionValidation.ErrorMessage!);
+        }
+
         foreach (var testCase in testCases)
         {
             var validation = ProblemJudgeDefinitionValidator.ValidateTestCase(
@@ -60,7 +79,8 @@ internal static class ProblemJudgeRevisionPublisher
                 testCase.ArgumentsJson,
                 testCase.ExpectedJson,
                 testCase.Visibility,
-                testCase.Score);
+                testCase.Score,
+                resourcePolicy);
             if (validation.IsFailure)
             {
                 return Result<ProblemJudgeRevision>.Failure($"Test case {testCase.Id} is invalid: {validation.ErrorMessage}");

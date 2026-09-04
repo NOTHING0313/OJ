@@ -22,6 +22,8 @@ public class SubmissionListItemDto
 
     public int? MemoryUsedKb { get; set; }
 
+    public SubmissionEvaluationDto Evaluation { get; set; } = new();
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? FinishedAt { get; set; }

@@ -123,18 +123,30 @@ export function SubmissionDetailPage() {
           <strong>{formatDate(submission.createdAt)}</strong>
         </div>
         <div>
-          <span>耗时</span>
-          <strong>{formatMetric(submission.timeUsedMs, "ms")}</strong>
+          <span>最大时间</span>
+          <strong>{formatMetric(submission.evaluation.maxTimeUsedMs, "ms")}</strong>
         </div>
         <div>
-          <span>内存</span>
-          <strong>{formatMetric(submission.memoryUsedKb, "KB")}</strong>
+          <span>用例平均时间</span>
+          <strong>{formatMetric(submission.evaluation.averageCaseTimeUsedMs, "ms")}</strong>
+        </div>
+        <div>
+          <span>最大内存</span>
+          <strong>{formatMemory(submission.evaluation.maxMemoryUsedKb)}</strong>
+        </div>
+        <div>
+          <span>用例平均内存</span>
+          <strong>{formatMemory(submission.evaluation.averageCaseMemoryUsedKb)}</strong>
         </div>
         <div>
           <span>完成时间</span>
           <strong>{formatDate(submission.finishedAt)}</strong>
         </div>
       </div>
+
+      {submission.status !== acceptedStatus && submission.caseResults.length > 0 && (
+        <div className="quiet-note">资源评估基于本次实际执行的用例。</div>
+      )}
 
       {submission.errorMessage && <div className="alert error pre-line">{submission.errorMessage}</div>}
 
@@ -204,7 +216,15 @@ function statusTone(status: number) {
 }
 
 function formatMetric(value: number | null, unit: string) {
-  return value === null ? "—" : `${value} ${unit}`;
+  return value === null ? "—" : `${formatNumber(value)} ${unit}`;
+}
+
+function formatMemory(valueKb: number | null) {
+  return valueKb === null ? "—" : `${formatNumber(valueKb / 1024)} MB`;
+}
+
+function formatNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 async function copySource(sourceCode: string, setCopyNotice: (value: string | null) => void) {

@@ -24,8 +24,11 @@ public sealed class JudgeJobProcessor(
     JudgeJobOptions options,
     TimeProvider timeProvider,
     IServiceScopeFactory scopeFactory,
-    ILogger<JudgeJobProcessor> logger)
+    ILogger<JudgeJobProcessor> logger,
+    JudgeResourcePolicy? resourcePolicy = null)
 {
+    private JudgeResourcePolicy ResourcePolicy { get; } = resourcePolicy ?? JudgeResourcePolicy.Default;
+
     public async Task ProcessAsync(JudgeJobLease lease, CancellationToken stoppingToken)
     {
         using var executionCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -170,7 +173,7 @@ public sealed class JudgeJobProcessor(
             return ExecutionOutcome.Failed(Permanent($"Judge support files are invalid: {ex.GetType().Name}."));
         }
 
-        var requestResult = SubmissionJudgeRequestFactory.Create(submission, compileAssets);
+        var requestResult = SubmissionJudgeRequestFactory.Create(submission, compileAssets, ResourcePolicy);
         if (requestResult.IsFailure || requestResult.Value is null)
         {
             return ExecutionOutcome.Failed(Permanent(requestResult.ErrorMessage ?? "Judge request could not be built."));
@@ -187,7 +190,17 @@ public sealed class JudgeJobProcessor(
             return ExecutionOutcome.Failed(Permanent($"Judge runner configuration is invalid: {ex.GetType().Name}."));
         }
 
-        var result = await runner.RunAsync(requestResult.Value, cancellationToken);
+        using var budgetCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budgetCancellation.CancelAfter(TimeSpan.FromSeconds(ResourcePolicy.SubmissionJudgeWallTimeSeconds));
+        JudgeResult result;
+        try
+        {
+            result = await runner.RunAsync(requestResult.Value, budgetCancellation.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && budgetCancellation.IsCancellationRequested)
+        {
+            return ExecutionOutcome.Failed(Permanent("Submission judge wall-time budget exceeded."));
+        }
         if (result.Status == JudgeStatus.SystemError)
         {
             var kind = result.FailureKind ?? JudgeFailureKind.TransientInfrastructure;

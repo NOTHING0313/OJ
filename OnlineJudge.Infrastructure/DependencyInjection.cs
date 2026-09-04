@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OnlineJudge.Application.Account.Services;
 using OnlineJudge.Application.Challenges.Services;
 using OnlineJudge.Application.Judging.Services;
+using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Leaderboards.Services;
 using OnlineJudge.Application.Profile.Services;
 using OnlineJudge.Application.Problems.Services;
@@ -61,6 +62,7 @@ public static class DependencyInjection
         services.AddSingleton<ISecureArchiveExtractor, SecureArchiveExtractor>();
         var judgeSandboxOptions = JudgeSandboxOptions.FromConfiguration(configuration);
         services.AddSingleton(judgeSandboxOptions);
+        services.AddSingleton(JudgeResourcePolicyConfiguration.FromConfiguration(configuration));
         var judgeJobOptions = JudgeJobOptions.FromConfiguration(configuration);
         services.AddSingleton(judgeJobOptions);
         services.AddSingleton<IDockerCommandClient>(_ => new DockerCommandClient(judgeSandboxOptions));

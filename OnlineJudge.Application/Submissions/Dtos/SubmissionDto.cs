@@ -26,6 +26,8 @@ public class SubmissionDto
 
     public int? MemoryUsedKb { get; set; }
 
+    public SubmissionEvaluationDto Evaluation { get; set; } = new();
+
     public string? ErrorMessage { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

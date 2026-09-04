@@ -17,6 +17,7 @@ namespace OnlineJudge.Api.Controllers;
 public class ProblemsController(IProblemService problemService, IProblemJudgeAssetService judgeAssetService) : ControllerBase
 {
     private const long MaxJudgeAssetRequestSize = 513 * 1024;
+    private const long MaxTestCaseImportRequestSize = 65L * 1024 * 1024;
     private static readonly JsonSerializerOptions ExportJsonOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -133,6 +134,7 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
     [SecurityAudit(SecurityAuditActions.ProblemTestCasesChanged, "Problem", "id")]
+    [RequestSizeLimit(MaxTestCaseImportRequestSize)]
     [HttpPost("{id:guid}/test-cases/import")]
     public async Task<IActionResult> ImportTestCases(Guid id, ImportTestCasesRequest request, CancellationToken cancellationToken)
     {

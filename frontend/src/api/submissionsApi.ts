@@ -25,6 +25,13 @@ export interface SubmissionCaseResultDto {
   isRedacted: boolean;
 }
 
+export interface SubmissionEvaluationDto {
+  maxTimeUsedMs: number | null;
+  averageCaseTimeUsedMs: number | null;
+  maxMemoryUsedKb: number | null;
+  averageCaseMemoryUsedKb: number | null;
+}
+
 export interface SubmissionDto {
   id: string;
   problemId: string;
@@ -37,6 +44,7 @@ export interface SubmissionDto {
   status: JudgeStatus;
   timeUsedMs: number | null;
   memoryUsedKb: number | null;
+  evaluation: SubmissionEvaluationDto;
   errorMessage: string | null;
   createdAt: string;
   finishedAt: string | null;
@@ -53,6 +61,7 @@ export interface SubmissionQueryItem {
   status: JudgeStatus;
   timeUsedMs: number | null;
   memoryUsedKb: number | null;
+  evaluation: SubmissionEvaluationDto;
   createdAt: string;
   finishedAt: string | null;
 }

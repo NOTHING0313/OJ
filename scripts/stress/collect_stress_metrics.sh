@@ -7,8 +7,7 @@ output="-"
 postgres_container="onlinejudge-postgres"
 production_redis_container="onlinejudge-redis"
 stress_redis_container=""
-production_queue="judge:submissions:pending"
-stress_queue="judge:submissions:pending"
+stress_database=""
 production_health_url="http://127.0.0.1:5101/api/site-settings/appearance"
 stress_api_unit=""
 stress_worker_unit=""
@@ -23,8 +22,7 @@ while [[ $# -gt 0 ]]; do
     --postgres-container) postgres_container="$2"; shift 2 ;;
     --production-redis-container) production_redis_container="$2"; shift 2 ;;
     --stress-redis-container) stress_redis_container="$2"; shift 2 ;;
-    --production-queue) production_queue="$2"; shift 2 ;;
-    --stress-queue) stress_queue="$2"; shift 2 ;;
+    --stress-database) stress_database="$2"; shift 2 ;;
     --production-health-url) production_health_url="$2"; shift 2 ;;
     --stress-api-unit) stress_api_unit="$2"; shift 2 ;;
     --stress-worker-unit) stress_worker_unit="$2"; shift 2 ;;
@@ -39,6 +37,7 @@ done
 [[ "$min_disk_available_percent" =~ ^[0-9]+$ && "$min_disk_available_percent" -ge 20 ]] || { echo "disk threshold cannot be below 20%" >&2; exit 2; }
 [[ "$min_memory_available_percent" =~ ^[0-9]+$ && "$min_memory_available_percent" -ge 15 ]] || { echo "memory threshold cannot be below 15%" >&2; exit 2; }
 [[ -n "$stress_redis_container" ]] || { echo "--stress-redis-container is required" >&2; exit 2; }
+[[ "$stress_database" =~ ^onlinejudge_stress_[a-z0-9_]+$ ]] || { echo "--stress-database must name an isolated stress database" >&2; exit 2; }
 [[ -n "$stress_api_unit" ]] || { echo "--stress-api-unit is required" >&2; exit 2; }
 [[ -n "$stress_worker_unit" ]] || { echo "--stress-worker-unit is required" >&2; exit 2; }
 
@@ -55,7 +54,7 @@ mem_total_kb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
 disk_total=$(df -B1 --output=size / | tail -1 | tr -d ' ')
 initial_swap_used_kb=$(awk '/^SwapTotal:/{t=$2}/^SwapFree:/{f=$2}END{print t-f}' /proc/meminfo)
 
-echo 'timestamp,cpu_pct,load1,load5,mem_available_bytes,swap_used_bytes,disk_used_bytes,disk_available_bytes,disk_write_sectors,net_rx_bytes,net_tx_bytes,production_api_rss_kb,production_worker_rss_kb,stress_api_rss_kb,stress_worker_rss_kb,postgres_rss_bytes,production_redis_rss_bytes,stress_redis_rss_bytes,postgres_connections,production_redis_used_memory_bytes,stress_redis_used_memory_bytes,stress_queue_depth,production_queue_depth,docker_container_count,production_http' >&3
+echo 'timestamp,cpu_pct,load1,load5,mem_available_bytes,swap_used_bytes,disk_used_bytes,disk_available_bytes,disk_write_sectors,net_rx_bytes,net_tx_bytes,production_api_rss_kb,production_worker_rss_kb,stress_api_rss_kb,stress_worker_rss_kb,postgres_rss_bytes,production_redis_rss_bytes,stress_redis_rss_bytes,postgres_connections,production_redis_used_memory_bytes,stress_redis_used_memory_bytes,stress_queue_depth,stress_oldest_pending_age_seconds,production_queue_depth,production_oldest_pending_age_seconds,docker_container_count,production_http' >&3
 
 start_epoch=$(date +%s)
 while (( $(date +%s) - start_epoch <= duration_seconds )); do
@@ -99,16 +98,16 @@ while (( $(date +%s) - start_epoch <= duration_seconds )); do
   pg_connections=$(sudo -n docker exec "$postgres_container" psql -U "$pg_user" -d "$pg_db" -Atc 'select count(*) from pg_stat_activity;' 2>/dev/null)
   production_redis_memory=$(sudo -n docker exec "$production_redis_container" redis-cli --raw INFO memory 2>/dev/null | awk -F: '/^used_memory:/{gsub(/\r/,"",$2);print $2}')
   stress_redis_memory=$(sudo -n docker exec "$stress_redis_container" redis-cli --raw INFO memory 2>/dev/null | awk -F: '/^used_memory:/{gsub(/\r/,"",$2);print $2}')
-  stress_depth=$(sudo -n docker exec "$stress_redis_container" redis-cli --raw LLEN "$stress_queue" 2>/dev/null)
-  production_depth=$(sudo -n docker exec "$production_redis_container" redis-cli --raw LLEN "$production_queue" 2>/dev/null)
+  read -r stress_depth stress_oldest_age < <(sudo -n docker exec "$postgres_container" psql -U "$pg_user" -d "$stress_database" -AtF' ' -c 'SELECT COUNT(*) FILTER (WHERE "Status" = 1), COALESCE(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN("CreatedAt") FILTER (WHERE "Status" = 1)))::bigint, 0) FROM "JudgeJobs";')
+  read -r production_depth production_oldest_age < <(sudo -n docker exec "$postgres_container" psql -U "$pg_user" -d "$pg_db" -AtF' ' -c 'SELECT COUNT(*) FILTER (WHERE "Status" = 1), COALESCE(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN("CreatedAt") FILTER (WHERE "Status" = 1)))::bigint, 0) FROM "JudgeJobs";')
   docker_count=$(sudo -n docker ps -q | wc -l)
   production_http=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "$production_health_url" || echo 000)
 
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.0f,%.0f,%.0f,%s,%s,%s,%s,%s,%s,%s\n' \
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.0f,%.0f,%.0f,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cpu" "$load1" "$load5" "$((mem_available_kb*1024))" "$((swap_used_kb*1024))" \
     "$disk_used" "$disk_available" "$disk_write_sectors" "$net_rx" "$net_tx" "$api_rss" "$worker_rss" "$stress_api_rss" "$stress_worker_rss" \
     "$postgres_rss" "$production_redis_rss" "$stress_redis_rss" "$pg_connections" "$production_redis_memory" "$stress_redis_memory" \
-    "$stress_depth" "$production_depth" "$docker_count" "$production_http" >&3
+    "$stress_depth" "$stress_oldest_age" "$production_depth" "$production_oldest_age" "$docker_count" "$production_http" >&3
 
   disk_available_percent=$((100*disk_available/disk_total))
   mem_available_percent=$((100*mem_available_kb/mem_total_kb))

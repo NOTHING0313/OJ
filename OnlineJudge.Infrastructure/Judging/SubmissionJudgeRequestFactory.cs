@@ -1,6 +1,7 @@
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Domain.Entities;
+using OnlineJudge.Infrastructure.Problems;
 
 namespace OnlineJudge.Infrastructure.Judging;
 
@@ -11,8 +12,17 @@ public static class SubmissionJudgeRequestFactory
 {
     public static Result<JudgeRequest> Create(Submission submission, IReadOnlyList<JudgeCompileAsset> compileAssets)
     {
+        return Create(submission, compileAssets, JudgeResourcePolicy.Default);
+    }
+
+    public static Result<JudgeRequest> Create(
+        Submission submission,
+        IReadOnlyList<JudgeCompileAsset> compileAssets,
+        JudgeResourcePolicy resourcePolicy)
+    {
         ArgumentNullException.ThrowIfNull(submission);
         ArgumentNullException.ThrowIfNull(compileAssets);
+        ArgumentNullException.ThrowIfNull(resourcePolicy);
 
         var revision = submission.ProblemJudgeRevision;
         if (revision is null
@@ -26,6 +36,40 @@ public static class SubmissionJudgeRequestFactory
         if (revision.TestCases.Count == 0)
         {
             return Result<JudgeRequest>.Failure("Problem judge revision contains no test cases.");
+        }
+
+        var sourceValidation = ProblemJudgeDefinitionValidator.ValidateSourceCode(submission.SourceCode, resourcePolicy);
+        if (sourceValidation.IsFailure)
+        {
+            return Result<JudgeRequest>.Failure(sourceValidation.ErrorMessage!);
+        }
+
+        var resourceValidation = ProblemJudgeDefinitionValidator.ValidateRunLimits(revision.TimeLimitMs, revision.MemoryLimitMb, resourcePolicy);
+        if (resourceValidation.IsFailure)
+        {
+            return Result<JudgeRequest>.Failure(resourceValidation.ErrorMessage!);
+        }
+
+        var payloads = revision.TestCases
+            .Select(testCase => new JudgeTestCasePayload(testCase.Input, testCase.ExpectedOutput, testCase.ArgumentsJson, testCase.ExpectedJson))
+            .ToList();
+        foreach (var payload in payloads)
+        {
+            var payloadValidation = ProblemJudgeDefinitionValidator.ValidateTestCasePayload(payload, resourcePolicy);
+            if (payloadValidation.IsFailure)
+            {
+                return Result<JudgeRequest>.Failure(payloadValidation.ErrorMessage!);
+            }
+        }
+
+        var collectionValidation = ProblemJudgeDefinitionValidator.ValidateTestCaseCollection(
+            revision.TimeLimitMs,
+            payloads,
+            resourcePolicy,
+            requireAtLeastOne: true);
+        if (collectionValidation.IsFailure)
+        {
+            return Result<JudgeRequest>.Failure(collectionValidation.ErrorMessage!);
         }
 
         return Result<JudgeRequest>.Success(new JudgeRequest

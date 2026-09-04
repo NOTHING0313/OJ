@@ -20,7 +20,7 @@ OnlineJudge 是一个面向课程设计和演示场景的在线判题平台，�
 
 ## 本地环境要求
 
-- .NET SDK 8+
+- .NET SDK 10.0.400（由 `global.json` 固定，可使用兼容的 10.0 最新补丁）
 - Node.js 和 npm
 - Docker Desktop
 - PostgreSQL / Redis 通过 `docker compose` 启动
@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1
 dotnet ef database update --project .\OnlineJudge.Infrastructure --startup-project .\OnlineJudge.Api
 ```
 
-本收口阶段不新增数据库字段，也不生成新的 Migration。
+拉取新版本后应执行上述命令应用仓库中已有的 Migration。只有在已批准的持久化变更确实需要时才生成新 Migration，不应为本地环境差异生成迁移。
 
 ## 邮箱 SMTP 配置
 

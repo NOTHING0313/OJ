@@ -9,8 +9,11 @@ namespace OnlineJudge.Api.Controllers;
 [ApiController]
 public class SubmissionsController(ISubmissionService submissionService) : ControllerBase
 {
+    private const long MaxSubmissionRequestSize = 1024 * 1024;
+
     [Authorize]
     [RiskRateLimit(RateLimitPolicies.Submission)]
+    [RequestSizeLimit(MaxSubmissionRequestSize)]
     [HttpPost("api/submissions")]
     public async Task<IActionResult> CreateSubmission(CreateSubmissionRequest request, CancellationToken cancellationToken)
     {

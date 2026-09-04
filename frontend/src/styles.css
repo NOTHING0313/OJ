@@ -3993,6 +3993,7 @@ h2 {
 }
 
 .submission-metric {
+  display: block;
   color: #c8d0e0;
   font-size: 13px;
   font-variant-numeric: tabular-nums;

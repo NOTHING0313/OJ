@@ -1,10 +1,12 @@
 using System.Text.Json;
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Judging.Services;
+using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Submissions.Dtos;
 using OnlineJudge.Application.Submissions.Requests;
 using OnlineJudge.Application.Submissions.Services;
@@ -12,6 +14,7 @@ using OnlineJudge.Domain.Entities;
 using OnlineJudge.Domain.Enums;
 using OnlineJudge.Infrastructure.Persistence;
 using OnlineJudge.Infrastructure.ContentVisibility;
+using OnlineJudge.Infrastructure.Problems;
 
 namespace OnlineJudge.Infrastructure.Submissions;
 
@@ -21,8 +24,11 @@ public class SubmissionService(
     ICurrentUser currentUser,
     ContentVisibilityPolicy visibilityPolicy,
     TimeProvider timeProvider,
-    ILogger<SubmissionService> logger) : ISubmissionService
+    ILogger<SubmissionService> logger,
+    JudgeResourcePolicy? resourcePolicy = null) : ISubmissionService
 {
+    private JudgeResourcePolicy ResourcePolicy { get; } = resourcePolicy ?? JudgeResourcePolicy.Default;
+
     public SubmissionService(OnlineJudgeDbContext dbContext, IJudgeQueue judgeQueue, ICurrentUser currentUser)
         : this(
             dbContext,
@@ -65,6 +71,12 @@ public class SubmissionService(
         if (!Enum.IsDefined(request.Language))
         {
             return Result<SubmissionDto>.Failure("Unsupported judge language.");
+        }
+
+        var sourceValidation = ProblemJudgeDefinitionValidator.ValidateSourceCode(request.SourceCode, ResourcePolicy);
+        if (sourceValidation.IsFailure)
+        {
+            return Result<SubmissionDto>.Failure(sourceValidation.ErrorMessage!);
         }
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -300,21 +312,9 @@ public class SubmissionService(
             .OrderByDescending(submission => submission.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(submission => new SubmissionListItemDto
-            {
-                Id = submission.Id,
-                ProblemId = submission.ProblemId,
-                ProblemTitle = submission.Problem == null ? "题目已删除" : submission.Problem.Title,
-                UserId = submission.UserId,
-                UserName = submission.User == null ? "未知用户" : submission.User.UserName,
-                Language = submission.Language,
-                Status = submission.Status,
-                TimeUsedMs = submission.TimeUsedMs,
-                MemoryUsedKb = submission.MemoryUsedKb,
-                CreatedAt = submission.CreatedAt,
-                FinishedAt = submission.FinishedAt
-            })
+            .Select(ToListItemDto())
             .ToListAsync(cancellationToken);
+        items.ForEach(item => SubmissionEvaluationMetrics.RoundAverages(item.Evaluation));
 
         return Result<PagedResult<SubmissionListItemDto>>.Success(new PagedResult<SubmissionListItemDto>
         {
@@ -353,21 +353,9 @@ public class SubmissionService(
 
         var submissions = await query
             .OrderByDescending(submission => submission.CreatedAt)
-            .Select(submission => new SubmissionListItemDto
-            {
-                Id = submission.Id,
-                ProblemId = submission.ProblemId,
-                ProblemTitle = problem.Title,
-                UserId = submission.UserId,
-                UserName = submission.User == null ? "未知用户" : submission.User.UserName,
-                Language = submission.Language,
-                Status = submission.Status,
-                TimeUsedMs = submission.TimeUsedMs,
-                MemoryUsedKb = submission.MemoryUsedKb,
-                CreatedAt = submission.CreatedAt,
-                FinishedAt = submission.FinishedAt
-            })
+            .Select(ToListItemDto(problem.Title))
             .ToListAsync(cancellationToken);
+        submissions.ForEach(item => SubmissionEvaluationMetrics.RoundAverages(item.Evaluation));
 
         return Result<IReadOnlyList<SubmissionListItemDto>>.Success(submissions);
     }
@@ -417,12 +405,38 @@ public class SubmissionService(
             Status = submission.Status,
             TimeUsedMs = submission.TimeUsedMs,
             MemoryUsedKb = submission.MemoryUsedKb,
+            Evaluation = SubmissionEvaluationMetrics.FromCaseResults(submission.CaseResults),
             ErrorMessage = submission.ErrorMessage,
             CreatedAt = submission.CreatedAt,
             FinishedAt = submission.FinishedAt,
             CaseResults = submission.CaseResults
                 .Select(caseResult => ToCaseResultDto(caseResult, canViewHiddenCaseResults))
                 .ToList()
+        };
+    }
+
+    private static Expression<Func<Submission, SubmissionListItemDto>> ToListItemDto(string? problemTitle = null)
+    {
+        return submission => new SubmissionListItemDto
+        {
+            Id = submission.Id,
+            ProblemId = submission.ProblemId,
+            ProblemTitle = problemTitle ?? (submission.Problem == null ? "题目已删除" : submission.Problem.Title),
+            UserId = submission.UserId,
+            UserName = submission.User == null ? "未知用户" : submission.User.UserName,
+            Language = submission.Language,
+            Status = submission.Status,
+            TimeUsedMs = submission.TimeUsedMs,
+            MemoryUsedKb = submission.MemoryUsedKb,
+            Evaluation = new SubmissionEvaluationDto
+            {
+                MaxTimeUsedMs = submission.CaseResults.Select(result => result.TimeUsedMs).Max(),
+                AverageCaseTimeUsedMs = submission.CaseResults.Select(result => (decimal?)result.TimeUsedMs).Average(),
+                MaxMemoryUsedKb = submission.CaseResults.Select(result => result.MemoryUsedKb).Max(),
+                AverageCaseMemoryUsedKb = submission.CaseResults.Select(result => (decimal?)result.MemoryUsedKb).Average()
+            },
+            CreatedAt = submission.CreatedAt,
+            FinishedAt = submission.FinishedAt
         };
     }
 

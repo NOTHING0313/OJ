@@ -145,8 +145,8 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
             {showUser && <th>用户</th>}
             <th>语言</th>
             <th>状态</th>
-            <th>耗时</th>
-            <th>内存</th>
+            <th>时间评估</th>
+            <th>内存评估</th>
             <th>完成时间</th>
             <th>操作</th>
           </tr>
@@ -170,8 +170,14 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
               )}
               <td><span className="submission-language-badge">{languageLabel(item.language)}</span></td>
               <td><SubmissionStatusBadge status={item.status} /></td>
-              <td><span className="submission-metric">{formatMetric(item.timeUsedMs, "ms")}</span></td>
-              <td><span className="submission-metric">{formatMetric(item.memoryUsedKb, "KB")}</span></td>
+              <td>
+                <span className="submission-metric">最大 {formatMetric(item.evaluation.maxTimeUsedMs, "ms")}</span>
+                <span className="submission-metric">平均 {formatMetric(item.evaluation.averageCaseTimeUsedMs, "ms")}</span>
+              </td>
+              <td>
+                <span className="submission-metric">最大 {formatMemory(item.evaluation.maxMemoryUsedKb)}</span>
+                <span className="submission-metric">平均 {formatMemory(item.evaluation.averageCaseMemoryUsedKb)}</span>
+              </td>
               <td><SubmissionDateTime value={item.finishedAt} /></td>
               <td>
                 <Link className="button submission-view-link" to={`/submissions/${item.id}`}>查看</Link>
@@ -226,7 +232,15 @@ function statusTone(status: JudgeStatus) {
 }
 
 function formatMetric(value: number | null, unit: string) {
-  return value === null ? "—" : `${value} ${unit}`;
+  return value === null ? "—" : `${formatNumber(value)} ${unit}`;
+}
+
+function formatMemory(valueKb: number | null) {
+  return valueKb === null ? "—" : `${formatNumber(valueKb / 1024)} MB`;
+}
+
+function formatNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 function formatSubmissionDateTime(value: string | null) {

@@ -160,6 +160,42 @@ public sealed class JudgeJobProcessorTests
         Assert.Equal(1, fixture.Queue.SignalCount);
     }
 
+    [Fact]
+    public async Task InvalidPersistedResourceInput_DeadLettersWithoutInvokingRunner()
+    {
+        var runner = new RecordingRunner(new JudgeResult { Status = JudgeStatus.Accepted });
+        var policy = new JudgeResourcePolicy { MaxSourceCodeBytes = 1 };
+        await using var fixture = await Fixture.CreateAsync(
+            new JudgeResult { Status = JudgeStatus.Accepted },
+            runner: runner,
+            resourcePolicy: policy);
+
+        await fixture.Processor.ProcessAsync(fixture.Lease, CancellationToken.None);
+
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(0, runner.InvocationCount);
+        Assert.Equal(JudgeJobStatus.DeadLettered, (await fixture.Db.JudgeJobs.SingleAsync()).Status);
+        Assert.Equal(JudgeStatus.SystemError, (await fixture.Db.Submissions.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task JudgeWallTimeBudget_DeadLettersAsPermanentFailure()
+    {
+        var runner = new DelayingRunner();
+        var policy = new JudgeResourcePolicy { SubmissionJudgeWallTimeSeconds = 1 };
+        await using var fixture = await Fixture.CreateAsync(
+            new JudgeResult { Status = JudgeStatus.Accepted },
+            runner: runner,
+            resourcePolicy: policy);
+
+        await fixture.Processor.ProcessAsync(fixture.Lease, CancellationToken.None);
+
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(1, runner.InvocationCount);
+        Assert.Equal(JudgeJobStatus.DeadLettered, (await fixture.Db.JudgeJobs.SingleAsync()).Status);
+        Assert.Equal(JudgeStatus.SystemError, (await fixture.Db.Submissions.SingleAsync()).Status);
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private Fixture(
@@ -193,7 +229,9 @@ public sealed class JudgeJobProcessorTests
         public static async Task<Fixture> CreateAsync(
             JudgeResult result,
             int attemptNumber = 1,
-            Func<OnlineJudgeDbContext, ISeasonScoreService>? seasonScoreServiceFactory = null)
+            Func<OnlineJudgeDbContext, ISeasonScoreService>? seasonScoreServiceFactory = null,
+            IJudgeRunner? runner = null,
+            JudgeResourcePolicy? resourcePolicy = null)
         {
             var now = new DateTimeOffset(2026, 9, 3, 8, 0, 0, TimeSpan.Zero);
             var time = new FixedTimeProvider(now);
@@ -300,7 +338,7 @@ public sealed class JudgeJobProcessorTests
             var queue = new RecordingQueue();
             var processor = new JudgeJobProcessor(
                 db,
-                new FixedRunnerFactory(new FixedRunner(result)),
+                new FixedRunnerFactory(runner ?? new FixedRunner(result)),
                 new EmptyAssetLoader(),
                 seasonScoreServiceFactory?.Invoke(db) ?? new SeasonScoreService(db, time, new LeaderboardScoringEngine()),
                 new NoopSeasonLifecycleService(),
@@ -310,7 +348,8 @@ public sealed class JudgeJobProcessorTests
                 jobOptions,
                 time,
                 provider.GetRequiredService<IServiceScopeFactory>(),
-                NullLogger<JudgeJobProcessor>.Instance);
+                NullLogger<JudgeJobProcessor>.Instance,
+                resourcePolicy);
 
             return new Fixture(
                 db,
@@ -331,6 +370,33 @@ public sealed class JudgeJobProcessorTests
     private sealed class FixedRunnerFactory(IJudgeRunner runner) : IJudgeRunnerFactory
     {
         public IJudgeRunner GetRunner(JudgeLanguage language) => runner;
+    }
+
+    private sealed class RecordingRunner(JudgeResult result) : IJudgeRunner
+    {
+        public int InvocationCount { get; private set; }
+
+        public bool Supports(JudgeLanguage language) => true;
+
+        public Task<JudgeResult> RunAsync(JudgeRequest request, CancellationToken cancellationToken = default)
+        {
+            InvocationCount++;
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class DelayingRunner : IJudgeRunner
+    {
+        public int InvocationCount { get; private set; }
+
+        public bool Supports(JudgeLanguage language) => true;
+
+        public async Task<JudgeResult> RunAsync(JudgeRequest request, CancellationToken cancellationToken = default)
+        {
+            InvocationCount++;
+            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+            return new JudgeResult { Status = JudgeStatus.Accepted };
+        }
     }
 
     private sealed class FixedRunner(JudgeResult result) : IJudgeRunner

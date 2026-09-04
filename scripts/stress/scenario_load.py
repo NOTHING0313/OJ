@@ -29,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration-seconds", type=int, default=0)
     parser.add_argument("--iterations-per-vu", type=int, default=1)
     parser.add_argument("--request-interval-ms", type=int, default=0)
+    parser.add_argument("--arrival-rate", type=float, default=0, help="Open-loop requests per second; supported by submission scenario.")
+    parser.add_argument("--submission-accounts", type=int, default=1)
     parser.add_argument("--payload-bytes", type=int, default=102400)
     parser.add_argument("--account-index", type=int, default=0)
     parser.add_argument("--git-repository-url")
@@ -125,6 +127,10 @@ def main() -> int:
     args = parse_args()
     if args.vus < 1 or args.vus > 80 or args.duration_seconds < 0 or args.iterations_per_vu < 1 or args.request_interval_ms < 0:
         raise SystemExit("invalid bounded load arguments")
+    if args.arrival_rate < 0 or args.arrival_rate > 10 or args.submission_accounts < 1 or args.submission_accounts > 99:
+        raise SystemExit("invalid submission arrival arguments")
+    if args.arrival_rate and (args.scenario != "submission" or args.duration_seconds <= 0):
+        raise SystemExit("arrival-rate requires the submission scenario and a positive duration")
     if args.scenario == "git" and not args.git_repository_url:
         raise SystemExit("git scenario requires --git-repository-url")
     account, password = read_credentials(args.ssh_target, args.remote_client_env)
@@ -133,11 +139,19 @@ def main() -> int:
             raise SystemExit("account-index must be between 1 and 99")
         account = f"stress_user_{args.account_index:03d}"
     token = ""
+    submission_tokens: list[str] = []
     team_id = ""
     project_id = ""
     problem_id = ""
     if args.scenario in {"auth", "chat", "upload", "submission", "git"}:
         token = login(args.base_url, account, password)
+    if args.scenario == "submission" and args.submission_accounts > 1:
+        submission_tokens = [
+            login(args.base_url, f"stress_user_{index:03d}", password)
+            for index in range(1, args.submission_accounts + 1)
+        ]
+    elif args.scenario == "submission":
+        submission_tokens = [token]
     if args.scenario in {"chat", "git"}:
         status, team = json_request(args.base_url, "GET", "/api/teams/my", token=token)
         if status != 200 or not team.get("id"):
@@ -170,6 +184,7 @@ def main() -> int:
     latencies: list[float] = []
     statuses: Counter[int] = Counter()
     failures: Counter[str] = Counter()
+    submission_ids: list[str] = []
     stop_at = time.monotonic() + args.duration_seconds if args.duration_seconds else 0
 
     def run_one(worker_id: int, index: int) -> None:
@@ -198,13 +213,16 @@ def main() -> int:
                     {"Authorization": f"Bearer {token}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
                 )
             elif args.scenario == "submission":
-                status, _ = json_request(
+                status, response = json_request(
                     args.base_url,
                     "POST",
                     "/api/submissions",
                     {"problemId": problem_id, "language": 1, "sourceCode": "#include <iostream>\nint main(){long long a,b;if(std::cin>>a>>b)std::cout<<a+b;}"},
-                    token,
+                    submission_tokens[(worker_id + index) % len(submission_tokens)],
                 )
+                if status == 201 and response.get("id"):
+                    with lock:
+                        submission_ids.append(response["id"])
             elif args.scenario == "git":
                 status, _ = json_request(args.base_url, "POST", f"/api/teams/{team_id}/projects/{project_id}/sync", token=token, timeout=90)
         except (OSError, TimeoutError) as error:
@@ -227,8 +245,22 @@ def main() -> int:
 
     started = time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.vus) as executor:
-        for future in [executor.submit(worker, worker_id) for worker_id in range(args.vus)]:
-            future.result()
+        if args.arrival_rate:
+            futures = []
+            next_arrival = time.monotonic()
+            index = 0
+            while time.monotonic() < stop_at:
+                delay = next_arrival - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+                futures.append(executor.submit(run_one, index % args.vus, index))
+                index += 1
+                next_arrival = started + index / args.arrival_rate
+            for future in futures:
+                future.result()
+        else:
+            for future in [executor.submit(worker, worker_id) for worker_id in range(args.vus)]:
+                future.result()
     elapsed = time.perf_counter() - started
     requests = sum(statuses.values()) + sum(failures.values())
     result = {
@@ -248,6 +280,7 @@ def main() -> int:
         "status429": statuses[429],
         "status5xx": sum(count for status, count in statuses.items() if status >= 500),
         "transportFailures": dict(failures),
+        "submissionIds": submission_ids,
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

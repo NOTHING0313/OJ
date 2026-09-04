@@ -2,11 +2,13 @@
 
 ## Status
 
-`LOCAL_ASSETS_IMPLEMENTED_TARGET_HOST_PENDING`
+`TARGET_HOST_PARTIALLY_VERIFIED_REMAINING_GATES_OPEN`
 
-Local implementation evidence is recorded in `RECRUITMENT-PRODUCTION-FRONTEND-04C-04E.md`. The original target-host acceptance gates below remain authoritative and are not reported as complete.
+Local implementation evidence is recorded in `RECRUITMENT-PRODUCTION-FRONTEND-04C-04E.md`. An operator report dated 2026-09-04 records successful source publication, database migration with preserved business counts, isolated backup restoration, public TLS/HTTP2 and canonical redirect checks, and healthy Nginx/systemd/Docker services. The report is currently a local untracked artifact at `output/pdf/OnlineJudge-Production-Upgrade-and-TLS-Report-20260904.pdf`; it does not replace the acceptance matrix below.
 
-This card defines the next task only. No production deployment change is authorized or implemented by `OJ-AGENTS-INIT-01`.
+The available report does not establish SMTP delivery, a controlled persistent-file restart/redeploy, target-host C11/C++17/C# sandbox smoke, bounded 2C4G resource observation, or certificate-renewal execution. Those gates remain open, so this card does not claim complete production readiness.
+
+This card remains the acceptance authority for the partially completed production deployment. Its open gates require separately authorized target-host execution and retained evidence.
 
 ## Objective
 
@@ -134,7 +136,7 @@ Must not be publicly exposed:
 - Compile/runtime memory-limit separation
 - Multiple concurrent submissions in one worker
 - Multiple workers
-- .NET 9 to .NET 10 upgrade
+- Further .NET runtime/toolchain upgrades
 - Database schema redesign
 - UI feature changes
 
@@ -161,6 +163,6 @@ Stop for confirmation before:
 - Resource use is observed under a bounded workload suitable for 2C4G.
 - Logging, backup/restore, and rollback procedures have executable evidence.
 
-## Initial Execution Instruction
+## Remaining Execution Instruction
 
-Start with a read-only architecture and deployment assessment. Produce an evidence-backed implementation plan and request confirmation for any security-boundary, persistent-data, dependency, or external-system write before acting.
+Resume from the open acceptance gates only. First inventory the evidence already retained, then execute the smallest missing target-host checks. Request confirmation before any security-boundary, persistent-data, dependency, DNS/certificate or other external-system write.

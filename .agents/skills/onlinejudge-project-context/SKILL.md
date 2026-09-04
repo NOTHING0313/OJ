@@ -24,15 +24,15 @@ Use this context to orient work, then re-read the exact source files affected by
 
 ## Verified Technology Stack
 
-- All solution projects target `.NET 9` (`net9.0`).
+- All solution projects target `.NET 10` (`net10.0`); `global.json` pins SDK `10.0.400` with `latestPatch` roll-forward.
 - Backend uses ASP.NET Core, EF Core, Npgsql/PostgreSQL, StackExchange.Redis, and a .NET Worker Service.
 - Frontend uses React 19, TypeScript 5.7, Vite 6, and Monaco Editor.
 - Tests use xUnit and include judge function-builder and runner guard coverage.
 
 ## Judge Pipeline
 
-- `RedisJudgeQueue` pushes submission IDs to Redis list `judge:submissions:pending`; `Worker` pops from the left.
-- A worker process registers one hosted `Worker`. Its loop awaits each `ProcessSubmissionAsync` before popping the next item; no in-process parallel judge concurrency is configured.
+- PostgreSQL `JudgeJob` rows are the durable work authority. Redis carries best-effort submission wake hints; the Worker also polls PostgreSQL when no usable signal is available.
+- A worker process registers one hosted `Worker`. Its loop awaits each `JudgeJobProcessor.ProcessAsync` before claiming the next job; no in-process parallel judge concurrency is configured.
 - `JudgeLanguage` contains `Cpp17`, `C11`, and `CSharp`. Dependency injection registers a matching runner for all three.
 - C11 and C++17 use the GCC sandbox image; C# uses the .NET SDK sandbox image.
 - `DockerJudgeSandbox` invokes the host `docker` CLI. It creates a transient workspace under the system temp directory, runs compilation in one disposable container, then runs each test case sequentially in a new disposable container.
@@ -41,11 +41,17 @@ Use this context to orient work, then re-read the exact source files affected by
 ## Persistence
 
 - PostgreSQL stores EF Core data; production Compose mounts operator-created external PostgreSQL and Redis volumes whose exact names are required in the infrastructure environment file.
-- Redis carries pending submission IDs; current source does not implement an acknowledgement/retry ledger around the list pop.
+- PostgreSQL stores judge-job lease, heartbeat, retry and dead-letter state. Redis loss can delay a wake-up but does not own job completion truth.
 - API image uploads are written below `OnlineJudge.Api/wwwroot/uploads/images`.
 - Challenge file submissions are written below `OnlineJudge.Api/App_Data/challenge-file-submissions`, with file paths stored in PostgreSQL.
 - Judge workspaces under the system temp directory are transient and deleted best-effort.
 - Runtime upload and `App_Data` locations are intentionally Git-ignored; production persistence must be explicitly mounted and backed up.
+
+## Current Capacity Boundary
+
+- One Worker process handles one submission at a time, and its sandbox executes test cases sequentially. Concurrent submissions wait in the durable queue rather than running in parallel inside that process.
+- Sandbox process/output/file guards are implemented, but authoring and submission inputs do not yet have one centralized, end-to-end policy for maximum source bytes, time/memory values, test-case count, per-case bytes, or aggregate revision bytes.
+- Do not increase Worker concurrency before hard input/resource limits, queue-age observability, and a 2 vCPU / 4 GB load envelope are verified.
 
 ## Verification Entry Points
 

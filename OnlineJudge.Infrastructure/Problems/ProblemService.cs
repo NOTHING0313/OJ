@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
+using OnlineJudge.Application.Judging.Models;
 using OnlineJudge.Application.Problems.Dtos;
 using OnlineJudge.Application.Problems.Requests;
 using OnlineJudge.Application.Problems.Services;
@@ -14,8 +15,15 @@ using OnlineJudge.Infrastructure.ContentVisibility;
 
 namespace OnlineJudge.Infrastructure.Problems;
 
-public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser, ContentVisibilityPolicy visibilityPolicy, ISecurityAuditWriter? auditWriter = null) : IProblemService
+public class ProblemService(
+    OnlineJudgeDbContext dbContext,
+    ICurrentUser currentUser,
+    ContentVisibilityPolicy visibilityPolicy,
+    ISecurityAuditWriter? auditWriter = null,
+    JudgeResourcePolicy? resourcePolicy = null) : IProblemService
 {
+    private JudgeResourcePolicy ResourcePolicy { get; } = resourcePolicy ?? JudgeResourcePolicy.Default;
+
     private const string ProblemReferencedByChallengeTaskMessage = "该题目已被挑战任务引用，请先移除相关挑战任务后再删除。";
 
     public ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser currentUser)
@@ -88,7 +96,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<ProblemDetailDto>.Failure("Forbidden.");
         }
 
-        var validation = ProblemJudgeDefinitionValidator.ValidateProblem(request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
+        var validation = ValidateProblemRequest(request.Title, request.Description, request.InputDescription, request.OutputDescription, request.TimeLimitMs, request.MemoryLimitMb, request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
         if (validation.IsFailure)
         {
             return Result<ProblemDetailDto>.Failure(validation.ErrorMessage!);
@@ -153,10 +161,20 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<ProblemDetailDto>.Failure("Forbidden.");
         }
 
-        var validation = ProblemJudgeDefinitionValidator.ValidateProblem(request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
+        var validation = ValidateProblemRequest(request.Title, request.Description, request.InputDescription, request.OutputDescription, request.TimeLimitMs, request.MemoryLimitMb, request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
         if (validation.IsFailure)
         {
             return Result<ProblemDetailDto>.Failure(validation.ErrorMessage!);
+        }
+
+        var testCaseCollectionValidation = ProblemJudgeDefinitionValidator.ValidateTestCaseCollection(
+            request.TimeLimitMs,
+            problem.TestCases.Select(JudgeTestCasePayload.From).ToList(),
+            ResourcePolicy,
+            requireAtLeastOne: request.IsPublished);
+        if (testCaseCollectionValidation.IsFailure)
+        {
+            return Result<ProblemDetailDto>.Failure(testCaseCollectionValidation.ErrorMessage!);
         }
 
         var judgeDefinitionChanged = problem.JudgeMode != request.JudgeMode
@@ -183,7 +201,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemUpdated, "Problem", problem.Id.ToString()));
         if (requiresRevision)
         {
-            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, ResourcePolicy, cancellationToken);
             if (revisionResult.IsFailure)
             {
                 if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
@@ -268,10 +286,21 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<TestCaseDto>.Failure("Forbidden.");
         }
 
-        var validation = ProblemJudgeDefinitionValidator.ValidateTestCase(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score);
+        var validation = ProblemJudgeDefinitionValidator.ValidateTestCase(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score, ResourcePolicy);
         if (validation.IsFailure)
         {
             return Result<TestCaseDto>.Failure(validation.ErrorMessage!);
+        }
+
+        var prospectiveValidation = await ValidateProspectiveTestCasesAsync(
+            problemId,
+            problem.TimeLimitMs,
+            [new JudgeTestCasePayload(request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson)],
+            excludedTestCaseId: null,
+            cancellationToken);
+        if (prospectiveValidation.IsFailure)
+        {
+            return Result<TestCaseDto>.Failure(prospectiveValidation.ErrorMessage!);
         }
 
         var visibility = Enum.IsDefined(request.Visibility) ? request.Visibility : TestCaseVisibility.Hidden;
@@ -295,7 +324,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "1" }));
         if (problem.IsPublished)
         {
-            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, ResourcePolicy, cancellationToken);
             if (revisionResult.IsFailure)
             {
                 if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
@@ -347,10 +376,21 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             return Result<TestCaseDto>.Failure("Test case not found.");
         }
 
-        var validation = ProblemJudgeDefinitionValidator.ValidateTestCase(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score);
+        var validation = ProblemJudgeDefinitionValidator.ValidateTestCase(problem, request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson, request.Visibility, request.Score, ResourcePolicy);
         if (validation.IsFailure)
         {
             return Result<TestCaseDto>.Failure(validation.ErrorMessage!);
+        }
+
+        var prospectiveValidation = await ValidateProspectiveTestCasesAsync(
+            problemId,
+            problem.TimeLimitMs,
+            [new JudgeTestCasePayload(request.Input, request.ExpectedOutput, request.ArgumentsJson, request.ExpectedJson)],
+            testCaseId,
+            cancellationToken);
+        if (prospectiveValidation.IsFailure)
+        {
+            return Result<TestCaseDto>.Failure(prospectiveValidation.ErrorMessage!);
         }
 
         testCase.Input = problem.JudgeMode == JudgeMode.StandardInputOutput ? request.Input : string.Empty;
@@ -364,7 +404,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "0" }));
         if (problem.IsPublished)
         {
-            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, ResourcePolicy, cancellationToken);
             if (revisionResult.IsFailure)
             {
                 if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
@@ -433,7 +473,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = "-1" }));
         if (problem.IsPublished)
         {
-            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, ResourcePolicy, cancellationToken);
             if (revisionResult.IsFailure)
             {
                 if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
@@ -493,6 +533,11 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             });
         }
 
+        if (request.Items.Count > ResourcePolicy.MaxImportTestCases)
+        {
+            return Result<ImportTestCasesResultDto>.Failure($"A batch cannot contain more than {ResourcePolicy.MaxImportTestCases} test cases.");
+        }
+
         var now = DateTimeOffset.UtcNow;
         var errors = new List<ImportTestCaseErrorDto>();
         var testCases = new List<TestCase>();
@@ -503,6 +548,7 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             var itemNumber = index + 1;
             var score = item.Score ?? 100;
             var visibility = item.Visibility ?? TestCaseVisibility.Hidden;
+            var itemErrorCount = errors.Count;
 
             if (score < 0)
             {
@@ -523,7 +569,28 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
                 ValidateFunctionImportItem(problem, item, itemNumber, errors);
             }
 
-            if (errors.Count > 0)
+            var input = problem.JudgeMode == JudgeMode.StandardInputOutput ? item.Input ?? string.Empty : string.Empty;
+            var expectedOutput = problem.JudgeMode == JudgeMode.StandardInputOutput ? item.ExpectedOutput ?? string.Empty : string.Empty;
+            var argumentsJson = problem.JudgeMode == JudgeMode.Function ? ToRawJson(item.ArgumentsJson) : null;
+            var expectedJson = problem.JudgeMode == JudgeMode.Function ? ToRawJson(item.ExpectedJson) : null;
+            if (errors.Count == itemErrorCount)
+            {
+                var boundsValidation = ProblemJudgeDefinitionValidator.ValidateTestCase(
+                    problem,
+                    input,
+                    expectedOutput,
+                    argumentsJson,
+                    expectedJson,
+                    visibility,
+                    score,
+                    ResourcePolicy);
+                if (boundsValidation.IsFailure)
+                {
+                    errors.Add(ImportError(itemNumber, "item", boundsValidation.ErrorMessage!));
+                }
+            }
+
+            if (errors.Count > itemErrorCount)
             {
                 continue;
             }
@@ -532,10 +599,10 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             {
                 Id = Guid.NewGuid(),
                 ProblemId = problemId,
-                Input = problem.JudgeMode == JudgeMode.StandardInputOutput ? item.Input ?? string.Empty : string.Empty,
-                ExpectedOutput = problem.JudgeMode == JudgeMode.StandardInputOutput ? item.ExpectedOutput ?? string.Empty : string.Empty,
-                ArgumentsJson = problem.JudgeMode == JudgeMode.Function ? ToRawJson(item.ArgumentsJson) : null,
-                ExpectedJson = problem.JudgeMode == JudgeMode.Function ? ToRawJson(item.ExpectedJson) : null,
+                Input = input,
+                ExpectedOutput = expectedOutput,
+                ArgumentsJson = argumentsJson,
+                ExpectedJson = expectedJson,
                 Visibility = visibility,
                 Score = score,
                 CreatedAt = now.AddTicks(index),
@@ -552,11 +619,28 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
             });
         }
 
+        var importBytes = testCases.Sum(testCase => ProblemJudgeDefinitionValidator.GetPayloadSizeBytes(JudgeTestCasePayload.From(testCase)));
+        if (importBytes > ResourcePolicy.MaxImportPayloadBytes)
+        {
+            return Result<ImportTestCasesResultDto>.Failure($"Batch test data exceeds the {ResourcePolicy.MaxImportPayloadBytes}-byte UTF-8 limit.");
+        }
+
+        var prospectiveValidation = await ValidateProspectiveTestCasesAsync(
+            problemId,
+            problem.TimeLimitMs,
+            testCases.Select(JudgeTestCasePayload.From).ToList(),
+            excludedTestCaseId: null,
+            cancellationToken);
+        if (prospectiveValidation.IsFailure)
+        {
+            return Result<ImportTestCasesResultDto>.Failure(prospectiveValidation.ErrorMessage!);
+        }
+
         dbContext.TestCases.AddRange(testCases);
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemTestCasesChanged, "Problem", problemId.ToString(), Metadata: new Dictionary<string, string?> { ["testCaseCountDelta"] = testCases.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) }));
         if (problem.IsPublished)
         {
-            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, cancellationToken);
+            var revisionResult = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, ResourcePolicy, cancellationToken);
             if (revisionResult.IsFailure)
             {
                 if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
@@ -765,6 +849,64 @@ public class ProblemService(OnlineJudgeDbContext dbContext, ICurrentUser current
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
+    }
+
+    private Result ValidateProblemRequest(
+        string title,
+        string description,
+        string inputDescription,
+        string outputDescription,
+        int timeLimitMs,
+        int memoryLimitMb,
+        JudgeMode judgeMode,
+        int allowedLanguagesMask,
+        string? functionSpecJson,
+        string? starterCodeJson)
+    {
+        return ProblemJudgeDefinitionValidator.ValidateProblem(
+            title,
+            description,
+            inputDescription,
+            outputDescription,
+            timeLimitMs,
+            memoryLimitMb,
+            judgeMode,
+            allowedLanguagesMask,
+            functionSpecJson,
+            starterCodeJson,
+            ResourcePolicy);
+    }
+
+    private async Task<Result> ValidateProspectiveTestCasesAsync(
+        Guid problemId,
+        int timeLimitMs,
+        IReadOnlyCollection<JudgeTestCasePayload> additions,
+        Guid? excludedTestCaseId,
+        CancellationToken cancellationToken)
+    {
+        var stored = await dbContext.TestCases
+            .AsNoTracking()
+            .Where(testCase => testCase.ProblemId == problemId
+                && !testCase.IsDeleted
+                && (!excludedTestCaseId.HasValue || testCase.Id != excludedTestCaseId.Value))
+            .Select(testCase => new
+            {
+                testCase.Input,
+                testCase.ExpectedOutput,
+                testCase.ArgumentsJson,
+                testCase.ExpectedJson
+            })
+            .ToListAsync(cancellationToken);
+        var payloads = stored
+            .Select(testCase => new JudgeTestCasePayload(testCase.Input, testCase.ExpectedOutput, testCase.ArgumentsJson, testCase.ExpectedJson))
+            .Concat(additions)
+            .ToList();
+
+        return ProblemJudgeDefinitionValidator.ValidateTestCaseCollection(
+            timeLimitMs,
+            payloads,
+            ResourcePolicy,
+            requireAtLeastOne: false);
     }
 
     private async Task<Result<User>> GetActiveCurrentUserAsync(CancellationToken cancellationToken)

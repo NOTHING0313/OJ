@@ -93,7 +93,9 @@ python3 scripts/stress/api_read.py \
 
 ## Metrics
 
-Run `scripts/stress/collect_stress_metrics.sh` on the production host in a separate terminal before starting load. It records host CPU/load, available memory, swap, disk and network counters, API/Worker RSS, PostgreSQL/Redis memory, PostgreSQL connections, production/stress queue depth, Docker container count, and production HTTP health.
+Before enabling the new defaults on an existing database, run the read-only `scripts/stress/audit_judge_resource_bounds.sql` with `psql -f` against that database. Any non-zero violating count requires an explicit grandfather, repair, or policy adjustment decision; the script reports counts and maxima only and does not export submission or test content.
+
+Run `scripts/stress/collect_stress_metrics.sh` on the production host in a separate terminal before starting load. It records host CPU/load, available memory, swap, disk and network counters, API/Worker RSS, PostgreSQL/Redis memory, PostgreSQL connections, PostgreSQL-authoritative production/stress pending-job depth and oldest pending age, Docker container count, and production HTTP health. Redis list length is not a queue authority metric.
 
 For this 52 GB host, use a more conservative 25% disk threshold:
 
@@ -101,6 +103,10 @@ For this 52 GB host, use a more conservative 25% disk threshold:
 scripts/stress/collect_stress_metrics.sh \
   --duration-seconds 600 \
   --interval-seconds 5 \
+  --stress-database onlinejudge_stress_<safe-slug> \
+  --stress-redis-container onlinejudge-stress-redis-<safe-slug> \
+  --stress-api-unit onlinejudge-stress-api-<safe-slug> \
+  --stress-worker-unit onlinejudge-stress-worker-<safe-slug> \
   --min-disk-available-percent 25 \
   --output /opt/onlinejudge/stress/onlinejudge-stress-<run>/stress-metrics.csv
 ```
@@ -127,7 +133,9 @@ Do not use sandbox escape payloads; SECURITY-10D already covers isolation. Capac
 
 Read/session stages: 1, 5, 10, 20, 40, 80 VUs. Each stage lasts 60 seconds with a 30-second zero-load cooldown. Do not advance automatically. The operator reviews the collector and production health after every stage. Lower the maximum if earlier stages approach a stop threshold.
 
-Team Git uses only 1, 2, and 4 concurrent operations. Judge capacity is measured separately by controlled arrival rate, queue depth, throughput, average/P95 judge duration, and queue drain time. One Worker remains the initial concurrency baseline.
+Team Git uses only 1, 2, and 4 concurrent operations. Judge capacity is measured separately by controlled open-loop arrival rate, queue depth, oldest pending age, throughput, average/P95 judge duration, and queue drain time. One Worker remains the initial concurrency baseline. Use 0.05, 0.10, 0.15 and 0.20 submissions/second for ten minutes each, with a review and queue-drain interval between stages. `scenario_load.py --scenario submission --arrival-rate <rate> --duration-seconds 600 --submission-accounts 10` provides this mode; `--vus` is the maximum number of in-flight HTTP requests rather than the arrival controller.
+
+For every completed judge sample, retain the submission evaluation returned by the API: maximum case time, average case time, maximum case peak memory, and average of case peak-memory values. `judge_matrix.py` writes these four values under `resourceEvaluation` together with `measuredCaseCount`. Only Accepted samples are used for language performance comparisons; failed submissions may represent only the cases executed before failure.
 
 ## Stop conditions
 
