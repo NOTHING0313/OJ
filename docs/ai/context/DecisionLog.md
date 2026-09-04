@@ -221,6 +221,19 @@
   - Expose the cookie over HTTP in development/production: weakens the production contract and hides missing TLS configuration.
 - Consequences: The browser starts through `/api/auth/me`, credentials no longer enter Web Storage, and production deployment must terminate HTTPS correctly.
 
+## Decision: Production origin and brand assets use the verified public host
+
+- Status: Accepted locally; target-host verification pending
+- Date: 2026-09-04
+- Task: OJ-PRODUCTION-DEPLOY-01
+- Context: The deployed site is reached at `unrealstudiooj.top`, while repository deployment assets still named an obsolete domain. The live logo request returned the SPA `index.html`, which also prevented the login particle canvas from initializing.
+- Decision: Treat `unrealstudiooj.top` as the production origin and certificate name. Serve `/brand/` as a strict static-file location that returns 404 instead of the SPA fallback, and fail publishing or host verification when the login logo is missing, empty, or not served as `image/png`.
+- Rejected alternatives:
+  - Keep the obsolete domain in repository templates and patch each server manually: guarantees configuration drift on later releases.
+  - Let missing brand files fall through to `index.html`: hides packaging failures behind a misleading 200 HTML response.
+  - Copy the logo into the API web root: creates a second owner for a frontend asset.
+- Consequences: Certificate issuance and DNS must target `unrealstudiooj.top`; release artifacts retain the frontend as the only brand-asset owner; target-host verification now detects the observed failure before deployment is accepted.
+
 ## Decision: CSV exports classify trusted and untrusted cells explicitly
 
 - Status: Accepted

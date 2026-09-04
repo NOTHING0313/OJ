@@ -22,7 +22,7 @@ Prepare the current OnlineJudge for a production-ready deployment on a small pub
 - Approximately 50 GB SSD
 - Docker Engine and Docker Compose Plugin installed
 - UFW enabled
-- Domain: `unrealstudioonlinejudge.de5.net`
+- Domain: `unrealstudiooj.top`
 
 User-attested infrastructure state:
 
@@ -102,7 +102,7 @@ Must not be publicly exposed:
 
 - Define Nginx configuration and reload validation.
 - Define systemd or an explicitly chosen equivalent service lifecycle.
-- Configure HTTPS issuance and renewal for `unrealstudioonlinejudge.de5.net`.
+- Configure HTTPS issuance and renewal for `unrealstudiooj.top`.
 - Define structured logging, rotation, health checks, startup order, and restart policy.
 - Define database/file backup, restore test, release rollback, and forward-fix procedures.
 

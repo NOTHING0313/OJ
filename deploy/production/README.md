@@ -1,6 +1,6 @@
 # OnlineJudge production deployment assets
 
-These files implement the approved single-host topology for Ubuntu 24.04 on a 2 vCPU / 4 GB server. Nginx is the only application-facing process. The API listens on `127.0.0.1:5101`; PostgreSQL and Redis are published only on loopback; the Docker daemon is never exposed over TCP. The JudgeWorker remains a host systemd service so it can reuse the existing Docker CLI sandbox contract.
+These files implement the approved single-host topology for Ubuntu 24.04 on a 2 vCPU / 4 GB server at `unrealstudiooj.top`. Nginx is the only application-facing process. The API listens on `127.0.0.1:5101`; PostgreSQL and Redis are published only on loopback; the Docker daemon is never exposed over TCP. The JudgeWorker remains a host systemd service so it can reuse the existing Docker CLI sandbox contract.
 
 ## Host paths and ownership
 
@@ -21,11 +21,11 @@ Create separate `onlinejudge-api` and `onlinejudge-worker` system users. Only th
 5. Start infrastructure using `docker compose --project-name onlinejudge --env-file /etc/onlinejudge/infrastructure.env -f /opt/onlinejudge/current/deploy/production/compose.infrastructure.yml up -d --wait`.
 6. Run the release `efbundle` as `onlinejudge-api` with `/etc/onlinejudge/api.env`. Take a backup first for every later release.
 7. Install the three unit files into `/etc/systemd/system`, reload systemd, then enable and start infrastructure, API and Worker in that order.
-8. Install `onlinejudge-bootstrap.conf` while obtaining the certificate. It exposes only the ACME challenge and returns 503 for the application. After certificate issuance, install `onlinejudge.conf`, run `nginx -t`, and reload Nginx.
+8. Install `onlinejudge-bootstrap.conf` while obtaining the certificate for `unrealstudiooj.top`. It exposes only the ACME challenge and returns 503 for the application. After certificate issuance, install `onlinejudge.conf`, run `nginx -t`, and reload Nginx.
 
 ## Release, rollback and recovery
 
-Releases are immutable. Extract a new archive beside the old one, verify its manifest and executables, back up, apply its migration bundle, atomically repoint `current`, then restart API and Worker. Run `scripts/verify-host.sh` after restart. Never automatically delete old releases.
+Releases are immutable. Extract a new archive beside the old one, verify its manifest and executables, back up, apply its migration bundle, atomically repoint `current`, then restart API and Worker. Run `scripts/verify-host.sh` after restart; it also verifies that the production brand logo exists and is served as `image/png`. Never automatically delete old releases.
 
 Application rollback is allowed only when the previous binary is compatible with the already-applied database schema. Otherwise use a forward fix. Database restoration is a separate outage procedure: stop API and Worker, preserve the failed database and file roots, restore a matched `database.dump` and `files.tar.gz`, then start services and verify. Never restore only the database when file-backed records may refer to the matching file archive.
 

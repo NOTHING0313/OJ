@@ -44,9 +44,13 @@ public sealed class ProductionDeploymentContractTests
         var nginx = Read("nginx", "onlinejudge.conf");
 
         Assert.Contains("server 127.0.0.1:5101", nginx, StringComparison.Ordinal);
+        Assert.Contains("server_name unrealstudiooj.top", nginx, StringComparison.Ordinal);
+        Assert.Contains("/etc/letsencrypt/live/unrealstudiooj.top/fullchain.pem", nginx, StringComparison.Ordinal);
         Assert.Contains("proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for", nginx, StringComparison.Ordinal);
         Assert.Contains("proxy_set_header X-Forwarded-Proto $scheme", nginx, StringComparison.Ordinal);
+        Assert.Contains("location ^~ /brand/ {\n        try_files $uri =404;", nginx.ReplaceLineEndings("\n"), StringComparison.Ordinal);
         Assert.Contains("try_files $uri $uri/ /index.html", nginx, StringComparison.Ordinal);
+        Assert.DoesNotContain("unrealstudioonlinejudge.de5.net", nginx, StringComparison.Ordinal);
         Assert.DoesNotContain("limit_req", nginx, StringComparison.Ordinal);
     }
 
@@ -56,8 +60,23 @@ public sealed class ProductionDeploymentContractTests
         var publisher = File.ReadAllText(Path.Combine(Root, "scripts", "Publish-Production.ps1"));
 
         Assert.Contains("Production Deployment Assets", publisher, StringComparison.Ordinal);
+        Assert.Contains("brand\\unrealstudio-logo.png", publisher, StringComparison.Ordinal);
         Assert.Contains("compose.infrastructure.yml", publisher, StringComparison.Ordinal);
         Assert.Contains("onlinejudge-worker.service", publisher, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BootstrapAndHostVerification_UseProductionDomainAndValidateBrandAsset()
+    {
+        var bootstrap = Read("nginx", "onlinejudge-bootstrap.conf");
+        var verifier = Read("scripts", "verify-host.sh");
+
+        Assert.Contains("server_name unrealstudiooj.top", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("domain=\"${1:-unrealstudiooj.top}\"", verifier, StringComparison.Ordinal);
+        Assert.Contains("frontend/brand/unrealstudio-logo.png", verifier, StringComparison.Ordinal);
+        Assert.Contains("--write-out '%{content_type}'", verifier, StringComparison.Ordinal);
+        Assert.Contains("image/png", verifier, StringComparison.Ordinal);
+        Assert.DoesNotContain("unrealstudioonlinejudge.de5.net", bootstrap + verifier, StringComparison.Ordinal);
     }
 
     private static string Read(params string[] segments) =>

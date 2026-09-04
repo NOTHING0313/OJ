@@ -341,6 +341,12 @@ if (!(Test-Path (Join-Path $frontendOutput "index.html"))) {
     throw "Frontend production build was not generated."
 }
 
+$frontendLogo = Join-Path $frontendOutput "brand\unrealstudio-logo.png"
+
+if (!(Test-Path $frontendLogo -PathType Leaf) -or (Get-Item $frontendLogo).Length -le 0) {
+    throw "Frontend brand logo was not included in the production build."
+}
+
 if (!(Test-Path (Join-Path $sandboxOutput "*"))) {
     throw "Judge sandbox definitions were not copied."
 }
@@ -360,6 +366,7 @@ if (!(Test-Path (Join-Path $deploymentOutput "systemd\onlinejudge-worker.service
 Write-Host "[PASS] API Artifact"
 Write-Host "[PASS] JudgeWorker Artifact"
 Write-Host "[PASS] Frontend Artifact"
+Write-Host "[PASS] Frontend Brand Asset"
 Write-Host "[PASS] EF Migration Bundle"
 Write-Host "[PASS] Sandbox Definitions"
 Write-Host "[PASS] Production Deployment Assets"
