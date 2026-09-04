@@ -185,7 +185,7 @@
 
 ## Decision: Production uses host services around loopback-only state containers
 
-- Status: Accepted locally; target-host verification pending
+- Status: Accepted; target host verified 2026-09-04
 - Date: 2026-09-03
 - Task: RECRUITMENT-PRODUCTION-FRONTEND-04C-04E / 4D
 - Context: The current Worker invokes the host Docker CLI and its sandbox relies on host-visible bind mounts. Containerizing the Worker would add Docker-socket and path-translation complexity without product benefit on the approved 2C4G single host.
@@ -223,7 +223,7 @@
 
 ## Decision: Production origin and brand assets use the verified public host
 
-- Status: Accepted locally; target-host verification pending
+- Status: Accepted; target host verified 2026-09-04
 - Date: 2026-09-04
 - Task: OJ-PRODUCTION-DEPLOY-01
 - Context: The deployed site is reached at `unrealstudiooj.top`, while repository deployment assets still named an obsolete domain. The live logo request returned the SPA `index.html`, which also prevented the login particle canvas from initializing.
@@ -236,7 +236,7 @@
 
 ## Decision: The www hostname is a certificate-covered redirect alias
 
-- Status: Accepted locally; target-host verification pending
+- Status: Accepted; target host verified 2026-09-04
 - Date: 2026-09-04
 - Task: OJ-PRODUCTION-DEPLOY-01
 - Context: Both `unrealstudiooj.top` and `www.unrealstudiooj.top` resolve to the production host, while the root hostname remains the intended public origin. Omitting `www` from TLS would leave a reachable hostname with a certificate or routing mismatch.
@@ -271,3 +271,16 @@
   - Prefix every cell: corrupts trusted numeric/date typing and identifiers.
   - Rely only on quotes: spreadsheet programs may still evaluate quoted formula cells.
 - Consequences: Existing columns and order remain stable, while user-controlled text opens as inert content.
+
+## Decision: Production TLS runtime paths are certificate-provider neutral
+
+- Status: Accepted; target host verified 2026-09-04
+- Date: 2026-09-04
+- Task: OJ-PRODUCTION-DEPLOY-01
+- Context: The production host cannot complete TLS handshakes to the Let's Encrypt ACME endpoint over IPv4 and has no IPv6 default route. The approved fallback is an Alibaba Cloud formal multi-domain certificate, while the checked-in Nginx template previously hard-coded Let's Encrypt live paths.
+- Decision: Nginx reads the complete chain and private key from `/etc/onlinejudge/tls/fullchain.pem` and `/etc/onlinejudge/tls/privkey.pem` regardless of issuer. Generate the RSA private key and CSR on the production host, request both public hostnames as SANs, and keep all private key material outside releases and source control.
+- Rejected alternatives:
+  - Store an Alibaba-issued certificate under `/etc/letsencrypt`: misrepresents ownership and couples renewal to the wrong provider.
+  - Generate or transfer the private key through a workstation or chat: unnecessarily expands secret exposure.
+  - Pin the current Let's Encrypt edge address or merely force IPv4: the edge is not a stable allow-list target and the observed IPv4 TLS handshake also times out.
+- Consequences: Certificate-provider changes no longer require an Nginx template change. Operators must validate SAN coverage, chain integrity, key matching, expiry and Nginx reload whenever the stable files are replaced; automated renewal remains provider-specific host configuration.

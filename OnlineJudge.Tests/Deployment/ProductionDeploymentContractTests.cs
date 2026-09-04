@@ -54,7 +54,9 @@ public sealed class ProductionDeploymentContractTests
         Assert.Contains("server_name www.unrealstudiooj.top;", nginx, StringComparison.Ordinal);
         Assert.Contains("listen 443 ssl http2", nginx, StringComparison.Ordinal);
         Assert.DoesNotContain("http2 on", nginx, StringComparison.Ordinal);
-        Assert.Contains("/etc/letsencrypt/live/unrealstudiooj.top/fullchain.pem", nginx, StringComparison.Ordinal);
+        Assert.Contains("ssl_certificate /etc/onlinejudge/tls/fullchain.pem;", nginx, StringComparison.Ordinal);
+        Assert.Contains("ssl_certificate_key /etc/onlinejudge/tls/privkey.pem;", nginx, StringComparison.Ordinal);
+        Assert.DoesNotContain("/etc/letsencrypt/", nginx, StringComparison.Ordinal);
         Assert.Contains("return 301 https://unrealstudiooj.top$request_uri;", nginx, StringComparison.Ordinal);
         Assert.DoesNotContain("return 301 https://$host$request_uri;", nginx, StringComparison.Ordinal);
         Assert.Contains("proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for", nginx, StringComparison.Ordinal);
@@ -99,8 +101,10 @@ public sealed class ProductionDeploymentContractTests
         Assert.Contains("verify_volume_mount postgres /var/lib/postgresql/data", verifier, StringComparison.Ordinal);
         Assert.Contains("verify_volume_mount redis /data", verifier, StringComparison.Ordinal);
         Assert.Contains("docker volume inspect", verifier, StringComparison.Ordinal);
-        Assert.Contains("--cert-name unrealstudiooj.top", readme, StringComparison.Ordinal);
-        Assert.Contains("-d unrealstudiooj.top -d www.unrealstudiooj.top", readme, StringComparison.Ordinal);
+        Assert.Contains("SANs contain both `unrealstudiooj.top` and `www.unrealstudiooj.top`", readme, StringComparison.Ordinal);
+        Assert.Contains("/etc/onlinejudge/tls/fullchain.pem", readme, StringComparison.Ordinal);
+        Assert.Contains("Alibaba Cloud formal certificates", readme, StringComparison.Ordinal);
+        Assert.Contains("manually supplied CSR generated from this host key", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("unrealstudioonlinejudge.de5.net", bootstrap + verifier, StringComparison.Ordinal);
     }
 

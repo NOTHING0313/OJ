@@ -6,6 +6,7 @@ These files implement the approved single-host topology for Ubuntu 24.04 on a 2 
 
 - Releases: `/opt/onlinejudge/releases/<release-id>` with `/opt/onlinejudge/current` as the active symlink.
 - Secrets: `/etc/onlinejudge/{infrastructure,api,worker}.env`, root-owned mode `0600`.
+- TLS: `/etc/onlinejudge/tls/fullchain.pem` and `/etc/onlinejudge/tls/privkey.pem`; the directory and private key are root-owned mode `0700` and `0600` respectively. Certificate material is host state and must never enter a release archive or source control.
 - Data: `/var/lib/onlinejudge/{uploads,challenge-files,theme-assets,team-repositories,judge-assets}`.
 - Service homes: `/var/lib/onlinejudge/{api-home,worker-home,worker-tmp}`.
 - Backups: `/var/backups/onlinejudge`.
@@ -22,7 +23,7 @@ Create separate `onlinejudge-api` and `onlinejudge-worker` system users. Only th
 5. Create the Docker volumes named by `POSTGRES_VOLUME_NAME` and `REDIS_VOLUME_NAME` exactly once, then verify both with `docker volume inspect`. Start infrastructure using `docker compose --project-name onlinejudge --env-file /etc/onlinejudge/infrastructure.env -f /opt/onlinejudge/current/deploy/production/compose.infrastructure.yml up -d --wait`. Compose intentionally refuses to start if either external volume is absent; never remove `external: true` to bypass that failure.
 6. Run the release `efbundle` as `onlinejudge-api` with `/etc/onlinejudge/api.env`. Take a backup first for every later release.
 7. Install the three unit files into `/etc/systemd/system`, reload systemd, then enable and start infrastructure, API and Worker in that order.
-8. Install `onlinejudge-bootstrap.conf` while obtaining one certificate for both hostnames with `certbot certonly --webroot -w /var/www/letsencrypt --cert-name unrealstudiooj.top -d unrealstudiooj.top -d www.unrealstudiooj.top`. The explicit certificate name keeps the live certificate path aligned with `onlinejudge.conf`. The bootstrap exposes only the ACME challenge and returns 503 for the application. After certificate issuance, install `onlinejudge.conf`, run `nginx -t`, and reload Nginx. Configure renewal to reload Nginx, then require `certbot renew --dry-run` to pass.
+8. Obtain one certificate whose SANs contain both `unrealstudiooj.top` and `www.unrealstudiooj.top`. Keep or generate the private key on the target host, install the complete certificate chain as `/etc/onlinejudge/tls/fullchain.pem` mode `0644`, and install the matching private key as `/etc/onlinejudge/tls/privkey.pem` mode `0600`; both files must be root-owned. Alibaba Cloud formal certificates should use a manually supplied CSR generated from this host key. The bootstrap config remains available for ACME HTTP-01 issuers, but the final Nginx config deliberately uses provider-neutral paths. Before activation, verify both SANs, the certificate chain and the key/certificate public-key match. Then install `onlinejudge.conf`, run `nginx -t`, reload Nginx, and run `scripts/verify-host.sh`. Renewal must atomically replace the same stable files, pass the same checks, and reload Nginx before the previous certificate expires.
 
 ## Release, rollback and recovery
 
