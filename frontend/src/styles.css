@@ -14308,3 +14308,24 @@ h2 {
   .security-audit-toolbar { grid-template-columns: 1fr; }
   .security-audit-detail dl { grid-template-columns: 1fr; }
 }
+
+.choice-option {
+  display: grid;
+  grid-template-columns: auto 2rem minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.choice-option > input {
+  margin-top: 0.35rem;
+}
+
+.choice-option-letter {
+  color: var(--oj-text-primary);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.choice-option-result {
+  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+}

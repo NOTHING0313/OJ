@@ -1204,7 +1204,7 @@ public class LeaderboardSeasonTests
             };
             Db.Submissions.Add(submission);
             LastScoreResult = await new SeasonScoreService(Db, Time).ApplySubmissionResultAsync(new SeasonSubmissionResult(
-                submission.Id, problemId, userId, submission.Language, JudgeStatus.Accepted, runtime, memory, submission.CreatedAt, submission.FinishedAt.Value));
+                submission.Id, problemId, userId, submission.Language!.Value, JudgeStatus.Accepted, runtime, memory, submission.CreatedAt, submission.FinishedAt.Value));
             await Db.SaveChangesAsync();
             return submission.Id;
         }

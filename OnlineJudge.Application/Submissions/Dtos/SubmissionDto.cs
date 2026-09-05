@@ -16,9 +16,11 @@ public class SubmissionDto
 
     public Guid? ChallengeTaskId { get; set; }
 
-    public JudgeLanguage Language { get; set; }
+    public SubmissionKind SubmissionKind { get; set; }
 
-    public string SourceCode { get; set; } = string.Empty;
+    public JudgeLanguage? Language { get; set; }
+
+    public string? SourceCode { get; set; }
 
     public JudgeStatus Status { get; set; }
 
@@ -35,4 +37,16 @@ public class SubmissionDto
     public DateTimeOffset? FinishedAt { get; set; }
 
     public IReadOnlyList<SubmissionCaseResultDto> CaseResults { get; set; } = [];
+
+    public int? ChoiceScore { get; set; }
+
+    public int? ChoiceTotalScore { get; set; }
+
+    public bool? AnswersRevealed { get; set; }
+
+    public ChoiceAnswerRevealPolicy? ChoiceAnswerRevealPolicy { get; set; }
+
+    public DateTimeOffset? ChoiceAnswerRevealAt { get; set; }
+
+    public IReadOnlyList<ChoiceQuestionResultDto> ChoiceQuestionResults { get; set; } = [];
 }

@@ -50,12 +50,18 @@ def percentile(values: list[float], value: float) -> float:
 
 
 def read_credentials(target: str, remote_path: str) -> tuple[str, str]:
-    completed = subprocess.run(["ssh", "-o", "BatchMode=yes", target, "sudo", "cat", remote_path], check=True, capture_output=True, text=True)
-    values: dict[str, str] = {}
-    for line in completed.stdout.splitlines():
-        key, separator, value = line.partition("=")
-        if separator and key in {"STRESS_ROOT_ACCOUNT", "STRESS_ROOT_PASSWORD"}:
-            values[key] = value
+    if target == "local":
+        values = {
+            "STRESS_ROOT_ACCOUNT": os.environ.get("STRESS_ROOT_ACCOUNT", ""),
+            "STRESS_ROOT_PASSWORD": os.environ.get("STRESS_ROOT_PASSWORD", ""),
+        }
+    else:
+        completed = subprocess.run(["ssh", "-o", "BatchMode=yes", target, "sudo", "cat", remote_path], check=True, capture_output=True, text=True)
+        values: dict[str, str] = {}
+        for line in completed.stdout.splitlines():
+            key, separator, value = line.partition("=")
+            if separator and key in {"STRESS_ROOT_ACCOUNT", "STRESS_ROOT_PASSWORD"}:
+                values[key] = value
     if not values.get("STRESS_ROOT_ACCOUNT") or not values.get("STRESS_ROOT_PASSWORD"):
         raise RuntimeError("stress credentials unavailable")
     return values["STRESS_ROOT_ACCOUNT"], values["STRESS_ROOT_PASSWORD"]
@@ -143,7 +149,7 @@ def main() -> int:
     team_id = ""
     project_id = ""
     problem_id = ""
-    if args.scenario in {"auth", "chat", "upload", "submission", "git"}:
+    if args.scenario in {"auth", "chat", "upload", "git"}:
         token = login(args.base_url, account, password)
     if args.scenario == "submission" and args.submission_accounts > 1:
         submission_tokens = [
@@ -151,6 +157,7 @@ def main() -> int:
             for index in range(1, args.submission_accounts + 1)
         ]
     elif args.scenario == "submission":
+        token = login(args.base_url, account, password)
         submission_tokens = [token]
     if args.scenario in {"chat", "git"}:
         status, team = json_request(args.base_url, "GET", "/api/teams/my", token=token)
@@ -247,12 +254,14 @@ def main() -> int:
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.vus) as executor:
         if args.arrival_rate:
             futures = []
-            next_arrival = time.monotonic()
+            next_arrival = started
             index = 0
-            while time.monotonic() < stop_at:
+            while next_arrival < stop_at:
                 delay = next_arrival - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
+                if time.monotonic() >= stop_at:
+                    break
                 futures.append(executor.submit(run_one, index % args.vus, index))
                 index += 1
                 next_arrival = started + index / args.arrival_rate
@@ -267,6 +276,7 @@ def main() -> int:
         "scenario": args.scenario,
         "vus": args.vus,
         "durationSeconds": round(elapsed, 3),
+        "configuredArrivalRate": args.arrival_rate,
         "requests": requests,
         "rps": round(requests / elapsed, 3) if elapsed else 0,
         "latencyMs": {

@@ -61,7 +61,8 @@ export interface RecentSubmission {
   id: string;
   problemId: string;
   problemTitle: string;
-  language: JudgeLanguage;
+  submissionKind: number;
+  language: JudgeLanguage | null;
   status: JudgeStatus;
   createdAt: string;
   finishedAt: string | null;

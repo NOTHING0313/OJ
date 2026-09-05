@@ -11,12 +11,12 @@ ACCOUNT = os.environ.get("STRESS_ROOT_ACCOUNT", "")
 PASSWORD = os.environ.get("STRESS_ROOT_PASSWORD", "")
 
 
-def request(path: str, payload: dict, token: str | None = None) -> tuple[int, dict]:
+def request(path: str, payload: dict, token: str | None = None, method: str = "POST") -> tuple[int, dict]:
     data = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    req = urllib.request.Request(f"{BASE_URL}{path}", data=data, headers=headers, method="POST")
+    req = urllib.request.Request(f"{BASE_URL}{path}", data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=15) as response:
             body = response.read()
@@ -43,7 +43,7 @@ def main() -> int:
             "outputDescription": "Their sum.",
             "timeLimitMs": 1000,
             "memoryLimitMb": 128,
-            "isPublished": True,
+            "isPublished": False,
             "judgeMode": 1,
             "allowedLanguagesMask": 7,
         },
@@ -60,6 +60,25 @@ def main() -> int:
     )
     if case_status != 200 or not test_case.get("id"):
         raise RuntimeError("stress test case creation failed")
+
+    publish_status, _ = request(
+        f"/api/problems/{problem_id}",
+        {
+            "title": "STRESS Isolation A+B",
+            "description": "Synthetic isolation probe only.",
+            "inputDescription": "Two integers.",
+            "outputDescription": "Their sum.",
+            "timeLimitMs": 1000,
+            "memoryLimitMb": 128,
+            "isPublished": True,
+            "judgeMode": 1,
+            "allowedLanguagesMask": 7,
+        },
+        token,
+        "PUT",
+    )
+    if publish_status != 200:
+        raise RuntimeError("stress problem publication failed")
 
     submission_status, submission = request(
         "/api/submissions",
@@ -78,6 +97,7 @@ def main() -> int:
         "loginStatus": login_status,
         "problemStatus": problem_status,
         "testCaseStatus": case_status,
+        "publishStatus": publish_status,
         "submissionStatus": submission_status,
         "problemId": problem_id,
         "submissionId": submission_id,

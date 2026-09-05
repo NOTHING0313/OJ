@@ -1,7 +1,8 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { createProblem, deleteJudgeAsset, getJudgeAssets, getProblem, updateProblem, uploadJudgeAsset, type JudgeLanguage, type JudgeMode, type ProblemDetailDto, type ProblemJudgeAssetDto } from "../api/problemsApi";
+import { createProblem, deleteJudgeAsset, getJudgeAssets, getProblemAuthoring, updateProblemAuthoring, uploadJudgeAsset, type ChoiceQuestionWriteRequest, type JudgeLanguage, type JudgeMode, type ProblemDetailDto, type ProblemJudgeAssetDto, type ProblemKind } from "../api/problemsApi";
 import { MarkdownEditor } from "../components/MarkdownEditor";
+import { ChoiceQuestionEditor } from "../components/problems/ChoiceQuestionEditor";
 
 interface FunctionParameterEditor {
   name: string;
@@ -27,6 +28,7 @@ export function AdminProblemEditorPage() {
   const navigate = useNavigate();
   const isEditMode = Boolean(id);
   const [problem, setProblem] = useState<ProblemDetailDto | null>(null);
+  const [problemKind, setProblemKind] = useState<ProblemKind>(1);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [inputDescription, setInputDescription] = useState("");
@@ -35,6 +37,9 @@ export function AdminProblemEditorPage() {
   const [memoryLimitMb, setMemoryLimitMb] = useState(128);
   const [isPublished, setIsPublished] = useState(false);
   const [judgeMode, setJudgeMode] = useState<JudgeMode>(1);
+  const [choiceRevealPolicy, setChoiceRevealPolicy] = useState<1 | 2>(1);
+  const [choiceRevealAt, setChoiceRevealAt] = useState("");
+  const [choiceQuestions, setChoiceQuestions] = useState<ChoiceQuestionWriteRequest[]>([]);
   const [isLanguageRestricted, setIsLanguageRestricted] = useState(false);
   const [allowedLanguagesMask, setAllowedLanguagesMask] = useState(allLanguageMask);
   const [functionName, setFunctionName] = useState("");
@@ -64,21 +69,36 @@ export function AdminProblemEditorPage() {
     let ignore = false;
     setIsLoading(true);
 
-    getProblem(id)
+    getProblemAuthoring(id)
       .then((detail) => {
         if (!ignore) {
           setProblem(detail);
+          setProblemKind(detail.problemKind);
           setTitle(detail.title);
           setDescription(detail.description);
           setInputDescription(detail.inputDescription);
           setOutputDescription(detail.outputDescription);
-          setTimeLimitMs(detail.timeLimitMs);
-          setMemoryLimitMb(detail.memoryLimitMb);
+          setTimeLimitMs(detail.timeLimitMs ?? 1000);
+          setMemoryLimitMb(detail.memoryLimitMb ?? 128);
           setIsPublished(detail.isPublished);
-          setJudgeMode(detail.judgeMode);
+          setJudgeMode(detail.judgeMode ?? 1);
           setIsLanguageRestricted(detail.allowedLanguagesMask !== 0);
           setAllowedLanguagesMask(detail.allowedLanguagesMask || allLanguageMask);
           applyFunctionConfig(detail);
+          setChoiceRevealPolicy(detail.choiceAnswerRevealPolicy ?? 1);
+          setChoiceRevealAt(detail.choiceAnswerRevealAt ? toLocalDateTime(detail.choiceAnswerRevealAt) : "");
+          setChoiceQuestions(detail.choiceQuestions.map((question) => ({
+            id: question.id,
+            stemMarkdown: question.stemMarkdown,
+            selectionMode: question.selectionMode,
+            score: question.score,
+            explanationMarkdown: question.explanationMarkdown ?? "",
+            options: question.options.map((option) => ({
+              id: option.id,
+              contentMarkdown: option.contentMarkdown,
+              isCorrect: question.correctOptionIds?.includes(option.id) ?? false
+            }))
+          })));
           setError(null);
         }
       })
@@ -118,13 +138,13 @@ export function AdminProblemEditorPage() {
     setNotice(null);
 
     const selectedAllowedLanguagesMask = isLanguageRestricted ? allowedLanguagesMask : 0;
-    if (isLanguageRestricted && selectedAllowedLanguagesMask === 0) {
+    if (problemKind === 1 && isLanguageRestricted && selectedAllowedLanguagesMask === 0) {
       setError("限定提交语言时至少选择一种语言");
       setIsSaving(false);
       return;
     }
 
-    if (judgeMode === 2
+    if (problemKind === 1 && judgeMode === 2
       && (selectedAllowedLanguagesMask & 0b010) !== 0
       && hasC11UnsupportedType(returnType, parameters, customTypes)) {
       setError("当前函数签名不支持 C11，请取消 C 语言限制或调整函数类型");
@@ -132,7 +152,7 @@ export function AdminProblemEditorPage() {
       return;
     }
 
-    const functionConfig = buildFunctionConfig();
+    const functionConfig = problemKind === 1 ? buildFunctionConfig() : { isValid: true as const, functionSpecJson: null, starterCodeJson: null };
     if (functionConfig.isValid === false) {
       setError(functionConfig.error);
       setIsSaving(false);
@@ -140,23 +160,40 @@ export function AdminProblemEditorPage() {
     }
 
     const payload = {
+      problemKind,
       title: title.trim(),
       description,
-      inputDescription: judgeMode === 1 ? inputDescription : "",
-      outputDescription: judgeMode === 1 ? outputDescription : "",
-      timeLimitMs,
-      memoryLimitMb,
+      inputDescription: problemKind === 1 && judgeMode === 1 ? inputDescription : "",
+      outputDescription: problemKind === 1 && judgeMode === 1 ? outputDescription : "",
+      timeLimitMs: problemKind === 1 ? timeLimitMs : null,
+      memoryLimitMb: problemKind === 1 ? memoryLimitMb : null,
       isPublished: isEditMode ? isPublished : false,
-      judgeMode,
-      allowedLanguagesMask: selectedAllowedLanguagesMask,
+      judgeMode: problemKind === 1 ? judgeMode : null,
+      allowedLanguagesMask: problemKind === 1 ? selectedAllowedLanguagesMask : 0,
       functionSpecJson: functionConfig.functionSpecJson,
-      starterCodeJson: functionConfig.starterCodeJson
+      starterCodeJson: functionConfig.starterCodeJson,
+      choiceAnswerRevealPolicy: problemKind === 2 ? choiceRevealPolicy : null,
+      choiceAnswerRevealAt: problemKind === 2 && choiceRevealPolicy === 2 && choiceRevealAt ? new Date(choiceRevealAt).toISOString() : null,
+      choiceQuestions: problemKind === 2 ? choiceQuestions : [],
+      ...(problem ? { expectedAuthoringVersion: problem.authoringVersion } : {})
     };
 
     try {
       if (id) {
-        const updated = await updateProblem(id, payload);
+        const updated = await updateProblemAuthoring(id, payload);
         setProblem(updated);
+        setChoiceQuestions(updated.choiceQuestions.map((question) => ({
+          id: question.id,
+          stemMarkdown: question.stemMarkdown,
+          selectionMode: question.selectionMode,
+          score: question.score,
+          explanationMarkdown: question.explanationMarkdown ?? "",
+          options: question.options.map((option) => ({
+            id: option.id,
+            contentMarkdown: option.contentMarkdown,
+            isCorrect: question.correctOptionIds?.includes(option.id) ?? false
+          }))
+        })));
         setNotice("题目已保存。");
       } else {
         const created = await createProblem(payload);
@@ -198,9 +235,11 @@ export function AdminProblemEditorPage() {
           </Link>
           {problem && (
             <>
-              <Link className="button" to={`/admin/problems/${problem.id}/test-cases`}>
-                测试用例
-              </Link>
+              {problem.problemKind === 1 && (
+                <Link className="button" to={`/admin/problems/${problem.id}/test-cases`}>
+                  测试用例
+                </Link>
+              )}
               <Link className="button" to={`/problems/${problem.id}`}>
                 查看题目
               </Link>
@@ -218,6 +257,14 @@ export function AdminProblemEditorPage() {
           <input value={title} onChange={(event) => setTitle(event.target.value)} required />
         </label>
         <MarkdownEditor label="题目描述" value={description} onChange={setDescription} required />
+        <label>
+          题目类型
+          <select value={problemKind} onChange={(event) => setProblemKind(Number(event.target.value) as ProblemKind)}>
+            <option value={1}>编程题</option>
+            <option value={2}>选择题组</option>
+          </select>
+        </label>
+        {problemKind === 1 ? <>
         <label>
           判题模式
           <select value={judgeMode} onChange={(event) => setJudgeMode(Number(event.target.value) as JudgeMode)}>
@@ -451,12 +498,21 @@ export function AdminProblemEditorPage() {
             <input type="number" min={16} value={memoryLimitMb} onChange={(event) => setMemoryLimitMb(Number(event.target.value))} />
           </label>
         </div>
+        </> : <>
+          <section className="content-block">
+            <h2>答案发布策略</h2>
+            <label>策略<select value={choiceRevealPolicy} onChange={(event) => setChoiceRevealPolicy(Number(event.target.value) as 1 | 2)}><option value={1}>提交后查看</option><option value={2}>指定时间统一揭示</option></select></label>
+            {choiceRevealPolicy === 2 && <label>揭示时间<input type="datetime-local" value={choiceRevealAt} onChange={(event) => setChoiceRevealAt(event.target.value)} required /></label>}
+            <p className="quiet-note">答案一旦已经揭示，不能再改回未来隐藏状态。</p>
+          </section>
+          <ChoiceQuestionEditor questions={choiceQuestions} onChange={setChoiceQuestions} />
+        </>}
 
         <label className="checkbox-line">
           <input type="checkbox" checked={isPublished} disabled={!isEditMode} onChange={(event) => setIsPublished(event.target.checked)} />
           发布题目
         </label>
-        {!isEditMode && <p className="quiet-note">新题目会先保存为草稿；添加至少一个有效测试用例后才能发布。</p>}
+        {!isEditMode && <p className="quiet-note">新题目会先保存为草稿；补齐对应题型内容后才能发布。</p>}
         <button className="button primary" type="submit" disabled={isSaving}>
           {isSaving ? "保存中..." : isEditMode ? "保存题目" : "创建题目"}
         </button>
@@ -696,6 +752,12 @@ export function AdminProblemEditorPage() {
 
 function formatFileSize(bytes: number) {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function toLocalDateTime(value: string) {
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 function buildFunctionTypes(customTypes: FunctionCustomTypeEditor[]) {

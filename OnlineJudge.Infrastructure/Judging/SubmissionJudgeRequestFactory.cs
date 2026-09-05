@@ -38,13 +38,24 @@ public static class SubmissionJudgeRequestFactory
             return Result<JudgeRequest>.Failure("Problem judge revision contains no test cases.");
         }
 
+        if (submission.SubmissionKind != Domain.Enums.SubmissionKind.Code
+            || revision.ProblemKind != Domain.Enums.ProblemKind.Programming
+            || submission.Language is null
+            || string.IsNullOrWhiteSpace(submission.SourceCode)
+            || revision.JudgeMode is null
+            || revision.TimeLimitMs is null
+            || revision.MemoryLimitMb is null)
+        {
+            return Result<JudgeRequest>.Failure("Programming judge configuration is incomplete.");
+        }
+
         var sourceValidation = ProblemJudgeDefinitionValidator.ValidateSourceCode(submission.SourceCode, resourcePolicy);
         if (sourceValidation.IsFailure)
         {
             return Result<JudgeRequest>.Failure(sourceValidation.ErrorMessage!);
         }
 
-        var resourceValidation = ProblemJudgeDefinitionValidator.ValidateRunLimits(revision.TimeLimitMs, revision.MemoryLimitMb, resourcePolicy);
+        var resourceValidation = ProblemJudgeDefinitionValidator.ValidateRunLimits(revision.TimeLimitMs.Value, revision.MemoryLimitMb.Value, resourcePolicy);
         if (resourceValidation.IsFailure)
         {
             return Result<JudgeRequest>.Failure(resourceValidation.ErrorMessage!);
@@ -63,7 +74,7 @@ public static class SubmissionJudgeRequestFactory
         }
 
         var collectionValidation = ProblemJudgeDefinitionValidator.ValidateTestCaseCollection(
-            revision.TimeLimitMs,
+            revision.TimeLimitMs.Value,
             payloads,
             resourcePolicy,
             requireAtLeastOne: true);
@@ -76,12 +87,12 @@ public static class SubmissionJudgeRequestFactory
         {
             SubmissionId = submission.Id,
             ProblemId = submission.ProblemId,
-            Language = submission.Language,
-            JudgeMode = revision.JudgeMode,
+            Language = submission.Language.Value,
+            JudgeMode = revision.JudgeMode.Value,
             SourceCode = submission.SourceCode,
             FunctionSpecJson = revision.FunctionSpecJson,
-            TimeLimitMs = revision.TimeLimitMs,
-            MemoryLimitMb = revision.MemoryLimitMb,
+            TimeLimitMs = revision.TimeLimitMs.Value,
+            MemoryLimitMb = revision.MemoryLimitMb.Value,
             CollectAllCaseResults = submission.ChallengeTaskId.HasValue,
             CompileAssets = compileAssets,
             TestCases = revision.TestCases

@@ -56,6 +56,11 @@ public class ProblemJudgeAssetService(
             return Result<IReadOnlyList<ProblemJudgeAssetDto>>.Failure(access.ErrorMessage!);
         }
 
+        if (access.Value!.ProblemKind != ProblemKind.Programming)
+        {
+            return Result<IReadOnlyList<ProblemJudgeAssetDto>>.Failure("Choice problems do not use judge assets.");
+        }
+
         var assets = await dbContext.ProblemJudgeAssets
             .AsNoTracking()
             .Where(asset => asset.ProblemId == problemId && !asset.IsDeleted)
@@ -138,6 +143,11 @@ public class ProblemJudgeAssetService(
             return Result<ProblemJudgeAssetDto>.Failure("Problem not found.");
         }
 
+        if (problem.ProblemKind != ProblemKind.Programming)
+        {
+            return Result<ProblemJudgeAssetDto>.Failure("Choice problems do not use judge assets.");
+        }
+
         var normalizedFileName = request.OriginalFileName.ToUpperInvariant();
         var existingAssets = await dbContext.ProblemJudgeAssets
             .Where(asset => asset.ProblemId == problemId && asset.Language == request.Language && !asset.IsDeleted)
@@ -181,6 +191,8 @@ public class ProblemJudgeAssetService(
         };
 
         dbContext.ProblemJudgeAssets.Add(asset);
+        problem.AuthoringVersion = checked(problem.AuthoringVersion + 1);
+        problem.UpdatedAt = now;
         try
         {
             if (problem.IsPublished)
@@ -239,6 +251,11 @@ public class ProblemJudgeAssetService(
             return Result.Failure("Problem not found.");
         }
 
+        if (problem.ProblemKind != ProblemKind.Programming)
+        {
+            return Result.Failure("Choice problems do not use judge assets.");
+        }
+
         var asset = await dbContext.ProblemJudgeAssets
             .FirstOrDefaultAsync(asset => asset.Id == assetId && asset.ProblemId == problemId && !asset.IsDeleted, cancellationToken);
         if (asset is null)
@@ -250,6 +267,8 @@ public class ProblemJudgeAssetService(
         asset.IsDeleted = true;
         asset.DeletedAt = now;
         asset.UpdatedAt = now;
+        problem.AuthoringVersion = checked(problem.AuthoringVersion + 1);
+        problem.UpdatedAt = now;
         try
         {
             if (problem.IsPublished)

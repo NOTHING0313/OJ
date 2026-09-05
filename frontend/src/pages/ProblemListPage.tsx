@@ -100,8 +100,8 @@ export function ProblemListPage() {
                           {problem.title}
                         </Link>
                       </td>
-                      <td><span className="problem-meta-badge time">{problem.timeLimitMs} ms</span></td>
-                      <td><span className="problem-meta-badge memory">{problem.memoryLimitMb} MB</span></td>
+                      <td><span className="problem-meta-badge time">{problem.problemKind === 2 ? "—" : `${problem.timeLimitMs} ms`}</span></td>
+                      <td><span className="problem-meta-badge memory">{problem.problemKind === 2 ? "—" : `${problem.memoryLimitMb} MB`}</span></td>
                       <td>
                         <span className={`problem-meta-badge ${problem.isPublished ? "published" : "unpublished"}`}>
                           {problem.isPublished ? "公开" : "未公开"}

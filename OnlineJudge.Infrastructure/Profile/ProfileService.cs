@@ -179,7 +179,8 @@ public class ProfileService(OnlineJudgeDbContext dbContext, ICurrentUser current
         return await dbContext.Submissions
             .AsNoTracking()
             .Where(submission => submission.UserId == userId)
-            .GroupBy(submission => submission.Language)
+            .Where(submission => submission.Language.HasValue)
+            .GroupBy(submission => submission.Language!.Value)
             .Select(group => new LanguageSummaryDto
             {
                 Language = group.Key,
@@ -239,6 +240,7 @@ public class ProfileService(OnlineJudgeDbContext dbContext, ICurrentUser current
                 Id = submission.Id,
                 ProblemId = submission.ProblemId,
                 ProblemTitle = submission.Problem == null ? "题目已删除" : submission.Problem.Title,
+                SubmissionKind = submission.SubmissionKind,
                 Language = submission.Language,
                 Status = submission.Status,
                 CreatedAt = submission.CreatedAt,

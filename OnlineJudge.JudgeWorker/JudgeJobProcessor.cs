@@ -154,6 +154,11 @@ public sealed class JudgeJobProcessor(
             return ExecutionOutcome.Failed(Permanent("Submission judge revision is missing or mismatched."));
         }
 
+        if (submission.SubmissionKind != SubmissionKind.Code || submission.Language is null)
+        {
+            return ExecutionOutcome.Failed(Permanent("Judge jobs may only reference code submissions."));
+        }
+
         if (submission.ProblemJudgeRevision.TestCases.Count == 0)
         {
             return ExecutionOutcome.Failed(Permanent("Submission judge revision contains no test cases."));
@@ -164,7 +169,7 @@ public sealed class JudgeJobProcessor(
         {
             compileAssets = await compileAssetLoader.LoadRevisionAsync(
                 submission.ProblemJudgeRevisionId.Value,
-                submission.Language,
+                submission.Language.Value,
                 cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException or DirectoryNotFoundException or UnauthorizedAccessException)
@@ -182,7 +187,7 @@ public sealed class JudgeJobProcessor(
         IJudgeRunner runner;
         try
         {
-            runner = runnerFactory.GetRunner(submission.Language);
+            runner = runnerFactory.GetRunner(submission.Language.Value);
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
         {
@@ -294,7 +299,7 @@ public sealed class JudgeJobProcessor(
             submission.Id,
             submission.ProblemId,
             submission.UserId,
-            submission.Language,
+            submission.Language!.Value,
             result.Status,
             result.TimeUsedMs,
             result.MemoryUsedKb,

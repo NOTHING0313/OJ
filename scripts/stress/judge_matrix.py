@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import time
 import urllib.error
@@ -26,9 +27,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def credentials(target: str, remote_path: str) -> tuple[str, str]:
-    completed = subprocess.run(["ssh", "-o", "BatchMode=yes", target, "sudo", "cat", remote_path], check=True, capture_output=True, text=True)
-    values = dict(line.split("=", 1) for line in completed.stdout.splitlines() if "=" in line)
-    return values["STRESS_ROOT_ACCOUNT"], values["STRESS_ROOT_PASSWORD"]
+    if target == "local":
+        account = os.environ.get("STRESS_ROOT_ACCOUNT", "")
+        password = os.environ.get("STRESS_ROOT_PASSWORD", "")
+    else:
+        completed = subprocess.run(["ssh", "-o", "BatchMode=yes", target, "sudo", "cat", remote_path], check=True, capture_output=True, text=True)
+        values = dict(line.split("=", 1) for line in completed.stdout.splitlines() if "=" in line)
+        account = values.get("STRESS_ROOT_ACCOUNT", "")
+        password = values.get("STRESS_ROOT_PASSWORD", "")
+    if not account or not password:
+        raise RuntimeError("stress credentials unavailable")
+    return account, password
 
 
 def request(base: str, method: str, path: str, payload: dict | None = None, token: str = "") -> tuple[int, dict]:

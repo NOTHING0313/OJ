@@ -30,6 +30,7 @@ internal static class ProblemJudgeRevisionPublisher
             problem.OutputDescription,
             problem.TimeLimitMs,
             problem.MemoryLimitMb,
+            problem.ProblemKind,
             problem.JudgeMode,
             problem.AllowedLanguagesMask,
             problem.FunctionSpecJson,
@@ -40,11 +41,14 @@ internal static class ProblemJudgeRevisionPublisher
             return Result<ProblemJudgeRevision>.Failure(problemValidation.ErrorMessage!);
         }
 
+        var testCases = new List<TestCase>();
+        if (problem.ProblemKind == Domain.Enums.ProblemKind.Programming)
+        {
         var storedTestCases = await dbContext.TestCases
             .AsNoTracking()
             .Where(testCase => testCase.ProblemId == problem.Id && !testCase.IsDeleted)
             .ToListAsync(cancellationToken);
-        var testCases = ApplyTrackedChanges(
+        testCases = ApplyTrackedChanges(
                 storedTestCases,
                 dbContext.ChangeTracker.Entries<TestCase>()
                     .Where(entry => entry.Entity.ProblemId == problem.Id)
@@ -61,7 +65,7 @@ internal static class ProblemJudgeRevisionPublisher
         }
 
         var collectionValidation = ProblemJudgeDefinitionValidator.ValidateTestCaseCollection(
-            problem.TimeLimitMs,
+            problem.TimeLimitMs!.Value,
             testCases.Select(JudgeTestCasePayload.From).ToList(),
             resourcePolicy,
             requireAtLeastOne: true);
@@ -86,6 +90,24 @@ internal static class ProblemJudgeRevisionPublisher
                 return Result<ProblemJudgeRevision>.Failure($"Test case {testCase.Id} is invalid: {validation.ErrorMessage}");
             }
         }
+        }
+
+        var choiceQuestions = problem.ChoiceQuestions
+            .Where(question => !question.IsDeleted)
+            .OrderBy(question => question.Order)
+            .ToList();
+        if (problem.ProblemKind == Domain.Enums.ProblemKind.ChoiceSet)
+        {
+            var choiceValidation = ChoiceProblemDefinitionValidator.Validate(
+                choiceQuestions,
+                problem.ChoiceAnswerRevealPolicy,
+                problem.ChoiceAnswerRevealAt,
+                requireComplete: true);
+            if (choiceValidation.IsFailure)
+            {
+                return Result<ProblemJudgeRevision>.Failure(choiceValidation.ErrorMessage!);
+            }
+        }
 
         var storedAssets = await dbContext.ProblemJudgeAssets
             .AsNoTracking()
@@ -97,7 +119,7 @@ internal static class ProblemJudgeRevisionPublisher
                     .Where(entry => entry.Entity.ProblemId == problem.Id)
                     .Select(entry => entry.Entity),
                 asset => asset.Id)
-            .Where(asset => !asset.IsDeleted)
+            .Where(asset => !asset.IsDeleted && problem.ProblemKind == Domain.Enums.ProblemKind.Programming)
             .OrderBy(asset => asset.Language)
             .ThenBy(asset => asset.OriginalFileName)
             .ThenBy(asset => asset.Id)
@@ -113,6 +135,7 @@ internal static class ProblemJudgeRevisionPublisher
             Id = Guid.NewGuid(),
             ProblemId = problem.Id,
             RevisionNumber = checked(latestRevisionNumber + 1),
+            ProblemKind = problem.ProblemKind,
             JudgeMode = problem.JudgeMode,
             AllowedLanguagesMask = problem.AllowedLanguagesMask,
             FunctionSpecJson = problem.JudgeMode == Domain.Enums.JudgeMode.Function ? problem.FunctionSpecJson : null,
@@ -135,6 +158,24 @@ internal static class ProblemJudgeRevisionPublisher
             {
                 ProblemJudgeAssetId = asset.Id,
                 Order = index
+            }).ToList(),
+            ChoiceQuestions = choiceQuestions.Select((question, index) => new ProblemJudgeRevisionChoiceQuestion
+            {
+                Id = Guid.NewGuid(),
+                SourceQuestionId = question.Id,
+                Order = index,
+                StemMarkdown = question.StemMarkdown,
+                SelectionMode = question.SelectionMode,
+                Score = question.Score,
+                ExplanationMarkdown = question.ExplanationMarkdown,
+                Options = question.Options.Where(option => !option.IsDeleted).OrderBy(option => option.Order).Select((option, optionIndex) => new ProblemJudgeRevisionChoiceOption
+                {
+                    Id = Guid.NewGuid(),
+                    SourceOptionId = option.Id,
+                    Order = optionIndex,
+                    ContentMarkdown = option.ContentMarkdown,
+                    IsCorrect = option.IsCorrect
+                }).ToList()
             }).ToList()
         };
 

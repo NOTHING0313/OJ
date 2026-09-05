@@ -14,7 +14,9 @@ public class SubmissionListItemDto
 
     public string UserName { get; set; } = string.Empty;
 
-    public JudgeLanguage Language { get; set; }
+    public SubmissionKind SubmissionKind { get; set; }
+
+    public JudgeLanguage? Language { get; set; }
 
     public JudgeStatus Status { get; set; }
 
@@ -27,4 +29,8 @@ public class SubmissionListItemDto
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? FinishedAt { get; set; }
+
+    public int? ChoiceScore { get; set; }
+
+    public int? ChoiceTotalScore { get; set; }
 }

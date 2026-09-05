@@ -1706,7 +1706,7 @@ public class ChallengeService(
 
             var problemExists = await dbContext.Problems
                 .AsNoTracking()
-                .AnyAsync(problem => problem.Id == algorithmProblemId.Value && !problem.IsDeleted, cancellationToken);
+                .AnyAsync(problem => problem.Id == algorithmProblemId.Value && !problem.IsDeleted && problem.ProblemKind == ProblemKind.Programming, cancellationToken);
 
             return problemExists
                 ? Result.Success()

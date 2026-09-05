@@ -335,6 +335,10 @@ public sealed class LeaderboardSeasonService(
 
         var seasonProblem = season.Problems.FirstOrDefault(problem => problem.ProblemId == problemId);
         if (seasonProblem?.Problem is null) return Result<LeaderboardSeasonDto>.Failure("Season problem not found.");
+        if (seasonProblem.Problem.ProblemKind != ProblemKind.Programming)
+        {
+            return Result<LeaderboardSeasonDto>.Failure("Choice problems do not use performance benchmarks.");
+        }
         if (!IsLanguageAllowed(seasonProblem.Problem.AllowedLanguagesMask, language))
         {
             return Result<LeaderboardSeasonDto>.Failure("Benchmark language is not allowed for this problem.");
@@ -1241,6 +1245,7 @@ public sealed class LeaderboardSeasonService(
             Id = problem.Id,
             ProblemId = problem.ProblemId,
             ProblemTitle = problem.Problem?.Title ?? "题目已删除",
+            ProblemKind = problem.Problem?.ProblemKind ?? ProblemKind.Programming,
             BaseScore = season.Status == LeaderboardSeasonStatus.Scheduled
                 && LeaderboardSeasonLifecycle.GetEffectiveStatus(season, timeProvider.GetUtcNow()) == LeaderboardSeasonStatus.Scheduled
                     ? currentScores?.GetValueOrDefault(problem.ProblemId) ?? problem.BaseScore

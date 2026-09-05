@@ -23,13 +23,17 @@ public class Problem
     /// </summary>
     public string OutputDescription { get; set; } = string.Empty;
 
-    public int TimeLimitMs { get; set; }
+    public ProblemKind ProblemKind { get; set; } = ProblemKind.Programming;
 
-    public int MemoryLimitMb { get; set; }
+    public long AuthoringVersion { get; set; } = 1;
+
+    public int? TimeLimitMs { get; set; }
+
+    public int? MemoryLimitMb { get; set; }
 
     public bool IsPublished { get; set; }
 
-    public JudgeMode JudgeMode { get; set; } = JudgeMode.StandardInputOutput;
+    public JudgeMode? JudgeMode { get; set; } = Domain.Enums.JudgeMode.StandardInputOutput;
 
     /// <summary>
     /// Bit mask of explicitly allowed judge languages. 0 means unrestricted.
@@ -46,6 +50,10 @@ public class Problem
     /// Language-specific starter code for function judge mode.
     /// </summary>
     public string? StarterCodeJson { get; set; }
+
+    public ChoiceAnswerRevealPolicy? ChoiceAnswerRevealPolicy { get; set; }
+
+    public DateTimeOffset? ChoiceAnswerRevealAt { get; set; }
 
     public bool IsDeleted { get; set; }
 
@@ -73,6 +81,8 @@ public class Problem
     public ProblemJudgeRevision? CurrentJudgeRevision { get; set; }
 
     public List<ProblemJudgeRevision> JudgeRevisions { get; set; } = [];
+
+    public List<ProblemChoiceQuestion> ChoiceQuestions { get; set; } = [];
 
     public List<ChallengeTask> ChallengeTasks { get; set; } = [];
 

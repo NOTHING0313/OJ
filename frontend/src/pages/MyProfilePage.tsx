@@ -167,7 +167,7 @@ export function MyProfilePage() {
                         {submission.problemTitle}
                       </Link>
                     </td>
-                    <td><span className="submission-language-badge">{languageLabel(submission.language)}</span></td>
+                    <td><span className="submission-language-badge">{submission.language ? languageLabel(submission.language) : "选择题"}</span></td>
                     <td><SubmissionStatusBadge status={submission.status} /></td>
                     <td><SubmissionDateTime value={submission.createdAt} /></td>
                     <td><Link className="button submission-view-link" to={`/submissions/${submission.id}`}>查看</Link></td>

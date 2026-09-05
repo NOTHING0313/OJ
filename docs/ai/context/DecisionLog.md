@@ -284,3 +284,57 @@
   - Generate or transfer the private key through a workstation or chat: unnecessarily expands secret exposure.
   - Pin the current Let's Encrypt edge address or merely force IPv4: the edge is not a stable allow-list target and the observed IPv4 TLS handshake also times out.
 - Consequences: Certificate-provider changes no longer require an Nginx template change. Operators must validate SAN coverage, chain integrity, key matching, expiry and Nginx reload whenever the stable files are replaced; automated renewal remains provider-specific host configuration.
+
+## Decision: Judge Worker parallelism is bounded inside one host process
+
+- Status: Accepted
+- Date: 2026-09-05
+- Task: JUDGE-RESOURCE-INPUT-BOUNDS-05 / bounded parallelism
+- Context: PostgreSQL fenced leases already support multiple claimers, while a single consumer made ten equal submissions drain in about 21.6 seconds. The user accepted localhost Docker simulation and limited the capacity gate to proving two-way CPU scheduling and bounded memory occupancy.
+- Decision: One Worker process may run one or two asynchronous consumer loops. Each loop owns a distinct worker identity and creates an independent scope for claims and processing. Base, Development and the checked-in production environment example default to two. Startup rejects values outside 1-2.
+- Rejected alternatives:
+  - Launch two systemd Worker processes immediately: duplicates runtime memory and complicates lifecycle management on the small host.
+  - Remove the upper bound or derive it from CPU count: could overcommit Docker memory and destabilize the API/database host.
+  - Raise the default above two from localhost results: no evidence supports more simultaneous sandbox workloads on the intended small host.
+- Consequences: Local ten-submission bursts drained in 12.4 seconds and 11.9 seconds across two runs, and a fresh twenty-submission burst completed without retries or dead letters while reaching two simultaneous leases. A sandbox-equivalent two-container probe measured 200.16% aggregate Docker CPU and 103.84 MiB aggregate memory with no OOM. Redis remains a best-effort signal; PostgreSQL `SKIP LOCKED` leases and fencing remain the authority. Windows per-case cgroup telemetry is still unavailable, and remote deployment was not performed.
+
+## Decision: Choice content is revisioned while answer reveal policy remains editable
+
+- Status: Accepted; implementation authorized
+- Date: 2026-09-05
+- Task: CHOICE-PROBLEM-PLAN-06
+- Context: Authors must be able to query, add, edit, delete and reorder choice questions, options and answers both before and after publication. They must also be able to change answer reveal policy after publication, while scheduled reveal remains uniform for old and new submissions.
+- Decision: Draft choice content remains fully editable in every authoring state. Saving valid content changes on a published problem creates one immutable judge revision; historical submissions keep their bound answer revision. Reveal policy and reveal time are mutable problem-level publication settings, audited separately and applied at read time across submissions from every revision. Disclosure is monotonic: after scheduled reveal or any disclosure under the post-submission policy, policy edits may not hide answers again.
+- Rejected alternatives:
+  - Lock questions or reveal policy after first publication: conflicts with the confirmed authoring workflow.
+  - Mutate an existing published revision: changes historical judge truth and breaks submission reproducibility.
+  - Snapshot reveal time independently into every revision: post-publication edits would cause old and new submissions to reveal at different times.
+  - Expose one write endpoint per question and option while the problem is live: makes transient invalid public states and revision storms much harder to prevent.
+- Consequences: The editor can offer complete CRUD before publication, after publication and after unpublishing, but persists child edits as one aggregate transaction. Correct answers remain revision-stable; reveal access can change after publication until disclosure, after which attempts to re-hide return `409 answers_already_revealed`.
+
+## Decision: All problem kinds share one versioned authoring lifecycle
+
+- Status: Accepted; implementation authorized
+- Date: 2026-09-05
+- Task: PROBLEM-AUTHORING-PARITY-07 / CHOICE-PROBLEM-PLAN-06
+- Context: Standard-input/output and function problems already permit most edits after publication, but independent metadata, test-case and asset operations can create revision storms, cannot persist explicit test order and cannot detect stale author tabs. Choice problems require aggregate CRUD before and after publication and should not introduce a separate lifecycle.
+- Decision: Add one problem-level authoring version, one capability projection and one aggregate authoring service used by all problem kinds. Published judge-affecting changes create at most one immutable revision per aggregate save; presentation-only or choice reveal-policy changes update authoring state without a judge revision. Existing endpoints remain compatibility adapters during frontend migration.
+- Rejected alternatives:
+  - Build a choice-only editor lifecycle: duplicates conflict, permission and publication rules and leaves current problem kinds behind.
+  - Mutate published revisions in place: breaks historical submission reproducibility.
+  - Keep timestamp/ID ordering for tests: cannot represent explicit author intent reliably.
+  - Remove existing mutation endpoints immediately: creates an unnecessary breaking change for current callers.
+- Consequences: The implementation requires an explicit persistence migration, additive authoring DTO/API, HTTP 409 contract, frontend migration and PostgreSQL concurrency tests. The authoring request is an 8 MiB incremental aggregate; 64 MiB test imports remain separate. Legacy mutation adapters may be removed after one stable frontend release and 14 consecutive zero-call days.
+
+## Decision: Choice submissions share season base scoring but never create performance candidates
+
+- Status: Accepted; implemented locally
+- Date: 2026-09-05
+- Task: CHOICE-PROBLEM-PLAN-06
+- Context: Choice submissions belong in the common submission history and current season, but have no judge language, runtime, or peak-memory measurements that can be compared with code submissions.
+- Decision: A full-score choice submission calls the existing season score service in the same database transaction and may earn the configured base score and first-completion time. It stores no best-performance submission, language, runtime, or memory candidate. Season administration omits choice problems from benchmark configuration, and the benchmark endpoint rejects them.
+- Rejected alternatives:
+  - Give choice submissions a placeholder language and zero resource use: this would make them appear to outperform real code submissions.
+  - Exclude choice submissions from seasons entirely: this conflicts with the frozen product contract.
+  - Add a second choice-only leaderboard: this would duplicate identity, freeze, archive and ranking rules.
+- Consequences: `SeasonSubmissionResult.Language` is nullable and carries `SubmissionKind`; existing code-submission constructors retain compatibility. Choice problems still participate in base score and first-full-score ordering only.

@@ -117,6 +117,7 @@ export interface LeaderboardSeasonProblem {
   id: string;
   problemId: string;
   problemTitle: string;
+  problemKind: number;
   baseScore: number;
   allowedLanguagesMask: number;
   benchmarks: LeaderboardSeasonProblemBenchmark[];

@@ -10,6 +10,8 @@ public interface IProblemService
 
     Task<Result<ProblemDetailDto>> GetProblemAsync(Guid id, CancellationToken cancellationToken = default);
 
+    Task<Result<ProblemDetailDto>> GetProblemAuthoringAsync(Guid id, CancellationToken cancellationToken = default);
+
     Task<Result<ProblemDetailDto>> CreateProblemAsync(CreateProblemRequest request, CancellationToken cancellationToken = default);
 
     Task<Result<ProblemDetailDto>> UpdateProblemAsync(Guid id, UpdateProblemRequest request, CancellationToken cancellationToken = default);

@@ -10,7 +10,9 @@ public class RecentSubmissionDto
 
     public string ProblemTitle { get; set; } = string.Empty;
 
-    public JudgeLanguage Language { get; set; }
+    public SubmissionKind SubmissionKind { get; set; }
+
+    public JudgeLanguage? Language { get; set; }
 
     public JudgeStatus Status { get; set; }
 

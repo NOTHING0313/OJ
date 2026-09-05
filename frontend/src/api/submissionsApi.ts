@@ -2,6 +2,7 @@ import { request } from "./httpClient";
 
 export type JudgeLanguage = 1 | 2 | 3;
 export type JudgeStatus = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export type SubmissionKind = 1 | 2;
 
 export interface CreateSubmissionRequest {
   problemId: string;
@@ -39,8 +40,9 @@ export interface SubmissionDto {
   userId: string;
   userName: string;
   challengeTaskId: string | null;
-  language: JudgeLanguage;
-  sourceCode: string;
+  submissionKind: SubmissionKind;
+  language: JudgeLanguage | null;
+  sourceCode: string | null;
   status: JudgeStatus;
   timeUsedMs: number | null;
   memoryUsedKb: number | null;
@@ -49,6 +51,22 @@ export interface SubmissionDto {
   createdAt: string;
   finishedAt: string | null;
   caseResults: SubmissionCaseResultDto[];
+  choiceScore: number | null;
+  choiceTotalScore: number | null;
+  answersRevealed: boolean | null;
+  choiceAnswerRevealPolicy: 1 | 2 | null;
+  choiceAnswerRevealAt: string | null;
+  choiceQuestionResults: Array<{
+    questionId: string;
+    stemMarkdown: string;
+    selectionMode: 1 | 2;
+    isCorrect: boolean;
+    score: number;
+    selectedOptionIds: string[];
+    options: Array<{ id: string; order: number; contentMarkdown: string }>;
+    correctOptionIds?: string[];
+    explanationMarkdown?: string;
+  }>;
 }
 
 export interface SubmissionQueryItem {
@@ -57,13 +75,16 @@ export interface SubmissionQueryItem {
   problemTitle: string;
   userId: string;
   userName: string;
-  language: JudgeLanguage;
+  submissionKind: SubmissionKind;
+  language: JudgeLanguage | null;
   status: JudgeStatus;
   timeUsedMs: number | null;
   memoryUsedKb: number | null;
   evaluation: SubmissionEvaluationDto;
   createdAt: string;
   finishedAt: string | null;
+  choiceScore: number | null;
+  choiceTotalScore: number | null;
 }
 
 export interface PagedResult<T> {
@@ -89,6 +110,17 @@ export interface SubmissionQueryParams {
 
 export function createSubmission(payload: CreateSubmissionRequest) {
   return request<SubmissionDto>("/api/submissions", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function createChoiceSubmission(payload: {
+  problemId: string;
+  problemJudgeRevisionId: string;
+  answers: Array<{ questionId: string; optionIds: string[] }>;
+}) {
+  return request<SubmissionDto>("/api/choice-submissions", {
     method: "POST",
     body: JSON.stringify(payload)
   });

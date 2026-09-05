@@ -3,14 +3,39 @@ import { apiFetch, baseUrl, request } from "./httpClient";
 export type TestCaseVisibility = 1 | 2;
 export type JudgeMode = 1 | 2;
 export type JudgeLanguage = 1 | 2 | 3;
+export type ProblemKind = 1 | 2;
+export type ChoiceSelectionMode = 1 | 2;
+export type ChoiceAnswerRevealPolicy = 1 | 2;
+
+export interface ChoiceOptionDto { id: string; order: number; contentMarkdown: string; }
+export interface ChoiceQuestionDto {
+  id: string;
+  order: number;
+  stemMarkdown: string;
+  selectionMode: ChoiceSelectionMode;
+  score: number;
+  options: ChoiceOptionDto[];
+  correctOptionIds?: string[];
+  explanationMarkdown?: string;
+}
+
+export interface ChoiceQuestionWriteRequest {
+  id?: string;
+  stemMarkdown: string;
+  selectionMode: ChoiceSelectionMode;
+  score: number;
+  explanationMarkdown: string;
+  options: Array<{ id?: string; contentMarkdown: string; isCorrect: boolean }>;
+}
 
 export interface ProblemListItemDto {
   id: string;
   title: string;
-  timeLimitMs: number;
-  memoryLimitMb: number;
+  problemKind: ProblemKind;
+  timeLimitMs: number | null;
+  memoryLimitMb: number | null;
   isPublished: boolean;
-  judgeMode: JudgeMode;
+  judgeMode: JudgeMode | null;
   allowedLanguagesMask: number;
   totalScore: number;
   createdAt: string;
@@ -30,21 +55,27 @@ export interface TestCaseDto {
 
 export interface ProblemDetailDto {
   id: string;
+  problemKind: ProblemKind;
+  authoringVersion: number;
+  currentJudgeRevisionId: string | null;
   title: string;
   description: string;
   inputDescription: string;
   outputDescription: string;
-  timeLimitMs: number;
-  memoryLimitMb: number;
+  timeLimitMs: number | null;
+  memoryLimitMb: number | null;
   isPublished: boolean;
-  judgeMode: JudgeMode;
+  judgeMode: JudgeMode | null;
   allowedLanguagesMask: number;
   totalScore: number;
   functionSpecJson?: string | null;
   starterCodeJson?: string | null;
+  choiceAnswerRevealPolicy?: ChoiceAnswerRevealPolicy | null;
+  choiceAnswerRevealAt?: string | null;
   createdAt: string;
   updatedAt: string;
   testCases: TestCaseDto[];
+  choiceQuestions: ChoiceQuestionDto[];
 }
 
 export interface ProblemJudgeAssetDto {
@@ -57,20 +88,24 @@ export interface ProblemJudgeAssetDto {
 }
 
 export interface CreateProblemRequest {
+  problemKind: ProblemKind;
   title: string;
   description: string;
   inputDescription: string;
   outputDescription: string;
-  timeLimitMs: number;
-  memoryLimitMb: number;
+  timeLimitMs: number | null;
+  memoryLimitMb: number | null;
   isPublished: boolean;
-  judgeMode: JudgeMode;
+  judgeMode: JudgeMode | null;
   allowedLanguagesMask: number;
   functionSpecJson?: string | null;
   starterCodeJson?: string | null;
+  choiceAnswerRevealPolicy?: ChoiceAnswerRevealPolicy | null;
+  choiceAnswerRevealAt?: string | null;
+  choiceQuestions: ChoiceQuestionWriteRequest[];
 }
 
-export type UpdateProblemRequest = CreateProblemRequest;
+export type UpdateProblemRequest = CreateProblemRequest & { expectedAuthoringVersion?: number };
 
 export interface CreateTestCaseRequest {
   input: string;
@@ -126,6 +161,10 @@ export function getProblem(id: string) {
   return request<ProblemDetailDto>(`/api/problems/${id}`);
 }
 
+export function getProblemAuthoring(id: string) {
+  return request<ProblemDetailDto>(`/api/problems/${id}/authoring`);
+}
+
 export function createProblem(payload: CreateProblemRequest) {
   return request<ProblemDetailDto>("/api/problems", {
     method: "POST",
@@ -135,6 +174,13 @@ export function createProblem(payload: CreateProblemRequest) {
 
 export function updateProblem(id: string, payload: UpdateProblemRequest) {
   return request<ProblemDetailDto>(`/api/problems/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateProblemAuthoring(id: string, payload: UpdateProblemRequest) {
+  return request<ProblemDetailDto>(`/api/problems/${id}/authoring`, {
     method: "PUT",
     body: JSON.stringify(payload)
   });

@@ -4,18 +4,27 @@ using OnlineJudge.Infrastructure.Judging;
 
 namespace OnlineJudge.JudgeWorker;
 
-public sealed class Worker(
+internal sealed class Worker(
     IServiceScopeFactory scopeFactory,
     IJudgeQueue judgeQueue,
-    JudgeJobOptions options,
+    JudgeJobOptions jobOptions,
+    JudgeWorkerOptions workerOptions,
     ILogger<Worker> logger) : BackgroundService
 {
-    private readonly string workerId = CreateWorkerId();
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await ReconcileJudgeContainersAsync(stoppingToken);
-        logger.LogInformation("Judge worker started. WorkerId={WorkerId}", workerId);
+        logger.LogInformation("Judge worker started. Concurrency={Concurrency}", workerOptions.Concurrency);
+
+        var consumers = Enumerable.Range(1, workerOptions.Concurrency)
+            .Select(slot => RunConsumerAsync(CreateWorkerId(slot), stoppingToken))
+            .ToArray();
+        await Task.WhenAll(consumers);
+    }
+
+    private async Task RunConsumerAsync(string workerId, CancellationToken stoppingToken)
+    {
+        logger.LogInformation("Judge worker consumer started. WorkerId={WorkerId}", workerId);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -23,13 +32,13 @@ public sealed class Worker(
             {
                 var signal = await judgeQueue.TryDequeueSubmissionAsync(stoppingToken);
                 var lease = signal.SubmissionId.HasValue
-                    ? await TryClaimAsync(signal.SubmissionId.Value, stoppingToken)
+                    ? await TryClaimAsync(signal.SubmissionId.Value, workerId, stoppingToken)
                     : null;
-                lease ??= await TryClaimAsync(null, stoppingToken);
+                lease ??= await TryClaimAsync(null, workerId, stoppingToken);
 
                 if (lease is null)
                 {
-                    await Task.Delay(options.PollInterval, stoppingToken);
+                    await Task.Delay(jobOptions.PollInterval, stoppingToken);
                     continue;
                 }
 
@@ -47,9 +56,11 @@ public sealed class Worker(
                 await DelayAfterFailureAsync(stoppingToken);
             }
         }
+
+        logger.LogInformation("Judge worker consumer stopped. WorkerId={WorkerId}", workerId);
     }
 
-    private async Task<JudgeJobLease?> TryClaimAsync(Guid? preferredSubmissionId, CancellationToken cancellationToken)
+    private async Task<JudgeJobLease?> TryClaimAsync(Guid? preferredSubmissionId, string workerId, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<IJudgeJobStore>();
@@ -79,16 +90,16 @@ public sealed class Worker(
     {
         try
         {
-            await Task.Delay(options.PollInterval, cancellationToken);
+            await Task.Delay(jobOptions.PollInterval, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
     }
 
-    private static string CreateWorkerId()
+    private static string CreateWorkerId(int slot)
     {
-        var value = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        var value = $"{Environment.MachineName}:{Environment.ProcessId}:{slot}:{Guid.NewGuid():N}";
         return value.Length <= 200 ? value : value[..200];
     }
 }

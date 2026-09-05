@@ -8,7 +8,9 @@ public class SubmissionConfiguration : IEntityTypeConfiguration<Submission>
 {
     public void Configure(EntityTypeBuilder<Submission> builder)
     {
-        builder.ToTable("Submissions");
+        builder.ToTable("Submissions", table => table.HasCheckConstraint(
+            "CK_Submissions_KindPayload",
+            "(\"SubmissionKind\" = 1 AND \"Language\" IS NOT NULL AND \"SourceCode\" IS NOT NULL) OR (\"SubmissionKind\" = 2 AND \"Language\" IS NULL AND \"SourceCode\" IS NULL)"));
 
         builder.HasKey(submission => submission.Id);
 
@@ -24,13 +26,14 @@ public class SubmissionConfiguration : IEntityTypeConfiguration<Submission>
 
         builder.Property(submission => submission.ChallengeTeamParticipantId);
 
-        builder.Property(submission => submission.Language)
+        builder.Property(submission => submission.SubmissionKind)
             .HasConversion<int>()
-            .IsRequired();
+            .IsRequired()
+            .HasDefaultValue(Domain.Enums.SubmissionKind.Code);
 
-        builder.Property(submission => submission.SourceCode)
-            .HasColumnType("text")
-            .IsRequired();
+        builder.Property(submission => submission.Language).HasConversion<int?>();
+
+        builder.Property(submission => submission.SourceCode).HasColumnType("text");
 
         builder.Property(submission => submission.Status)
             .HasConversion<int>()

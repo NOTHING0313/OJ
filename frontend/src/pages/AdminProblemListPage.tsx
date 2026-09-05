@@ -180,15 +180,14 @@ export function AdminProblemListPage() {
                     <td>
                       <div className="management-identity-copy">
                         <Link className="management-title-link" to={`/problems/${problem.id}`} title={problem.title}>{problem.title}</Link>
-                        <span>{problem.judgeMode === 2 ? "函数题" : "标准输入输出题"}</span>
+                        <span>{problem.problemKind === 2 ? "选择题组" : problem.judgeMode === 2 ? "函数题" : "标准输入输出题"}</span>
                       </div>
                     </td>
-                    <td><ProblemModeBadge judgeMode={problem.judgeMode} /></td>
+                    <td><ProblemModeBadge problemKind={problem.problemKind} judgeMode={problem.judgeMode} /></td>
                     <td><PublishBadge isPublished={problem.isPublished} /></td>
                     <td>
                       <div className="management-limit-stack">
-                        <span>{problem.timeLimitMs} ms</span>
-                        <span>{problem.memoryLimitMb} MB</span>
+                        {problem.problemKind === 2 ? <span>不适用</span> : <><span>{problem.timeLimitMs} ms</span><span>{problem.memoryLimitMb} MB</span></>}
                       </div>
                     </td>
                     <td>
@@ -215,7 +214,7 @@ export function AdminProblemListPage() {
                           {isMenuOpen && (
                             <div className={index >= pagedProblems.length - 2 ? "management-action-menu management-action-menu-align-up" : "management-action-menu"} role="menu">
                               <Link to={`/admin/problems/${problem.id}/edit`} role="menuitem" onClick={() => setOpenMenuProblemId(null)}>编辑题目</Link>
-                              <Link to={`/admin/problems/${problem.id}/test-cases`} role="menuitem" onClick={() => setOpenMenuProblemId(null)}>管理测试用例</Link>
+                              {problem.problemKind === 1 && <Link to={`/admin/problems/${problem.id}/test-cases`} role="menuitem" onClick={() => setOpenMenuProblemId(null)}>管理测试用例</Link>}
                               <button className="management-danger-action" type="button" role="menuitem" disabled={isDeleting} onClick={(event) => void handleDeleteClick(event, problem)}>
                                 {isDeleting ? "删除中..." : "删除题目"}
                               </button>
@@ -237,7 +236,11 @@ export function AdminProblemListPage() {
   );
 }
 
-function ProblemModeBadge({ judgeMode }: { judgeMode: ProblemListItemDto["judgeMode"] }) {
+function ProblemModeBadge({ problemKind, judgeMode }: { problemKind: ProblemListItemDto["problemKind"]; judgeMode: ProblemListItemDto["judgeMode"] }) {
+  if (problemKind === 2) {
+    return <span className="management-badge management-mode-choice">选择题组</span>;
+  }
+
   return <span className={`management-badge management-mode-${judgeMode === 2 ? "function" : "standard"}`}>{judgeMode === 2 ? "函数题" : "标准输入输出"}</span>;
 }
 

@@ -168,7 +168,7 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
                   </div>
                 </td>
               )}
-              <td><span className="submission-language-badge">{languageLabel(item.language)}</span></td>
+              <td><span className="submission-language-badge">{item.language ? languageLabel(item.language) : "选择题"}</span></td>
               <td><SubmissionStatusBadge status={item.status} /></td>
               <td>
                 <span className="submission-metric">最大 {formatMetric(item.evaluation.maxTimeUsedMs, "ms")}</span>

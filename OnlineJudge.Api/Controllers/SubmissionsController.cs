@@ -28,6 +28,21 @@ public class SubmissionsController(ISubmissionService submissionService) : Contr
     }
 
     [Authorize]
+    [RiskRateLimit(RateLimitPolicies.Submission)]
+    [RequestSizeLimit(64 * 1024)]
+    [HttpPost("api/choice-submissions")]
+    public async Task<IActionResult> CreateChoiceSubmission(CreateChoiceSubmissionRequest request, CancellationToken cancellationToken)
+    {
+        var result = await submissionService.CreateChoiceSubmissionAsync(request, cancellationToken);
+        if (result.IsFailure || result.Value is null)
+        {
+            return ToFailureResult(result.ErrorMessage);
+        }
+
+        return CreatedAtAction(nameof(GetSubmission), new { id = result.Value.Id }, result.Value);
+    }
+
+    [Authorize]
     [HttpGet("api/submissions")]
     public async Task<IActionResult> QuerySubmissions([FromQuery] SubmissionQueryRequest request, CancellationToken cancellationToken)
     {
@@ -76,6 +91,7 @@ public class SubmissionsController(ISubmissionService submissionService) : Contr
             "Unauthorized." => Unauthorized(errorMessage),
             "Forbidden." or "Account is blacklisted." => Forbid(),
             "Problem not found." or "Submission not found." => NotFound(errorMessage),
+            "problem_revision_conflict" => Conflict(new { code = errorMessage }),
             _ => BadRequest(errorMessage)
         };
     }

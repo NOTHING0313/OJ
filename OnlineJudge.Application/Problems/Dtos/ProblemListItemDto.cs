@@ -8,13 +8,15 @@ public class ProblemListItemDto
 
     public string Title { get; set; } = string.Empty;
 
-    public int TimeLimitMs { get; set; }
+    public ProblemKind ProblemKind { get; set; }
 
-    public int MemoryLimitMb { get; set; }
+    public int? TimeLimitMs { get; set; }
+
+    public int? MemoryLimitMb { get; set; }
 
     public bool IsPublished { get; set; }
 
-    public JudgeMode JudgeMode { get; set; }
+    public JudgeMode? JudgeMode { get; set; }
 
     public int AllowedLanguagesMask { get; set; }
 

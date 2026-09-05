@@ -7,6 +7,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageContent } from "../auth/roles";
 import { CodeEditor } from "../components/CodeEditor";
 import { ProblemDetailView } from "../components/problems/ProblemDetailView";
+import { ChoiceProblemDetail } from "../components/problems/ChoiceProblemDetail";
 
 export function ProblemDetailPage() {
   const { id } = useParams();
@@ -172,16 +173,25 @@ export function ProblemDetailPage() {
     return <div className="state-line">加载中...</div>;
   }
 
+  if (problem.problemKind === 2) {
+    return <ChoiceProblemDetail
+      problem={problem}
+      isAuthenticated={isAuthenticated}
+      canManage={canManageContent(currentUser?.role)}
+      onRequireLogin={() => navigate(`/login?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`)}
+    />;
+  }
+
   const sharedProblem = {
     id: problem.id,
     title: problem.title,
     description: problem.description,
     inputDescription: problem.inputDescription,
     outputDescription: problem.outputDescription,
-    timeLimitMs: problem.timeLimitMs,
-    memoryLimitMb: problem.memoryLimitMb,
+    timeLimitMs: problem.timeLimitMs ?? 0,
+    memoryLimitMb: problem.memoryLimitMb ?? 0,
     totalScore: problem.totalScore,
-    judgeMode: problem.judgeMode,
+    judgeMode: problem.judgeMode ?? 1,
     languageTags: explicitLanguageTags.map(getProblemLanguageTag),
     functionSpec,
     hasListNode,

@@ -23,6 +23,23 @@ internal static class ProblemJudgeDefinitionValidator
         int allowedLanguagesMask,
         string? functionSpecJson,
         string? starterCodeJson,
+        JudgeResourcePolicy policy) => ValidateProblem(
+            title, description, inputDescription, outputDescription,
+            timeLimitMs, memoryLimitMb, ProblemKind.Programming, judgeMode,
+            allowedLanguagesMask, functionSpecJson, starterCodeJson, policy);
+
+    public static Result ValidateProblem(
+        string title,
+        string description,
+        string inputDescription,
+        string outputDescription,
+        int? timeLimitMs,
+        int? memoryLimitMb,
+        ProblemKind problemKind,
+        JudgeMode? judgeMode,
+        int allowedLanguagesMask,
+        string? functionSpecJson,
+        string? starterCodeJson,
         JudgeResourcePolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
@@ -46,13 +63,31 @@ internal static class ProblemJudgeDefinitionValidator
             }
         }
 
-        var resourceValidation = ValidateRunLimits(timeLimitMs, memoryLimitMb, policy);
+        if (!Enum.IsDefined(problemKind))
+        {
+            return Result.Failure("Unsupported problem kind.");
+        }
+
+        if (problemKind == ProblemKind.ChoiceSet)
+        {
+            return judgeMode is not null || timeLimitMs is not null || memoryLimitMb is not null
+                || allowedLanguagesMask != 0 || functionSpecJson is not null || starterCodeJson is not null
+                ? Result.Failure("Choice problems cannot contain programming judge configuration.")
+                : Result.Success();
+        }
+
+        if (timeLimitMs is null || memoryLimitMb is null || judgeMode is null)
+        {
+            return Result.Failure("Programming problems require judge mode, time limit and memory limit.");
+        }
+
+        var resourceValidation = ValidateRunLimits(timeLimitMs.Value, memoryLimitMb.Value, policy);
         if (resourceValidation.IsFailure)
         {
             return resourceValidation;
         }
 
-        if (!Enum.IsDefined(judgeMode))
+        if (!Enum.IsDefined(judgeMode.Value))
         {
             return Result.Failure("Unsupported judge mode.");
         }

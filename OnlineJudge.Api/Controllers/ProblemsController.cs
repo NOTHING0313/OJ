@@ -16,6 +16,7 @@ namespace OnlineJudge.Api.Controllers;
 [Route("api/problems")]
 public class ProblemsController(IProblemService problemService, IProblemJudgeAssetService judgeAssetService) : ControllerBase
 {
+    private const long MaxAuthoringRequestSize = 8L * 1024 * 1024;
     private const long MaxJudgeAssetRequestSize = 513 * 1024;
     private const long MaxTestCaseImportRequestSize = 65L * 1024 * 1024;
     private static readonly JsonSerializerOptions ExportJsonOptions = new(JsonSerializerDefaults.Web)
@@ -45,6 +46,14 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
         }
 
         return Ok(result.Value);
+    }
+
+    [Authorize(Policy = "RequireProblemSetter")]
+    [HttpGet("{id:guid}/authoring")]
+    public async Task<IActionResult> GetProblemAuthoring(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await problemService.GetProblemAuthoringAsync(id, cancellationToken);
+        return result.IsFailure ? ToFailureResult(result.ErrorMessage) : Ok(result.Value);
     }
 
     [Authorize(Policy = "RequireProblemSetter")]
@@ -78,6 +87,13 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
 
         return Ok(result.Value);
     }
+
+    [Authorize(Policy = "RequireProblemSetter")]
+    [RiskRateLimit(RateLimitPolicies.AdminMutation)]
+    [SecurityAudit(SecurityAuditActions.ProblemUpdated, "Problem", "id")]
+    [RequestSizeLimit(MaxAuthoringRequestSize)]
+    [HttpPut("{id:guid}/authoring")]
+    public Task<IActionResult> UpdateProblemAuthoring(Guid id, UpdateProblemRequest request, CancellationToken cancellationToken) => UpdateProblem(id, request, cancellationToken);
 
     [Authorize(Policy = "RequireProblemSetter")]
     [RiskRateLimit(RateLimitPolicies.AdminMutation)]
@@ -267,6 +283,12 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
             "Judge asset not found." => NotFound(errorMessage),
             "User not found." or "Collaborator not found." => NotFound(errorMessage),
             "该题目已被挑战任务引用，请先移除相关挑战任务后再删除。" => Conflict(errorMessage),
+            "answers_already_revealed" => Conflict(new { code = errorMessage }),
+            _ when errorMessage?.StartsWith("authoring_version_conflict:", StringComparison.Ordinal) == true => Conflict(new
+            {
+                code = "authoring_version_conflict",
+                currentVersion = long.Parse(errorMessage.Split(':')[1])
+            }),
             _ => BadRequest(errorMessage)
         };
     }

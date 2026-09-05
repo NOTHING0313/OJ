@@ -57,6 +57,8 @@ public class LeaderboardSeasonProblemDto
 
     public string ProblemTitle { get; set; } = string.Empty;
 
+    public ProblemKind ProblemKind { get; set; }
+
     public int BaseScore { get; set; }
 
     public int AllowedLanguagesMask { get; set; }

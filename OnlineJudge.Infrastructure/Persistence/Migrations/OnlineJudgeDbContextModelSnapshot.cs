@@ -17,7 +17,7 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.16")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -1142,6 +1142,18 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
 
+                    b.Property<long>("AuthoringVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L);
+
+                    b.Property<DateTimeOffset?>("ChoiceAnswerRevealAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ChoiceAnswerRevealPolicy")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1173,22 +1185,25 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsPublished")
                         .HasColumnType("boolean");
 
-                    b.Property<int>("JudgeMode")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
+                    b.Property<int?>("JudgeMode")
+                        .HasColumnType("integer");
 
-                    b.Property<int>("MemoryLimitMb")
+                    b.Property<int?>("MemoryLimitMb")
                         .HasColumnType("integer");
 
                     b.Property<string>("OutputDescription")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("ProblemKind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<string>("StarterCodeJson")
                         .HasColumnType("text");
 
-                    b.Property<int>("TimeLimitMs")
+                    b.Property<int?>("TimeLimitMs")
                         .HasColumnType("integer");
 
                     b.Property<string>("Title")
@@ -1203,7 +1218,103 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CurrentJudgeRevisionId");
 
-                    b.ToTable("Problems", (string)null);
+                    b.ToTable("Problems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Problems_AuthoringVersion", "\"AuthoringVersion\" >= 1");
+
+                            t.HasCheckConstraint("CK_Problems_KindConfiguration", "(\"ProblemKind\" = 1 AND \"JudgeMode\" IN (1, 2) AND \"TimeLimitMs\" IS NOT NULL AND \"MemoryLimitMb\" IS NOT NULL AND \"ChoiceAnswerRevealPolicy\" IS NULL AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ProblemKind\" = 2 AND \"JudgeMode\" IS NULL AND \"TimeLimitMs\" IS NULL AND \"MemoryLimitMb\" IS NULL AND \"AllowedLanguagesMask\" = 0 AND \"FunctionSpecJson\" IS NULL AND \"StarterCodeJson\" IS NULL AND ((\"ChoiceAnswerRevealPolicy\" IS NULL AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ChoiceAnswerRevealPolicy\" = 1 AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ChoiceAnswerRevealPolicy\" = 2 AND \"ChoiceAnswerRevealAt\" IS NOT NULL)))");
+                        });
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemChoiceOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentMarkdown")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsCorrect")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("QuestionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QuestionId", "Order")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.ToTable("ProblemChoiceOptions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProblemChoiceOptions_Order", "\"Order\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemChoiceQuestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExplanationMarkdown")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ProblemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SelectionMode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StemMarkdown")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProblemId", "Order")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.ToTable("ProblemChoiceQuestions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProblemChoiceQuestions_Mode", "\"SelectionMode\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_ProblemChoiceQuestions_Order", "\"Order\" >= 0");
+
+                            t.HasCheckConstraint("CK_ProblemChoiceQuestions_Score", "\"Score\" BETWEEN 1 AND 1000");
+                        });
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemCollaborator", b =>
@@ -1323,19 +1434,24 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Property<string>("FunctionSpecJson")
                         .HasColumnType("text");
 
-                    b.Property<int>("JudgeMode")
+                    b.Property<int?>("JudgeMode")
                         .HasColumnType("integer");
 
-                    b.Property<int>("MemoryLimitMb")
+                    b.Property<int?>("MemoryLimitMb")
                         .HasColumnType("integer");
 
                     b.Property<Guid>("ProblemId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("ProblemKind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<int>("RevisionNumber")
                         .HasColumnType("integer");
 
-                    b.Property<int>("TimeLimitMs")
+                    b.Property<int?>("TimeLimitMs")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
@@ -1343,7 +1459,10 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProblemId", "RevisionNumber")
                         .IsUnique();
 
-                    b.ToTable("ProblemJudgeRevisions", (string)null);
+                    b.ToTable("ProblemJudgeRevisions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProblemJudgeRevisions_KindConfiguration", "(\"ProblemKind\" = 1 AND \"JudgeMode\" IN (1, 2) AND \"TimeLimitMs\" IS NOT NULL AND \"MemoryLimitMb\" IS NOT NULL) OR (\"ProblemKind\" = 2 AND \"JudgeMode\" IS NULL AND \"TimeLimitMs\" IS NULL AND \"MemoryLimitMb\" IS NULL AND \"AllowedLanguagesMask\" = 0 AND \"FunctionSpecJson\" IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionAsset", b =>
@@ -1365,6 +1484,90 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("ProblemJudgeRevisionAssets", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionChoiceOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentMarkdown")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsCorrect")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RevisionQuestionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SourceOptionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RevisionQuestionId", "Order")
+                        .IsUnique();
+
+                    b.HasIndex("RevisionQuestionId", "SourceOptionId")
+                        .IsUnique();
+
+                    b.ToTable("ProblemJudgeRevisionChoiceOptions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProblemJudgeRevisionChoiceOptions_Order", "\"Order\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionChoiceQuestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExplanationMarkdown")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ProblemJudgeRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SelectionMode")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SourceQuestionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StemMarkdown")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProblemJudgeRevisionId", "Order")
+                        .IsUnique();
+
+                    b.HasIndex("ProblemJudgeRevisionId", "SourceQuestionId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ProblemJudgeRevisionChoiceQuestions_ProblemJudgeRevisionId~1");
+
+                    b.ToTable("ProblemJudgeRevisionChoiceQuestions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProblemJudgeRevisionChoiceQuestions_Mode", "\"SelectionMode\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_ProblemJudgeRevisionChoiceQuestions_Order", "\"Order\" >= 0");
+
+                            t.HasCheckConstraint("CK_ProblemJudgeRevisionChoiceQuestions_Score", "\"Score\" BETWEEN 1 AND 1000");
+                        });
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionTestCase", b =>
@@ -1524,7 +1727,7 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("FinishedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("Language")
+                    b.Property<int?>("Language")
                         .HasColumnType("integer");
 
                     b.Property<int?>("MemoryUsedKb")
@@ -1537,11 +1740,15 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("SourceCode")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<int>("SubmissionKind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.Property<int?>("TimeUsedMs")
                         .HasColumnType("integer");
@@ -1561,7 +1768,10 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Submissions", (string)null);
+                    b.ToTable("Submissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Submissions_KindPayload", "(\"SubmissionKind\" = 1 AND \"Language\" IS NOT NULL AND \"SourceCode\" IS NOT NULL) OR (\"SubmissionKind\" = 2 AND \"Language\" IS NULL AND \"SourceCode\" IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.SubmissionCaseResult", b =>
@@ -1610,6 +1820,49 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.HasIndex("TestCaseId");
 
                     b.ToTable("SubmissionCaseResults", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.SubmissionChoiceQuestionResult", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsCorrect")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("RevisionQuestionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RevisionQuestionId");
+
+                    b.HasIndex("SubmissionId", "RevisionQuestionId")
+                        .IsUnique();
+
+                    b.ToTable("SubmissionChoiceQuestionResults", (string)null);
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.SubmissionChoiceSelection", b =>
+                {
+                    b.Property<Guid>("QuestionResultId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RevisionOptionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("QuestionResultId", "RevisionOptionId");
+
+                    b.HasIndex("RevisionOptionId");
+
+                    b.ToTable("SubmissionChoiceSelections", (string)null);
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.Team", b =>
@@ -2567,6 +2820,28 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Navigation("CurrentJudgeRevision");
                 });
 
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemChoiceOption", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemChoiceQuestion", "Question")
+                        .WithMany("Options")
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Question");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemChoiceQuestion", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.Problem", "Problem")
+                        .WithMany("ChoiceQuestions")
+                        .HasForeignKey("ProblemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Problem");
+                });
+
             modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemCollaborator", b =>
                 {
                     b.HasOne("OnlineJudge.Domain.Entities.User", "GrantedByUser")
@@ -2631,6 +2906,28 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("ProblemJudgeAsset");
+
+                    b.Navigation("ProblemJudgeRevision");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionChoiceOption", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeRevisionChoiceQuestion", "RevisionQuestion")
+                        .WithMany("Options")
+                        .HasForeignKey("RevisionQuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RevisionQuestion");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionChoiceQuestion", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeRevision", "ProblemJudgeRevision")
+                        .WithMany("ChoiceQuestions")
+                        .HasForeignKey("ProblemJudgeRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("ProblemJudgeRevision");
                 });
@@ -2719,6 +3016,44 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Navigation("Submission");
 
                     b.Navigation("TestCase");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.SubmissionChoiceQuestionResult", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeRevisionChoiceQuestion", "RevisionQuestion")
+                        .WithMany()
+                        .HasForeignKey("RevisionQuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.Submission", "Submission")
+                        .WithMany("ChoiceQuestionResults")
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RevisionQuestion");
+
+                    b.Navigation("Submission");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.SubmissionChoiceSelection", b =>
+                {
+                    b.HasOne("OnlineJudge.Domain.Entities.SubmissionChoiceQuestionResult", "QuestionResult")
+                        .WithMany("Selections")
+                        .HasForeignKey("QuestionResultId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OnlineJudge.Domain.Entities.ProblemJudgeRevisionChoiceOption", "RevisionOption")
+                        .WithMany()
+                        .HasForeignKey("RevisionOptionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("QuestionResult");
+
+                    b.Navigation("RevisionOption");
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.Team", b =>
@@ -2936,6 +3271,8 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("ChallengeTasks");
 
+                    b.Navigation("ChoiceQuestions");
+
                     b.Navigation("Collaborators");
 
                     b.Navigation("JudgeAssets");
@@ -2947,6 +3284,11 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.Navigation("TestCases");
                 });
 
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemChoiceQuestion", b =>
+                {
+                    b.Navigation("Options");
+                });
+
             modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeAsset", b =>
                 {
                     b.Navigation("JudgeRevisionAssets");
@@ -2956,14 +3298,28 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Assets");
 
+                    b.Navigation("ChoiceQuestions");
+
                     b.Navigation("TestCases");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.ProblemJudgeRevisionChoiceQuestion", b =>
+                {
+                    b.Navigation("Options");
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.Submission", b =>
                 {
                     b.Navigation("CaseResults");
 
+                    b.Navigation("ChoiceQuestionResults");
+
                     b.Navigation("JudgeJob");
+                });
+
+            modelBuilder.Entity("OnlineJudge.Domain.Entities.SubmissionChoiceQuestionResult", b =>
+                {
+                    b.Navigation("Selections");
                 });
 
             modelBuilder.Entity("OnlineJudge.Domain.Entities.Team", b =>

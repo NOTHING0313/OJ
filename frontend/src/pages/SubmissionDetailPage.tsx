@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getSubmission, type SubmissionDto } from "../api/submissionsApi";
+import { choiceOptionLabel, orderChoiceOptions } from "../utils/choiceOptions";
 import { formatDate, languageLabel, statusLabel } from "../utils/labels";
+import { MarkdownRenderer } from "../components/MarkdownRenderer";
 
 const acceptedStatus = 3;
 
@@ -112,7 +114,7 @@ export function SubmissionDetailPage() {
         </div>
         <div>
           <span>语言</span>
-          <strong><span className="submission-language-badge">{languageLabel(submission.language)}</span></strong>
+          <strong><span className="submission-language-badge">{submission.language ? languageLabel(submission.language) : "选择题"}</span></strong>
         </div>
         <div>
           <span>用户</span>
@@ -150,16 +152,29 @@ export function SubmissionDetailPage() {
 
       {submission.errorMessage && <div className="alert error pre-line">{submission.errorMessage}</div>}
 
-      <div className="section-heading-row">
+      {submission.submissionKind === 2 && <div className="quiet-note success">选择题得分：{submission.choiceScore}/{submission.choiceTotalScore}{submission.answersRevealed === false ? "；答案尚未揭示" : ""}</div>}
+      {submission.submissionKind === 2 && submission.choiceQuestionResults.map((result, index) => <section className="content-block" key={result.questionId}>
+        <div className="section-heading-row"><h2>第 {index + 1} 题</h2><strong>{result.isCorrect ? `正确 · ${result.score} 分` : "错误 · 0 分"}</strong></div>
+        <MarkdownRenderer value={result.stemMarkdown} />
+        <div className="form-stack">{orderChoiceOptions(result.options).map((option) => <div className="choice-option choice-option-result" key={option.id}>
+          <strong>{choiceOptionLabel(option.order)}{result.selectedOptionIds.includes(option.id) ? "（已选）" : ""}{result.correctOptionIds?.includes(option.id) ? "（正确）" : ""}</strong>
+          <MarkdownRenderer value={option.contentMarkdown} />
+        </div>)}</div>
+        {result.explanationMarkdown && <div><h3>解析</h3><MarkdownRenderer value={result.explanationMarkdown} /></div>}
+      </section>)}
+
+      {submission.sourceCode && <><div className="section-heading-row">
         <h2>源代码</h2>
-        <button className="button" type="button" onClick={() => copySource(submission.sourceCode, setCopyNotice)}>
+        <button className="button" type="button" onClick={() => copySource(submission.sourceCode!, setCopyNotice)}>
           复制代码
         </button>
       </div>
       {copyNotice && <div className="quiet-note success">{copyNotice}</div>}
       <pre className="source-code-block">{submission.sourceCode}</pre>
 
-      <h2>测试点结果</h2>
+      </>}
+
+      {submission.submissionKind === 1 && <><h2>测试点结果</h2>
       <div className="table-wrap">
         <table>
           <thead>
@@ -188,7 +203,7 @@ export function SubmissionDetailPage() {
           </tbody>
         </table>
         {submission.caseResults.length === 0 && <div className="empty-state">暂无测试点结果</div>}
-      </div>
+      </div></>}
     </section>
   );
 }

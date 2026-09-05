@@ -61,6 +61,8 @@ public sealed class SeasonScoreService(
                 && item.UserId == submission.UserId,
             cancellationToken);
 
+        var performanceEligible = submission.SubmissionKind == SubmissionKind.Code && submission.Language.HasValue;
+
         if (score is null)
         {
             dbContext.LeaderboardUserProblemScores.Add(new LeaderboardUserProblemScore
@@ -74,11 +76,11 @@ public sealed class SeasonScoreService(
                 IsFullScore = true,
                 FirstFullScoreAt = submission.CreatedAt,
                 FirstFullSubmissionId = submission.SubmissionId,
-                BestPerformanceSubmissionId = submission.SubmissionId,
-                BestPerformanceLanguage = submission.Language,
-                BestRuntimeMs = submission.RuntimeMs,
-                BestMemoryKb = submission.MemoryKb,
-                BestPerformanceFinishedAt = submission.FinishedAt,
+                BestPerformanceSubmissionId = performanceEligible ? submission.SubmissionId : null,
+                BestPerformanceLanguage = performanceEligible ? submission.Language : null,
+                BestRuntimeMs = performanceEligible ? submission.RuntimeMs : null,
+                BestMemoryKb = performanceEligible ? submission.MemoryKb : null,
+                BestPerformanceFinishedAt = performanceEligible ? submission.FinishedAt : null,
                 LastScoreImprovedAt = submission.CreatedAt,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -105,30 +107,33 @@ public sealed class SeasonScoreService(
             scoreIncreased = true;
         }
 
-        var rules = LeaderboardScoringRulesSerializer.Deserialize(seasonProblem.Season.ScoringRulesJson);
-        var benchmarks = seasonProblem.Benchmarks
-            .Select(item => new LeaderboardProblemBenchmarkFact(item.Language, item.RuntimeBaselineMs, item.MemoryBaselineKb))
-            .ToList();
-        var candidate = scoringEngine.CalculatePerformance(
-            seasonProblem.BaseScore,
-            rules,
-            new LeaderboardPerformanceCandidate(
-                submission.SubmissionId,
-                submission.Language,
-                submission.RuntimeMs,
-                submission.MemoryKb,
-                submission.FinishedAt),
-            benchmarks);
-        var current = CreateCurrentPerformance(score, seasonProblem.BaseScore, rules, benchmarks);
-        if (scoringEngine.IsBetterPerformance(candidate, current))
+        if (performanceEligible)
         {
-            score.BestPerformanceSubmissionId = submission.SubmissionId;
-            score.BestPerformanceLanguage = submission.Language;
-            score.BestRuntimeMs = submission.RuntimeMs;
-            score.BestMemoryKb = submission.MemoryKb;
-            score.BestPerformanceFinishedAt = submission.FinishedAt;
-            changed = true;
-            scoreIncreased |= candidate.PerformanceBonus > (current?.PerformanceBonus ?? 0);
+            var rules = LeaderboardScoringRulesSerializer.Deserialize(seasonProblem.Season.ScoringRulesJson);
+            var benchmarks = seasonProblem.Benchmarks
+                .Select(item => new LeaderboardProblemBenchmarkFact(item.Language, item.RuntimeBaselineMs, item.MemoryBaselineKb))
+                .ToList();
+            var candidate = scoringEngine.CalculatePerformance(
+                seasonProblem.BaseScore,
+                rules,
+                new LeaderboardPerformanceCandidate(
+                    submission.SubmissionId,
+                    submission.Language!.Value,
+                    submission.RuntimeMs,
+                    submission.MemoryKb,
+                    submission.FinishedAt),
+                benchmarks);
+            var current = CreateCurrentPerformance(score, seasonProblem.BaseScore, rules, benchmarks);
+            if (scoringEngine.IsBetterPerformance(candidate, current))
+            {
+                score.BestPerformanceSubmissionId = submission.SubmissionId;
+                score.BestPerformanceLanguage = submission.Language;
+                score.BestRuntimeMs = submission.RuntimeMs;
+                score.BestMemoryKb = submission.MemoryKb;
+                score.BestPerformanceFinishedAt = submission.FinishedAt;
+                changed = true;
+                scoreIncreased |= candidate.PerformanceBonus > (current?.PerformanceBonus ?? 0);
+            }
         }
 
         if (scoreIncreased) score.LastScoreImprovedAt = submission.CreatedAt;

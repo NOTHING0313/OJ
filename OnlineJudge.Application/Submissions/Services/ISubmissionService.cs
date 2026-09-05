@@ -8,6 +8,8 @@ public interface ISubmissionService
 {
     Task<Result<SubmissionDto>> CreateSubmissionAsync(CreateSubmissionRequest request, CancellationToken cancellationToken = default);
 
+    Task<Result<SubmissionDto>> CreateChoiceSubmissionAsync(CreateChoiceSubmissionRequest request, CancellationToken cancellationToken = default);
+
     Task<Result<SubmissionDto>> GetSubmissionAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task<Result<PagedResult<SubmissionListItemDto>>> QuerySubmissionsAsync(SubmissionQueryRequest request, CancellationToken cancellationToken = default);

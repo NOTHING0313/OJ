@@ -19,12 +19,14 @@ public class Submission
 
     public Guid? ChallengeTeamParticipantId { get; set; }
 
-    public JudgeLanguage Language { get; set; }
+    public SubmissionKind SubmissionKind { get; set; } = SubmissionKind.Code;
+
+    public JudgeLanguage? Language { get; set; }
 
     /// <summary>
     /// Source code submitted by the user for judging.
     /// </summary>
-    public string SourceCode { get; set; } = string.Empty;
+    public string? SourceCode { get; set; }
 
     public JudgeStatus Status { get; set; }
 
@@ -54,4 +56,6 @@ public class Submission
     public JudgeJob? JudgeJob { get; set; }
 
     public List<SubmissionCaseResult> CaseResults { get; set; } = [];
+
+    public List<SubmissionChoiceQuestionResult> ChoiceQuestionResults { get; set; } = [];
 }

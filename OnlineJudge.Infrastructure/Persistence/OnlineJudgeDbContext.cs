@@ -27,6 +27,18 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
 
     public DbSet<ProblemJudgeRevisionAsset> ProblemJudgeRevisionAssets => Set<ProblemJudgeRevisionAsset>();
 
+    public DbSet<ProblemChoiceQuestion> ProblemChoiceQuestions => Set<ProblemChoiceQuestion>();
+
+    public DbSet<ProblemChoiceOption> ProblemChoiceOptions => Set<ProblemChoiceOption>();
+
+    public DbSet<ProblemJudgeRevisionChoiceQuestion> ProblemJudgeRevisionChoiceQuestions => Set<ProblemJudgeRevisionChoiceQuestion>();
+
+    public DbSet<ProblemJudgeRevisionChoiceOption> ProblemJudgeRevisionChoiceOptions => Set<ProblemJudgeRevisionChoiceOption>();
+
+    public DbSet<SubmissionChoiceQuestionResult> SubmissionChoiceQuestionResults => Set<SubmissionChoiceQuestionResult>();
+
+    public DbSet<SubmissionChoiceSelection> SubmissionChoiceSelections => Set<SubmissionChoiceSelection>();
+
     public DbSet<Challenge> Challenges => Set<Challenge>();
 
     public DbSet<ChallengeTask> ChallengeTasks => Set<ChallengeTask>();
@@ -124,8 +136,12 @@ public class OnlineJudgeDbContext(DbContextOptions<OnlineJudgeDbContext> options
             .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted);
         var assetChanged = ChangeTracker.Entries<ProblemJudgeRevisionAsset>()
             .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+        var choiceQuestionChanged = ChangeTracker.Entries<ProblemJudgeRevisionChoiceQuestion>()
+            .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+        var choiceOptionChanged = ChangeTracker.Entries<ProblemJudgeRevisionChoiceOption>()
+            .Any(entry => entry.State is EntityState.Modified or EntityState.Deleted);
 
-        if (revisionChanged || testCaseChanged || assetChanged)
+        if (revisionChanged || testCaseChanged || assetChanged || choiceQuestionChanged || choiceOptionChanged)
         {
             throw new InvalidOperationException("Problem judge revisions are immutable.");
         }

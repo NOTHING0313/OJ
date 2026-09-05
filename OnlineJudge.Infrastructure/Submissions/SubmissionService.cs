@@ -7,6 +7,8 @@ using OnlineJudge.Application.Common;
 using OnlineJudge.Application.Common.CurrentUser;
 using OnlineJudge.Application.Judging.Services;
 using OnlineJudge.Application.Judging.Models;
+using OnlineJudge.Application.Leaderboards.Models;
+using OnlineJudge.Application.Leaderboards.Services;
 using OnlineJudge.Application.Submissions.Dtos;
 using OnlineJudge.Application.Submissions.Requests;
 using OnlineJudge.Application.Submissions.Services;
@@ -25,7 +27,9 @@ public class SubmissionService(
     ContentVisibilityPolicy visibilityPolicy,
     TimeProvider timeProvider,
     ILogger<SubmissionService> logger,
-    JudgeResourcePolicy? resourcePolicy = null) : ISubmissionService
+    JudgeResourcePolicy? resourcePolicy = null,
+    ISeasonScoreService? seasonScoreService = null,
+    ILeaderboardSeasonLifecycleService? seasonLifecycleService = null) : ISubmissionService
 {
     private JudgeResourcePolicy ResourcePolicy { get; } = resourcePolicy ?? JudgeResourcePolicy.Default;
 
@@ -105,6 +109,11 @@ public class SubmissionService(
             return Result<SubmissionDto>.Failure("Problem judge definition is unavailable.");
         }
 
+        if (judgeRevision.ProblemKind != ProblemKind.Programming)
+        {
+            return Result<SubmissionDto>.Failure("Choice problems must be submitted through the choice submission endpoint.");
+        }
+
         if (!IsLanguageAllowed(judgeRevision.AllowedLanguagesMask, request.Language))
         {
             return Result<SubmissionDto>.Failure("Selected language is not allowed for this problem.");
@@ -168,6 +177,7 @@ public class SubmissionService(
             UserId = userResult.Value.Id,
             ChallengeTaskId = request.ChallengeTaskId,
             ChallengeTeamParticipantId = challengeTeamParticipantId,
+            SubmissionKind = SubmissionKind.Code,
             Language = request.Language,
             SourceCode = request.SourceCode,
             Status = JudgeStatus.Pending,
@@ -206,6 +216,149 @@ public class SubmissionService(
         return Result<SubmissionDto>.Success(ToDto(submission, canViewHiddenCaseResults: false));
     }
 
+    public async Task<Result<SubmissionDto>> CreateChoiceSubmissionAsync(CreateChoiceSubmissionRequest request, CancellationToken cancellationToken = default)
+    {
+        var userResult = await GetActiveCurrentUserAsync(cancellationToken);
+        if (userResult.IsFailure || userResult.Value is null)
+        {
+            return Result<SubmissionDto>.Failure(userResult.ErrorMessage ?? "Unauthorized.");
+        }
+
+        if (request.Answers.Count > ChoiceProblemDefinitionValidator.MaxQuestions)
+        {
+            return Result<SubmissionDto>.Failure("Choice submission contains too many question answers.");
+        }
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        await ProblemJudgeRevisionPublisher.AcquireProblemLockAsync(dbContext, request.ProblemId, cancellationToken);
+
+        var problem = await visibilityPolicy.ApplyProblemVisibility(
+                dbContext.Problems
+                    .Include(problem => problem.CurrentJudgeRevision)!
+                        .ThenInclude(revision => revision!.ChoiceQuestions)
+                            .ThenInclude(question => question.Options)
+                    .Where(problem => !problem.IsDeleted),
+                userResult.Value.Role)
+            .FirstOrDefaultAsync(problem => problem.Id == request.ProblemId, cancellationToken);
+
+        if (problem is null)
+        {
+            return Result<SubmissionDto>.Failure("Problem not found.");
+        }
+
+        var revision = problem.CurrentJudgeRevision;
+        if (problem.ProblemKind != ProblemKind.ChoiceSet || revision is null || revision.ProblemKind != ProblemKind.ChoiceSet)
+        {
+            return Result<SubmissionDto>.Failure("Problem is not a choice problem.");
+        }
+
+        if (revision.Id != request.ProblemJudgeRevisionId)
+        {
+            return Result<SubmissionDto>.Failure("problem_revision_conflict");
+        }
+
+        var duplicateQuestion = request.Answers.GroupBy(answer => answer.QuestionId).Any(group => group.Count() > 1);
+        if (duplicateQuestion)
+        {
+            return Result<SubmissionDto>.Failure("Each choice question may appear only once.");
+        }
+
+        var questionsById = revision.ChoiceQuestions.ToDictionary(question => question.Id);
+        if (request.Answers.Any(answer => !questionsById.ContainsKey(answer.QuestionId)))
+        {
+            return Result<SubmissionDto>.Failure("Choice submission contains a question from another revision.");
+        }
+
+        var answersByQuestion = request.Answers.ToDictionary(answer => answer.QuestionId);
+        var totalSelections = request.Answers.Sum(answer => answer.OptionIds.Count);
+        var revisionOptionCount = revision.ChoiceQuestions.Sum(question => question.Options.Count);
+        if (totalSelections > revisionOptionCount)
+        {
+            return Result<SubmissionDto>.Failure("Choice submission contains too many selections.");
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var submission = new Submission
+        {
+            Id = Guid.NewGuid(),
+            ProblemId = problem.Id,
+            ProblemJudgeRevisionId = revision.Id,
+            UserId = userResult.Value.Id,
+            SubmissionKind = SubmissionKind.Choice,
+            Status = JudgeStatus.WrongAnswer,
+            CreatedAt = now,
+            FinishedAt = now,
+            Problem = problem,
+            ProblemJudgeRevision = revision
+        };
+
+        var earnedScore = 0;
+        var totalScore = revision.ChoiceQuestions.Sum(question => question.Score);
+        foreach (var question in revision.ChoiceQuestions.OrderBy(question => question.Order))
+        {
+            var selectedIds = answersByQuestion.GetValueOrDefault(question.Id)?.OptionIds ?? [];
+            if (selectedIds.Count != selectedIds.Distinct().Count())
+            {
+                return Result<SubmissionDto>.Failure("A choice option may be selected only once.");
+            }
+
+            if (question.SelectionMode == ChoiceSelectionMode.Single && selectedIds.Count > 1)
+            {
+                return Result<SubmissionDto>.Failure("A single-choice question accepts at most one option.");
+            }
+
+            var optionsById = question.Options.ToDictionary(option => option.Id);
+            if (selectedIds.Any(optionId => !optionsById.ContainsKey(optionId)))
+            {
+                return Result<SubmissionDto>.Failure("Choice submission contains an option from another question or revision.");
+            }
+
+            var correctIds = question.Options.Where(option => option.IsCorrect).Select(option => option.Id).ToHashSet();
+            var isCorrect = correctIds.SetEquals(selectedIds);
+            var result = new SubmissionChoiceQuestionResult
+            {
+                Id = Guid.NewGuid(),
+                SubmissionId = submission.Id,
+                RevisionQuestionId = question.Id,
+                RevisionQuestion = question,
+                IsCorrect = isCorrect,
+                Score = isCorrect ? question.Score : 0,
+                Selections = selectedIds.Select(optionId => new SubmissionChoiceSelection
+                {
+                    RevisionOptionId = optionId
+                }).ToList()
+            };
+            earnedScore += result.Score;
+            submission.ChoiceQuestionResults.Add(result);
+        }
+
+        submission.Status = earnedScore == totalScore ? JudgeStatus.Accepted : JudgeStatus.WrongAnswer;
+        dbContext.Submissions.Add(submission);
+        var seasonScoreResult = seasonScoreService is null
+            ? SeasonScoreApplyResult.Ignored
+            : await seasonScoreService.ApplySubmissionResultAsync(
+                SeasonSubmissionResult.ForChoice(submission.Id, submission.ProblemId, submission.UserId, submission.Status, submission.CreatedAt, now),
+                cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+
+        if (seasonScoreResult.RequiresArchiveRefresh && seasonScoreResult.SeasonId is { } seasonId && seasonLifecycleService is not null)
+        {
+            try
+            {
+                await seasonLifecycleService.RefreshPublicSeasonAsync(seasonId, cancellationToken);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "Choice submission was scored but the public season snapshot refresh failed. SeasonId={SeasonId}", seasonId);
+            }
+        }
+
+        return Result<SubmissionDto>.Success(ToDto(submission, canViewHiddenCaseResults: false));
+    }
+
     public async Task<Result<SubmissionDto>> GetSubmissionAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var submission = await dbContext.Submissions
@@ -214,6 +367,11 @@ public class SubmissionService(
             .Include(submission => submission.User)
             .Include(submission => submission.CaseResults)
                 .ThenInclude(caseResult => caseResult.TestCase)
+            .Include(submission => submission.ProblemJudgeRevision)
+                .ThenInclude(revision => revision!.ChoiceQuestions)
+                    .ThenInclude(question => question.Options)
+            .Include(submission => submission.ChoiceQuestionResults)
+                .ThenInclude(result => result.Selections)
             .FirstOrDefaultAsync(submission => submission.Id == id, cancellationToken);
 
         if (submission is null)
@@ -390,8 +548,15 @@ public class SubmissionService(
             || submission.UserId == user.Id;
     }
 
-    private static SubmissionDto ToDto(Submission submission, bool canViewHiddenCaseResults)
+    private SubmissionDto ToDto(Submission submission, bool canViewHiddenCaseResults)
     {
+        var answersRevealed = submission.SubmissionKind == SubmissionKind.Choice
+            && (canViewHiddenCaseResults
+                || submission.Problem?.ChoiceAnswerRevealPolicy == ChoiceAnswerRevealPolicy.AfterSubmission
+                || (submission.Problem?.ChoiceAnswerRevealPolicy == ChoiceAnswerRevealPolicy.AtScheduledTime
+                    && submission.Problem.ChoiceAnswerRevealAt <= timeProvider.GetUtcNow()));
+        var revisionQuestions = submission.ProblemJudgeRevision?.ChoiceQuestions.ToDictionary(question => question.Id)
+            ?? new Dictionary<Guid, ProblemJudgeRevisionChoiceQuestion>();
         return new SubmissionDto
         {
             Id = submission.Id,
@@ -400,6 +565,7 @@ public class SubmissionService(
             UserId = submission.UserId,
             UserName = submission.User?.UserName ?? "未知用户",
             ChallengeTaskId = submission.ChallengeTaskId,
+            SubmissionKind = submission.SubmissionKind,
             Language = submission.Language,
             SourceCode = submission.SourceCode,
             Status = submission.Status,
@@ -411,7 +577,35 @@ public class SubmissionService(
             FinishedAt = submission.FinishedAt,
             CaseResults = submission.CaseResults
                 .Select(caseResult => ToCaseResultDto(caseResult, canViewHiddenCaseResults))
-                .ToList()
+                .ToList(),
+            ChoiceScore = submission.SubmissionKind == SubmissionKind.Choice ? submission.ChoiceQuestionResults.Sum(result => result.Score) : null,
+            ChoiceTotalScore = submission.SubmissionKind == SubmissionKind.Choice ? revisionQuestions.Values.Sum(question => question.Score) : null,
+            AnswersRevealed = submission.SubmissionKind == SubmissionKind.Choice ? answersRevealed : null,
+            ChoiceAnswerRevealPolicy = submission.SubmissionKind == SubmissionKind.Choice ? submission.Problem?.ChoiceAnswerRevealPolicy : null,
+            ChoiceAnswerRevealAt = submission.SubmissionKind == SubmissionKind.Choice ? submission.Problem?.ChoiceAnswerRevealAt : null,
+            ChoiceQuestionResults = submission.ChoiceQuestionResults
+                .OrderBy(result => revisionQuestions.GetValueOrDefault(result.RevisionQuestionId)?.Order ?? int.MaxValue)
+                .Select(result =>
+                {
+                    var question = revisionQuestions.GetValueOrDefault(result.RevisionQuestionId);
+                    return new ChoiceQuestionResultDto
+                    {
+                        QuestionId = result.RevisionQuestionId,
+                        StemMarkdown = question?.StemMarkdown ?? string.Empty,
+                        SelectionMode = question?.SelectionMode ?? ChoiceSelectionMode.Single,
+                        IsCorrect = result.IsCorrect,
+                        Score = result.Score,
+                        SelectedOptionIds = result.Selections.Select(selection => selection.RevisionOptionId).ToList(),
+                        Options = question?.Options.OrderBy(option => option.Order).Select(option => new ChoiceResultOptionDto
+                        {
+                            Id = option.Id,
+                            Order = option.Order,
+                            ContentMarkdown = option.ContentMarkdown
+                        }).ToList() ?? [],
+                        CorrectOptionIds = answersRevealed ? question?.Options.Where(option => option.IsCorrect).Select(option => option.Id).ToList() : null,
+                        ExplanationMarkdown = answersRevealed ? question?.ExplanationMarkdown : null
+                    };
+                }).ToList()
         };
     }
 
@@ -424,6 +618,7 @@ public class SubmissionService(
             ProblemTitle = problemTitle ?? (submission.Problem == null ? "题目已删除" : submission.Problem.Title),
             UserId = submission.UserId,
             UserName = submission.User == null ? "未知用户" : submission.User.UserName,
+            SubmissionKind = submission.SubmissionKind,
             Language = submission.Language,
             Status = submission.Status,
             TimeUsedMs = submission.TimeUsedMs,
@@ -437,6 +632,8 @@ public class SubmissionService(
             },
             CreatedAt = submission.CreatedAt,
             FinishedAt = submission.FinishedAt
+            ,ChoiceScore = submission.SubmissionKind == SubmissionKind.Choice ? submission.ChoiceQuestionResults.Sum(result => result.Score) : null
+            ,ChoiceTotalScore = submission.SubmissionKind == SubmissionKind.Choice ? submission.ProblemJudgeRevision!.ChoiceQuestions.Sum(question => question.Score) : null
         };
     }
 
