@@ -187,6 +187,51 @@ public class TeamChallengeIntegrationTests
         Assert.Equal("Team-only challenges support algorithm tasks only.", (await ChallengeService(db, seed.Setter).AddTaskAsync(seed.Challenge.Id, file)).ErrorMessage);
     }
 
+    [Theory]
+    [InlineData(ProblemDifficulty.Unrated)]
+    [InlineData(ProblemDifficulty.Easy)]
+    [InlineData(ProblemDifficulty.Medium)]
+    [InlineData(ProblemDifficulty.Hard)]
+    public async Task Detail_UsesLinkedProblemDifficultyWithoutChangingPieceKind(ProblemDifficulty difficulty)
+    {
+        await using var db = CreateDb();
+        var seed = SeedTeamChallenge(db, withProblem: true);
+        seed.Problem!.Difficulty = difficulty;
+        await db.SaveChangesAsync();
+        var detail = await ChallengeService(db, seed.Member).GetChallengeAsync(seed.Challenge.Id);
+        Assert.True(detail.IsSuccess);
+        var task = Assert.Single(detail.Value!.Tasks);
+        Assert.Equal(difficulty, task.AlgorithmProblemDifficulty);
+        Assert.Equal(ChallengeTaskDifficulty.Pawn, task.Difficulty);
+        seed.Problem.IsDeleted = true;
+        await db.SaveChangesAsync();
+        var deleted = await ChallengeService(db, seed.Member).GetChallengeAsync(seed.Challenge.Id);
+        Assert.True(deleted.IsSuccess);
+        Assert.Null(Assert.Single(deleted.Value!.Tasks).AlgorithmProblemDifficulty);
+    }
+
+    [Theory]
+    [InlineData(JudgeStatus.Pending)]
+    [InlineData(JudgeStatus.Judging)]
+    [InlineData(JudgeStatus.WrongAnswer)]
+    [InlineData(JudgeStatus.Accepted)]
+    public async Task Detail_LatestAttemptIsCurrentUsersAndCurrentTaskOnly(JudgeStatus status)
+    {
+        await using var db = CreateDb();
+        var seed = SeedTeamChallenge(db, withProblem: true);
+        db.Submissions.AddRange(
+            new Submission { Id = Guid.NewGuid(), ProblemId = seed.Problem!.Id, ChallengeTaskId = seed.Task!.Id, UserId = seed.Member.Id, Status = JudgeStatus.CompileError, CreatedAt = Now.AddMinutes(-2) },
+            new Submission { Id = Guid.NewGuid(), ProblemId = seed.Problem.Id, ChallengeTaskId = seed.Task.Id, UserId = seed.Member.Id, Status = status, CreatedAt = Now.AddMinutes(-1) },
+            new Submission { Id = Guid.NewGuid(), ProblemId = seed.Problem.Id, ChallengeTaskId = seed.Task.Id, UserId = seed.Owner.Id, Status = JudgeStatus.SystemError, CreatedAt = Now },
+            new Submission { Id = Guid.NewGuid(), ProblemId = seed.Problem.Id, UserId = seed.Member.Id, Status = JudgeStatus.SystemError, CreatedAt = Now });
+        await db.SaveChangesAsync();
+        var result = await ChallengeService(db, seed.Member).GetChallengeAsync(seed.Challenge.Id);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(status, Assert.Single(result.Value!.Tasks).MyLatestSubmissionStatus);
+        var noAttempts = await ChallengeService(db, seed.Setter).GetChallengeAsync(seed.Challenge.Id);
+        Assert.Null(Assert.Single(noAttempts.Value!.Tasks).MyLatestSubmissionStatus);
+    }
+
     private static OnlineJudgeDbContext CreateDb()
     {
         var options = new DbContextOptionsBuilder<OnlineJudgeDbContext>()

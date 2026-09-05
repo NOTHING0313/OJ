@@ -122,7 +122,33 @@ public class ChallengeService(
             ? new Dictionary<Guid, ChallengeTaskCompletion>()
             : await GetCurrentUserCompletionsAsync([challenge.Id], cancellationToken);
         var detail = ToDetailDto(challenge, completions, visibilityRole);
+        var problemIds = detail.Tasks.Where(task => task.AlgorithmProblemId.HasValue)
+            .Select(task => task.AlgorithmProblemId!.Value).Distinct().ToList();
+        var difficulties = await visibilityPolicy.ApplyProblemVisibility(
+                dbContext.Problems.AsNoTracking().Where(problem => !problem.IsDeleted && problemIds.Contains(problem.Id)), visibilityRole)
+            .Select(problem => new { problem.Id, problem.Difficulty })
+            .ToDictionaryAsync(problem => problem.Id, problem => problem.Difficulty, cancellationToken);
+        foreach (var task in detail.Tasks)
+        {
+            if (task.AlgorithmProblemId is Guid problemId && difficulties.TryGetValue(problemId, out var difficulty))
+                task.AlgorithmProblemDifficulty = difficulty;
+        }
         detail.ParticipationModeLocked = await IsParticipationModeLockedAsync(challenge, cancellationToken);
+        if (currentUser.UserId is Guid userId)
+        {
+            var taskIds = detail.Tasks.Select(task => task.Id).ToList();
+            var statuses = await dbContext.ChallengeTasks.AsNoTracking()
+                .Where(task => taskIds.Contains(task.Id))
+                .Select(task => new
+                {
+                    task.Id,
+                    Status = dbContext.Submissions.Where(submission => submission.ChallengeTaskId == task.Id && submission.UserId == userId)
+                        .OrderByDescending(submission => submission.CreatedAt).ThenByDescending(submission => submission.Id)
+                        .Select(submission => (JudgeStatus?)submission.Status).FirstOrDefault()
+                }).ToDictionaryAsync(task => task.Id, task => task.Status, cancellationToken);
+            foreach (var task in detail.Tasks)
+                task.MyLatestSubmissionStatus = statuses.GetValueOrDefault(task.Id);
+        }
         detail.PeerReviewConfigurationLocked = await IsPeerReviewConfigurationLockedAsync(challenge, cancellationToken);
         await PopulateTeamParticipationAsync(detail, cancellationToken);
         return Result<ChallengeDetailDto>.Success(detail);

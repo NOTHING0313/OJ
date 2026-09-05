@@ -31,6 +31,8 @@ export interface ChallengeTaskDto {
   boardX: number;
   boardY: number;
   algorithmProblemId: string | null;
+  algorithmProblemDifficulty?: 0 | 1 | 2 | 3 | null;
+  myLatestSubmissionStatus?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | null;
   score: number;
   isPublished: boolean;
   createdAt: string;

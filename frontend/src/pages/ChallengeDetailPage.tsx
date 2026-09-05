@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { getChallenge, getChallengePeerReview, joinChallenge, registerChallengeTeam, type ChallengeDetailDto, type ChallengePeerReviewWorkspace, type ChallengeTaskDto } from "../api/challengesApi";
 import { getMyTeam, type TeamProjectDto } from "../api/teamsApi";
@@ -40,6 +41,10 @@ function ChallengeDetailContent() {
   const { currentUser } = useAuth();
   const [challenge, setChallenge] = useState<ChallengeDetailDto | null>(null);
   const [selectedTask, setSelectedTask] = useState<ChallengeTaskDto | null>(null);
+  const [now, setNow] = useState(Date.now);
+  const [completionNotice, setCompletionNotice] = useState<{ taskId: string; nonce: string | number } | null>(null);
+  const phase = !challenge ? "loading" : now < Date.parse(challenge.startAt) ? "upcoming" : now > Date.parse(challenge.endAt) ? "ended" : "active";
+  const phaseLabel = phase === "upcoming" ? "未开始" : phase === "ended" ? "已结束" : "进行中";
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const restoredPositionRef = useRef(false);
@@ -51,6 +56,7 @@ function ChallengeDetailContent() {
   const consumedAnimationNonceRef = useRef<string | number | null>(null);
   const animationTimerRef = useRef<number | null>(null);
   const pieceRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const taskDetailsRef = useRef<HTMLElement | null>(null);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const [teamProjects, setTeamProjects] = useState<TeamProjectDto[]>([]);
   const [selectedTeamProjectId, setSelectedTeamProjectId] = useState("");
@@ -61,6 +67,19 @@ function ChallengeDetailContent() {
       window.clearTimeout(animationTimerRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    const refreshClock = () => setNow(Date.now());
+    window.addEventListener("focus", refreshClock);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refreshClock); };
+  }, []);
+
+  useEffect(() => {
+    if (!completionNotice) return;
+    const timer = window.setTimeout(() => setCompletionNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [completionNotice]);
 
   useEffect(() => {
     if (!id) {
@@ -192,6 +211,7 @@ function ChallengeDetailContent() {
 
     consumedAnimationNonceRef.current = animationNonce;
     const taskId = normalizeTaskId(completedTask.id);
+    setCompletionNotice({ taskId, nonce: animationNonce });
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
     if (animationTimerRef.current) {
@@ -238,6 +258,12 @@ function ChallengeDetailContent() {
   }, [challenge]);
 
   function handleTaskClick(task: ChallengeTaskDto) {
+    // Recheck wall time at click, including the interval between two clock ticks.
+    if (!challenge || Date.now() < Date.parse(challenge.startAt) || Date.now() > Date.parse(challenge.endAt)) {
+      setNow(Date.now());
+      setSelectedTask(task);
+      return;
+    }
     writeDraft(selectionKey, task.id);
     if (task.taskType === 1 && task.algorithmProblemId) {
       navigate(`/problems/${task.algorithmProblemId}?challengeId=${task.challengeId}&taskId=${task.id}`);
@@ -249,6 +275,19 @@ function ChallengeDetailContent() {
     }
   }
 
+  function handlePieceClick(task: ChallengeTaskDto) {
+    setSelectedTask(task);
+    writeDraft(selectionKey, task.id);
+    if (phase !== "active" || window.matchMedia("(max-width: 760px), (pointer: coarse)").matches) {
+      window.requestAnimationFrame(() => {
+        taskDetailsRef.current?.focus({ preventScroll: true });
+        taskDetailsRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
+      });
+      return;
+    }
+    handleTaskClick(task);
+  }
+
   if (!challenge) {
     return refreshWarning
       ? <div className="alert error" role="alert">{refreshWarning}<button className="button" onClick={() => setRefreshVersion(value => value + 1)}>重试</button><button className="button" onClick={() => navigate("/challenges")}>返回挑战列表</button></div>
@@ -256,6 +295,7 @@ function ChallengeDetailContent() {
   }
 
   const canOpenAdminSummary = challenge.canManage;
+  const noticeTask = completionNotice ? challenge.tasks.find(task => idsEqual(task.id, completionNotice.taskId)) : null;
   const canAuditPeerReviews = challenge.peerReviewEnabled && canManageContent(currentUser?.role);
   const challengeIdForRegistration = challenge.id;
   const peerReviewEnabledForRegistration = challenge.peerReviewEnabled;
@@ -278,6 +318,7 @@ function ChallengeDetailContent() {
       <header className="challenge-detail-header-v8">
         <div className="challenge-detail-title-v8">
           <h1>{challenge.title}</h1>
+          <span className={`challenge-phase challenge-phase-${phase}`} role="status">{phaseLabel}</span>
           {refreshWarning && <div className="alert error" role="alert">进度暂未更新：{refreshWarning}<button className="button" onClick={() => setRefreshVersion(value => value + 1)}>刷新进度</button></div>}
           {joinWarning && <div className="alert error">{joinWarning}</div>}
           <div className="challenge-description-v8">
@@ -356,7 +397,7 @@ function ChallengeDetailContent() {
             <span className="context-chip">8 × 8</span>
           </div>
 
-          <div className="challenge-board" aria-label="Challenge board">
+          <div className="challenge-board" aria-label="挑战棋盘">
             {Array.from({ length: 64 }, (_, index) => {
               const x = index % 8;
               const y = 7 - Math.floor(index / 8);
@@ -372,18 +413,22 @@ function ChallengeDetailContent() {
                   key={`${x}:${y}`}
                   type="button"
                   disabled={!task}
+                  aria-label={task ? `${task.title}，${difficultyNames[task.difficulty]}，${getTaskStatus(task, isVisuallyCompleted).label}，得分 ${task.earnedScore}/${task.score}` : `空位 ${x + 1}, ${y + 1}`}
+                  aria-pressed={task ? isSelected : undefined}
+                  title={task ? `${task.title} · ${getTaskStatus(task, isVisuallyCompleted).label}` : undefined}
                   ref={(element) => {
                     if (task) {
                       pieceRefs.current[normalizeTaskId(task.id)] = element;
                     }
                   }}
-                  onClick={() => task && handleTaskClick(task)}
+                  onClick={() => task && handlePieceClick(task)}
                   onFocus={() => task && setSelectedTask(task)}
                   onMouseEnter={() => task && setSelectedTask(task)}
                 >
                   {task && (
                     <span className={`task-piece ${getPieceTone(task, isVisuallyCompleted && !isBreaking)} ${isBreaking ? "challenge-piece--breaking" : ""} ${isVisuallyCompleted && !isBreaking ? "challenge-piece--ghost" : ""}`}>
                       <span className="piece-symbol">{difficultySymbols[task.difficulty]}</span>
+                      {getTaskStatus(task, isVisuallyCompleted).marker && <span aria-hidden="true" className={`piece-status-marker ${getTaskStatus(task, isVisuallyCompleted).tone}`}>{getTaskStatus(task, isVisuallyCompleted).marker}</span>}
                       {isBreaking && (
                         <>
                           {breakFragments.map((fragment) => (
@@ -457,14 +502,14 @@ function ChallengeDetailContent() {
             )}
           </section>
 
-          <section className="challenge-side-section-v8 challenge-selected-section-v8">
+          <section ref={taskDetailsRef} tabIndex={-1} aria-label="所选棋子详情" className="challenge-side-section-v8 challenge-selected-section-v8">
             {selectedTask ? (
               <div className="selected-task selected-task-v8">
                 <div className="selected-task-title-v8">
                   <span className="selected-task-piece-v8">{difficultySymbols[selectedTask.difficulty]}</span>
                   <div>
                     <h2>{selectedTask.title}</h2>
-                    <span>{difficultyNames[selectedTask.difficulty]} · {selectedTask.taskType === 1 ? "算法题" : "文件题"}</span>
+                    <span><span className="challenge-piece-kind" data-difficulty={selectedTask.algorithmProblemDifficulty || undefined}>{difficultyNames[selectedTask.difficulty]}</span> · {selectedTask.taskType === 1 ? "算法题" : "文件题"}</span>
                   </div>
                 </div>
                 {selectedTask.description.trim() && (
@@ -477,17 +522,18 @@ function ChallengeDetailContent() {
                   <div>
                     <span>状态</span>
                     <strong className={selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "status-passed" : undefined}>
-                      {selectedTask.isCompleted || hasTaskId(visualCompletedTaskIds, selectedTask.id) ? "已完成" : selectedTask.earnedScore > 0 ? "进行中" : "未完成"}
+                      {getTaskStatus(selectedTask, hasTaskId(visualCompletedTaskIds, selectedTask.id)).label}
                     </strong>
                   </div>
                 </div>
+                {selectedTask.myLatestSubmissionStatus != null && <p className="challenge-latest-attempt" aria-live="polite">我的最近提交：{latestSubmissionLabel(selectedTask.myLatestSubmissionStatus)}</p>}
                 {selectedTask.taskType === 1 && selectedTask.score > 0 && (
                   <div className="challenge-task-score-progress" aria-label={`当前得分 ${selectedTask.earnedScore} / ${selectedTask.score}`}>
                     <span style={{ width: `${Math.min(100, Math.max(0, Math.round((selectedTask.earnedScore / selectedTask.score) * 100)))}%` }} />
                   </div>
                 )}
-                <button className="button" type="button" onClick={() => handleTaskClick(selectedTask)}>
-                  进入任务
+                <button className="button" type="button" disabled={phase !== "active"} onClick={() => handleTaskClick(selectedTask)}>
+                  {phase === "active" ? "开始作答" : phaseLabel}
                 </button>
               </div>
             ) : (
@@ -496,6 +542,13 @@ function ChallengeDetailContent() {
           </section>
         </aside>
       </div>
+      {noticeTask && createPortal(<div className="challenge-completion-notice" role="status" aria-live="polite">
+        <span><strong>{noticeTask.title}</strong>{noticeTask.taskType === 2
+          ? "：文件已提交，等待评分"
+          : noticeTask.isCompleted ? `：已完成 · 当前得分 ${noticeTask.earnedScore}/${noticeTask.score}` : "：提交已通过，正在同步进度"}
+          {noticeTask.isCompleted && <span> · 挑战进度 {challenge.completedTaskCount}/{challenge.totalTaskCount}</span>}</span>
+        <button type="button" aria-label="关闭完成提示" onClick={() => setCompletionNotice(null)}>×</button>
+      </div>, document.body)}
     </section>
   );
 }
@@ -506,6 +559,19 @@ function getProgressPercent(completed: number, total: number) {
   }
 
   return Math.min(100, Math.max(0, Math.round((completed / total) * 100)));
+}
+
+function latestSubmissionLabel(status: number) {
+  return ({ 1: "排队中", 2: "判题中", 3: "已通过", 4: "答案未通过", 5: "运行超时", 6: "内存超限", 7: "运行错误", 8: "编译错误", 9: "判题异常" } as Record<number, string>)[status] ?? "未提交";
+}
+
+function getTaskStatus(task: ChallengeTaskDto, visuallyCompleted = false) {
+  if (task.isCompleted || visuallyCompleted) return { label: "已完成", marker: "✓", tone: "passed" };
+  if (task.myLatestSubmissionStatus === 1) return { label: "排队中", marker: "…", tone: "pending" };
+  if (task.myLatestSubmissionStatus === 2) return { label: "判题中", marker: "…", tone: "judging" };
+  if (task.myLatestSubmissionStatus === 9) return { label: "判题异常", marker: "!", tone: "failed" };
+  if (task.myLatestSubmissionStatus != null && task.myLatestSubmissionStatus >= 4) return { label: "未通过", marker: "!", tone: "failed" };
+  return { label: task.earnedScore > 0 ? "部分得分" : "未完成", marker: "", tone: "idle" };
 }
 
 function getPieceTone(task: ChallengeTaskDto, isVisuallyCompleted: boolean) {

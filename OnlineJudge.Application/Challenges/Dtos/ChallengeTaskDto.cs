@@ -22,6 +22,10 @@ public class ChallengeTaskDto
 
     public Guid? AlgorithmProblemId { get; set; }
 
+    public ProblemDifficulty? AlgorithmProblemDifficulty { get; set; }
+
+    public JudgeStatus? MyLatestSubmissionStatus { get; set; }
+
     public int Score { get; set; }
 
     public bool IsPublished { get; set; }

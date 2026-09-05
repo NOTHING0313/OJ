@@ -77,3 +77,14 @@ Season summary/configuration responses carry no participant results and keep exi
 - 难度沿用题目元数据编辑权限、并发版本与审计，仅修改难度不增加判题版本。旧调用方省略字段不会清除已有分级。
 - 持久化增加 `Problems.Difficulty` 整型列，默认 0，数据库约束 0..3；迁移 `20260905125143_AddProblemDifficulty` 已在本地应用。
 - `authoring-v1` 草稿增加 difficulty，兼容旧草稿缺失值为 0。验证证据见 `docs/visual/PROBLEM-DIFFICULTY-20260905.md`。
+
+### 2026-09-06：挑战详情关联题目难度
+- ChallengeTaskDto 增加可空 algorithmProblemDifficulty：0 未分级、1 简单、2 中等、3 困难。挑战详情 GET 通过已有题目可见性策略批量读取，缺失或不可见为 null；任务写入响应不承诺填充此展示字段。
+- 棋子等级 difficulty 保持六级语义；仅给详情卡“车、象”等文字着色，无数据库变更。
+- 后端相关测试 13 项通过（含四档取值与删除后回退）；前端类型检查/静态检查因本地 typescript、eslint 依赖文件缺失未完成，未重新安装依赖，未完成浏览器视觉验收。
+
+### 2026-09-06：棋子作答状态与手机操作
+- ChallengeTaskDto 增加可空 myLatestSubmissionStatus，沿用 JudgeStatus 1..9。挑战详情只查询当前登录用户、当前可见棋子的最新提交（CreatedAt/Id 降序），不返回其他队员或其他账号的提交状态；无记录为 null。
+- 复用 Submissions 为权威来源，不增加数据库列或修改历史完成/计分规则。状态随既有棋盘刷新更新。
+- 手机/触控点击棋子先查看详情，开始作答按钮负责导航；桌面仍可直接进入。新增题名、棋子类型、得分与状态的无障碍名称和轻量角标。
+- 验证：TeamChallengeIntegrationTests 17/17、浏览器挑战回归 7/7、前端生产构建/类型检查/定向 ESLint 通过。390px 手机截图检查通过。依赖已获授权恢复，无版本升级。
