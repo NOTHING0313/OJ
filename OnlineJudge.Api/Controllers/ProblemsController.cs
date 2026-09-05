@@ -13,6 +13,7 @@ using OnlineJudge.Application.SecurityAudit;
 namespace OnlineJudge.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/problems")]
 public class ProblemsController(IProblemService problemService, IProblemJudgeAssetService judgeAssetService) : ControllerBase
 {
@@ -25,7 +26,6 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
         WriteIndented = true
     };
 
-    [AllowAnonymous]
     [HttpGet]
     public async Task<IActionResult> GetProblems(CancellationToken cancellationToken)
     {
@@ -34,7 +34,6 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
         return Ok(result.Value);
     }
 
-    [AllowAnonymous]
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetProblem(Guid id, CancellationToken cancellationToken)
     {

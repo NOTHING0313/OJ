@@ -3,11 +3,19 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { getSubmission, type SubmissionDto } from "../api/submissionsApi";
 import { choiceOptionLabel, orderChoiceOptions } from "../utils/choiceOptions";
 import { formatDate, languageLabel, statusLabel } from "../utils/labels";
+import { pollSubmission } from "../utils/submissionPolling";
+import { useAuth } from "../auth/AuthContext";
 import { MarkdownRenderer } from "../components/MarkdownRenderer";
 
 const acceptedStatus = 3;
 
 export function SubmissionDetailPage() {
+  const { id } = useParams();
+  const { currentUser } = useAuth();
+  return <SubmissionDetailContent key={`${id}:${currentUser?.id}`} />;
+}
+
+function SubmissionDetailContent() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -15,6 +23,8 @@ export function SubmissionDetailPage() {
   const redirectedToChallengeRef = useRef(false);
   const [submission, setSubmission] = useState<SubmissionDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -22,58 +32,23 @@ export function SubmissionDetailPage() {
       return;
     }
 
-    let isMounted = true;
-    let timerId: number | undefined;
-
-    async function load() {
-      try {
-        const item = await getSubmission(id!);
-        if (!isMounted) {
-          return;
-        }
-        setSubmission(item);
-        setError(null);
-
-        if (
-          challengeId
-          && item.challengeTaskId
-          && item.status === acceptedStatus
-          && !redirectedToChallengeRef.current
-        ) {
-          redirectedToChallengeRef.current = true;
-          navigate(`/challenges/${challengeId}`, {
-            state: {
-              completedTaskId: String(item.challengeTaskId),
-              playBreakAnimation: true,
-              animationNonce: Date.now()
-            },
-            replace: true
-          });
-          return;
-        }
-
-        if (!item.finishedAt) {
-          timerId = window.setTimeout(load, 2000);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : "加载提交失败");
-        }
+    return pollSubmission(() => getSubmission(id), (item) => {
+      setSubmission(item);
+      setError(null);
+      setLastUpdated(new Date());
+      if (challengeId && item.challengeTaskId && item.status === acceptedStatus && !redirectedToChallengeRef.current) {
+        redirectedToChallengeRef.current = true;
+        navigate(`/challenges/${challengeId}`, {
+          state: { completedTaskId: String(item.challengeTaskId), playBreakAnimation: true, animationNonce: Date.now() },
+          replace: true
+        });
+        return false;
       }
-    }
-
-    load();
-
-    return () => {
-      isMounted = false;
-      if (timerId) {
-        window.clearTimeout(timerId);
-      }
-    };
-  }, [challengeId, id, navigate]);
+    }, setError);
+  }, [challengeId, id, navigate, refreshVersion]);
 
   if (error && !submission) {
-    return <div className="alert error">{error}</div>;
+    return <div className="alert error" role="alert">{error} <button className="button" onClick={() => setRefreshVersion(value => value + 1)}>重试</button></div>;
   }
 
   if (!submission) {
@@ -107,15 +82,18 @@ export function SubmissionDetailPage() {
         <div className="quiet-note success">该小题已完成</div>
       )}
 
+      {error && <div className="alert error" role="alert">{error}</div>}
+      <div className="button-row"><span aria-live="polite">最后更新：{lastUpdated?.toLocaleTimeString() ?? "—"}</span><button className="button" type="button" onClick={() => setRefreshVersion(value => value + 1)}>刷新结果</button></div>
+
       <div className="detail-grid">
         <div>
           <span>状态</span>
           <strong><span className={`submission-status-badge submission-status-${statusTone(submission.status)}`}>{statusLabel(submission.status)}</span></strong>
         </div>
-        <div>
+        {submission.submissionKind === 1 && <div>
           <span>语言</span>
           <strong><span className="submission-language-badge">{submission.language ? languageLabel(submission.language) : "选择题"}</span></strong>
-        </div>
+        </div>}
         <div>
           <span>用户</span>
           <strong>{submission.userName}</strong>
@@ -124,7 +102,7 @@ export function SubmissionDetailPage() {
           <span>提交时间</span>
           <strong>{formatDate(submission.createdAt)}</strong>
         </div>
-        <div>
+        {submission.submissionKind === 1 && <><div>
           <span>最大时间</span>
           <strong>{formatMetric(submission.evaluation.maxTimeUsedMs, "ms")}</strong>
         </div>
@@ -139,7 +117,7 @@ export function SubmissionDetailPage() {
         <div>
           <span>用例平均内存</span>
           <strong>{formatMemory(submission.evaluation.averageCaseMemoryUsedKb)}</strong>
-        </div>
+        </div></>}
         <div>
           <span>完成时间</span>
           <strong>{formatDate(submission.finishedAt)}</strong>

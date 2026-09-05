@@ -143,7 +143,7 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
             <th>提交时间</th>
             <th>题目</th>
             {showUser && <th>用户</th>}
-            <th>语言</th>
+            <th>题型 / 语言</th>
             <th>状态</th>
             <th>时间评估</th>
             <th>内存评估</th>
@@ -170,14 +170,16 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
               )}
               <td><span className="submission-language-badge">{item.language ? languageLabel(item.language) : "选择题"}</span></td>
               <td><SubmissionStatusBadge status={item.status} /></td>
-              <td>
+              {item.submissionKind === 2 ? <td colSpan={2}>
+                <span className="submission-metric">得分 {item.choiceScore}/{item.choiceTotalScore}</span>
+              </td> : <><td>
                 <span className="submission-metric">最大 {formatMetric(item.evaluation.maxTimeUsedMs, "ms")}</span>
                 <span className="submission-metric">平均 {formatMetric(item.evaluation.averageCaseTimeUsedMs, "ms")}</span>
               </td>
               <td>
                 <span className="submission-metric">最大 {formatMemory(item.evaluation.maxMemoryUsedKb)}</span>
                 <span className="submission-metric">平均 {formatMemory(item.evaluation.averageCaseMemoryUsedKb)}</span>
-              </td>
+              </td></>}
               <td><SubmissionDateTime value={item.finishedAt} /></td>
               <td>
                 <Link className="button submission-view-link" to={`/submissions/${item.id}`}>查看</Link>

@@ -338,3 +338,27 @@
   - Exclude choice submissions from seasons entirely: this conflicts with the frozen product contract.
   - Add a second choice-only leaderboard: this would duplicate identity, freeze, archive and ranking rules.
 - Consequences: `SeasonSubmissionResult.Language` is nullable and carries `SubmissionKind`; existing code-submission constructors retain compatibility. Choice problems still participate in base score and first-full-score ordering only.
+
+
+## Decision: Require login before reading or answering questions
+
+- Status: Accepted; explicitly requested by user on 2026-09-05.
+- Decision: Use existing API authorization and frontend ProtectedRoute for problem list/detail and challenge detail/task views. Challenge detail is protected because its response embeds task statements. Overview and ranking data remain public.
+- Consequences: Remove guest draft creation and login handoff; retain account-scoped drafts, choice revision isolation, retry and answer-reveal refresh. Previously stored guest/unowned drafts are neither imported nor deleted.
+- Rejected alternative: Repair guest-to-account draft merging; guest participation is outside the newly approved product scope. Frontend-only hiding would leave direct API access open.
+- Compatibility: Anonymous callers must authenticate. No database migration, DTO shape change, new authentication mechanism, or judging/scoring change.
+
+## Decision: Complete choice problems can be created and published together
+
+- Status: Accepted; explicitly requested by user on 2026-09-05; implemented and locally verified.
+- Decision: Accept `IsPublished=true` when creating a complete choice set. Reuse the existing completeness validator and immutable revision publisher, with initial persistence and publication in one relational transaction. Programming problems still require saved test cases before publication.
+- UI: Keep editing in the management list/editor, remove the choice player edit shortcut, and align each input, letter and Markdown first line in one grid row.
+- Compatibility: No endpoint, DTO or database schema change. Creation semantics are extended only for complete choice sets.
+- Verification: Focused choice/revision tests and a real local PostgreSQL browser flow from creation through publication and scored submission. See `docs/visual/CHOICE-UI-AND-SITE-AUDIT-20260905.md` for coverage limits.
+
+## Decision: Suspend the personal season record page
+
+- Status: Suspended by explicit user request on 2026-09-05; do not restore without confirmed product requirements.
+- Context: The audit incorrectly called `/account/competition` “参赛资料”; its actual page title is “赛季战绩”. The user does not recognize this requirement. Its historical authorization was not established in this task.
+- Decision: Hide the leaderboard's personal record entry and redirect the old URL to the protected personal profile. Retain the dormant component and backend/data unchanged for possible future review.
+- Scope: Frontend availability only; no permission expansion, API removal, data deletion or change to other leaderboard features.

@@ -18,12 +18,12 @@ from collections import Counter
 
 
 PUBLIC_PATHS = (
-    "/api/problems",
     "/api/leaderboards/users",
     "/api/leaderboards/challenges",
     "/api/site-settings/appearance",
 )
 AUTHENTICATED_PATHS = (
+    "/api/problems",
     "/api/account/me",
     "/api/help-documents",
 )
@@ -99,7 +99,7 @@ def main() -> int:
         headers["Authorization"] = f"Bearer {token}"
 
     paths = list(PUBLIC_PATHS)
-    problem_path = discover_problem_path(base_url, headers, args.timeout_seconds)
+    problem_path = discover_problem_path(base_url, headers, args.timeout_seconds) if token else None
     if problem_path:
         paths.append(problem_path)
     if token:

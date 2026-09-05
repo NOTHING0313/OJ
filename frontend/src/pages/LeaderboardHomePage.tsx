@@ -54,5 +54,6 @@ export function LeaderboardHomePage() {
     return <Navigate to="/problems" replace />;
   }
 
-  return <LeaderboardHomeView globalLeaderboard={globalLeaderboard} summary={summary} challenges={challengeIndex?.challenges ?? []} isLoading={isLoading} error={error} canManage={canManageContent(currentUser?.role)} showPersonalRecord={currentUser?.role === 1} />;
+  // Personal season records are suspended pending explicit product requirements.
+  return <LeaderboardHomeView globalLeaderboard={globalLeaderboard} summary={summary} challenges={challengeIndex?.challenges ?? []} isLoading={isLoading} error={error} canManage={canManageContent(currentUser?.role)} showPersonalRecord={false} />;
 }

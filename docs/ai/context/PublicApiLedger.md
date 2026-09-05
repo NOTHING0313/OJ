@@ -30,3 +30,18 @@
 | CHOICE-PROBLEM-PLAN-06 | `POST /api/choice-submissions` and additive choice fields on problem/submission/profile/season DTOs | HTTP response/request contract | Submit exact option sets synchronously, reveal answers by policy, preserve one submission history, and award season base score without performance metrics | Public choice player, submission history, profile and season UI | Stable; locally verified | 64 KiB request limit; no `JudgeJob`; answer-redaction, scoring, revision-conflict, season and PostgreSQL-backed authoring gates pass |
 
 No existing network DTO shape was added or removed in Stages 1-4C. Stage 4C added one endpoint that reuses existing request/user DTOs.
+
+
+### 2026-09-05 — Authenticated problem access
+
+| API | Change | Reason / next use | Compatibility | Verification |
+|---|---|---|---|---|
+| `GET /api/problems`, `GET /api/problems/{id}`, `GET /api/challenges/{id}` | Require existing authentication; anonymous HTTP clients receive 401 | User explicitly requires login before reading or answering questions; challenge detail embeds task statements | Intentional anonymous-access restriction; DTO and storage shapes unchanged; authenticated roles and embargo rules preserved | `ProblemAccessTests`, `CurrentRoleAuthorizationTests`, `ContentEmbargoTests` |
+
+Frontend guards the corresponding problem/challenge-detail/task routes before mounting. Challenge overview and leaderboard APIs remain public. Existing programming and choice submission authentication remains required.
+
+### 2026-09-05 — Direct choice publication on creation
+
+| API | Change | Compatibility | Verification |
+|---|---|---|---|
+| `POST /api/problems` | Accept existing `IsPublished=true` for a complete choice set; validate before persistence and create its immutable revision in the same relational transaction | Additive request semantics; unchanged DTO/schema/authorization; programming creation still saves a draft first | `ChoiceProblemTests`, `ProblemJudgeRevisionTests`, local PostgreSQL browser create/publish/submit flow |

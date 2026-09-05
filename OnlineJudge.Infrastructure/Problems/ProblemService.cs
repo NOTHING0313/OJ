@@ -123,7 +123,7 @@ public class ProblemService(
             return Result<ProblemDetailDto>.Failure(validation.ErrorMessage!);
         }
 
-        if (request.IsPublished)
+        if (request.IsPublished && request.ProblemKind != ProblemKind.ChoiceSet)
         {
             return Result<ProblemDetailDto>.Failure(ProblemJudgeRevisionPublisher.NoActiveTestCasesMessage);
         }
@@ -158,16 +158,31 @@ public class ProblemService(
             return Result<ProblemDetailDto>.Failure(choiceBuild.ErrorMessage!);
         }
         problem.ChoiceQuestions = request.ProblemKind == ProblemKind.ChoiceSet ? choiceBuild.Value : [];
-        var choiceValidation = ChoiceProblemDefinitionValidator.Validate(problem.ChoiceQuestions, problem.ChoiceAnswerRevealPolicy, problem.ChoiceAnswerRevealAt, requireComplete: false);
+        var choiceValidation = ChoiceProblemDefinitionValidator.Validate(problem.ChoiceQuestions, problem.ChoiceAnswerRevealPolicy, problem.ChoiceAnswerRevealAt, requireComplete: request.IsPublished);
         if (choiceValidation.IsFailure)
         {
             return Result<ProblemDetailDto>.Failure(choiceValidation.ErrorMessage!);
         }
 
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         dbContext.Problems.Add(problem);
         auditWriter?.Stage(new SecurityAuditRecord(SecurityAuditActions.ProblemCreated, "Problem", problem.Id.ToString()));
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        if (request.IsPublished)
+        {
+            problem.IsPublished = true;
+            var publication = await ProblemJudgeRevisionPublisher.PublishAsync(dbContext, problem, ResourcePolicy, cancellationToken);
+            if (publication.IsFailure)
+            {
+                if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+                dbContext.ChangeTracker.Clear();
+                return Result<ProblemDetailDto>.Failure(publication.ErrorMessage!);
+            }
+        }
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return Result<ProblemDetailDto>.Success(ToDetailDto(problem, includeHiddenTestCases: true));
     }
 

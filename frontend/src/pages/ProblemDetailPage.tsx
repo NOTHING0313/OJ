@@ -5,11 +5,20 @@ import { getCurrentSeasonProblemLeaderboard, type SeasonProblemLeaderboard } fro
 import { createSubmission, type JudgeLanguage } from "../api/submissionsApi";
 import { useAuth } from "../auth/AuthContext";
 import { canManageContent } from "../auth/roles";
+import { problemDraftKey, readDraft, writeDraft } from "../utils/problemDrafts";
 import { CodeEditor } from "../components/CodeEditor";
 import { ProblemDetailView } from "../components/problems/ProblemDetailView";
 import { ChoiceProblemDetail } from "../components/problems/ChoiceProblemDetail";
 
 export function ProblemDetailPage() {
+  const { id } = useParams();
+  const { search } = useLocation();
+  const { currentUser, isLoading } = useAuth();
+  if (isLoading) return <div className="state-line">加载中...</div>;
+  return <ProblemDetailContent key={`${id}:${search}:${currentUser?.id ?? "guest"}`} />;
+}
+
+function ProblemDetailContent() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -41,16 +50,16 @@ export function ProblemDetailPage() {
       return null;
     }
 
-    return `oj:language:${id}:${challengeId || "standalone"}:${taskId || "none"}`;
-  }, [id, challengeId, taskId]);
+    return problemDraftKey(currentUser?.id, "language", id, challengeId || "standalone", taskId || "none");
+  }, [id, challengeId, taskId, currentUser?.id]);
 
   const sourceCacheKey = useMemo(() => {
     if (!id) {
       return null;
     }
 
-    return `oj:source:${id}:${language}:${challengeId || "standalone"}:${taskId || "none"}`;
-  }, [id, language, challengeId, taskId]);
+    return problemDraftKey(currentUser?.id, "source", id, String(language), challengeId || "standalone", taskId || "none");
+  }, [id, language, challengeId, taskId, currentUser?.id]);
 
   useEffect(() => {
     if (!id) {
@@ -60,7 +69,7 @@ export function ProblemDetailPage() {
     getProblem(id)
       .then((detail) => {
         setProblem(detail);
-        const cachedLanguage = languageCacheKey ? Number(localStorage.getItem(languageCacheKey)) : 1;
+        const cachedLanguage = Number((languageCacheKey ? readDraft(languageCacheKey) : null) ?? 1);
         const parsedSpec = parseFunctionSpec(detail.functionSpecJson);
         const languages = getAvailableLanguages(detail.allowedLanguagesMask, parsedSpec);
         const cachedJudgeLanguage = cachedLanguage as JudgeLanguage;
@@ -92,8 +101,8 @@ export function ProblemDetailPage() {
     const defaultSource = problem?.judgeMode === 2
       ? getFunctionStarterCode(language, problem.starterCodeJson, functionSpec)
       : defaultCodeTemplate(language);
-    setSourceCode(localStorage.getItem(sourceCacheKey) ?? defaultSource);
-  }, [sourceCacheKey, language, problem?.judgeMode, problem?.starterCodeJson, functionSpec]);
+    setSourceCode(readDraft(sourceCacheKey) ?? defaultSource);
+  }, [sourceCacheKey, language, problem, functionSpec]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -139,11 +148,11 @@ export function ProblemDetailPage() {
 
   function handleLanguageChange(nextLanguage: JudgeLanguage) {
     if (sourceCacheKey) {
-      localStorage.setItem(sourceCacheKey, sourceCode);
+      writeDraft(sourceCacheKey, sourceCode);
     }
 
     if (languageCacheKey) {
-      localStorage.setItem(languageCacheKey, String(nextLanguage));
+      writeDraft(languageCacheKey, String(nextLanguage));
     }
 
     setLanguage(nextLanguage);
@@ -153,13 +162,13 @@ export function ProblemDetailPage() {
     setSourceCode(value);
 
     if (sourceCacheKey) {
-      localStorage.setItem(sourceCacheKey, value);
+      if (!writeDraft(sourceCacheKey, value)) setError("浏览器无法保存代码草稿，请勿刷新或离开页面。");
     }
   }
 
   function clearSourceCache() {
     if (sourceCacheKey) {
-      localStorage.removeItem(sourceCacheKey);
+      writeDraft(sourceCacheKey, null);
     }
 
     setSourceCode(problem?.judgeMode === 2 ? getFunctionStarterCode(language, problem.starterCodeJson, functionSpec) : defaultCodeTemplate(language));
@@ -175,9 +184,9 @@ export function ProblemDetailPage() {
 
   if (problem.problemKind === 2) {
     return <ChoiceProblemDetail
+      key={`${problem.id}:${problem.currentJudgeRevisionId}:${currentUser?.id ?? "guest"}`}
       problem={problem}
       isAuthenticated={isAuthenticated}
-      canManage={canManageContent(currentUser?.role)}
       onRequireLogin={() => navigate(`/login?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`)}
     />;
   }

@@ -7,7 +7,6 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { ThemeProvider } from "./theme/ThemeContext";
 import "./styles.css";
 
-const AccountCompetitionPage = lazy(() => import("./pages/AccountCompetitionPage").then((module) => ({ default: module.AccountCompetitionPage })));
 const AccountSettingsPage = lazy(() => import("./pages/AccountSettingsPage").then((module) => ({ default: module.AccountSettingsPage })));
 const AdminChallengeEditorPage = lazy(() => import("./pages/AdminChallengeEditorPage").then((module) => ({ default: module.AdminChallengeEditorPage })));
 const AdminChallengeListPage = lazy(() => import("./pages/AdminChallengeListPage").then((module) => ({ default: module.AdminChallengeListPage })));
@@ -64,10 +63,10 @@ export function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<Navigate to="/problems" replace />} />
             <Route path="/forbidden" element={<ForbiddenPage />} />
-            <Route path="/problems" element={<ProblemListPage />} />
-            <Route path="/problems/:id" element={<ProblemDetailPage />} />
+            <Route path="/problems" element={<ProtectedRoute><ProblemListPage /></ProtectedRoute>} />
+            <Route path="/problems/:id" element={<ProtectedRoute><ProblemDetailPage /></ProtectedRoute>} />
             <Route path="/challenges" element={<ChallengeListPage />} />
-            <Route path="/challenges/:id" element={<ChallengeDetailPage />} />
+            <Route path="/challenges/:id" element={<ProtectedRoute><ChallengeDetailPage /></ProtectedRoute>} />
             <Route path="/challenges/:challengeId/peer-review" element={<ProtectedRoute><ChallengePeerReviewPage /></ProtectedRoute>} />
             <Route path="/challenges/:challengeId/peer-review-audit" element={<ProtectedRoute allowedRoles={[2, 3]}><ChallengePeerReviewAuditPage /></ProtectedRoute>} />
             <Route path="/leaderboards" element={<LeaderboardHomePage />} />
@@ -100,8 +99,8 @@ export function App() {
               )}
             />
             <Route path="/challenges/:challengeId/leaderboard" element={<ChallengeLeaderboardPage />} />
-            <Route path="/challenges/:challengeId/tasks/:taskId" element={<ChallengeTaskDetailPage />} />
-            <Route path="/challenges/:challengeId/tasks/:taskId/answer" element={<ChallengeTaskAnswerPage />} />
+            <Route path="/challenges/:challengeId/tasks/:taskId" element={<ProtectedRoute><ChallengeTaskDetailPage /></ProtectedRoute>} />
+            <Route path="/challenges/:challengeId/tasks/:taskId/answer" element={<ProtectedRoute><ChallengeTaskAnswerPage /></ProtectedRoute>} />
             <Route
               path="/submissions/my"
               element={(
@@ -126,7 +125,8 @@ export function App() {
                 </ProtectedRoute>
               )}
             />
-            <Route path="/account/competition" element={<ProtectedRoute><AccountCompetitionPage /></ProtectedRoute>} />
+            {/* Personal season records are suspended pending explicit product requirements. */}
+            <Route path="/account/competition" element={<Navigate to="/profile/me" replace />} />
             <Route
               path="/submissions"
               element={(

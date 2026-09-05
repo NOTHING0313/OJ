@@ -22,7 +22,7 @@ public class ChallengesController(IChallengeService challengeService, IChallenge
         return Ok(result.Value);
     }
 
-    [AllowAnonymous]
+    [Authorize]
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetChallenge(Guid id, CancellationToken cancellationToken)
     {

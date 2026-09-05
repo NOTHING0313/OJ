@@ -23,6 +23,35 @@ public class ChoiceProblemTests
     private static readonly DateTimeOffset BaseTime = new(2026, 9, 5, 0, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task CompleteChoiceProblem_CanBeCreatedPublishedWithOneRevision()
+    {
+        await using var db = CreateDbContext();
+        var (owner, answerer) = SeedUsers(db);
+        var request = CreateChoiceRequest();
+        request.IsPublished = true;
+        var created = AssertSuccess(await ProblemService(db, owner.Id, UserRole.ProblemSetter).CreateProblemAsync(request));
+        Assert.True(created.IsPublished);
+        Assert.NotNull(created.CurrentJudgeRevisionId);
+        Assert.Single(await db.ProblemJudgeRevisions.ToListAsync());
+        var detail = AssertSuccess(await ProblemService(db, answerer.Id, UserRole.Answerer).GetProblemAsync(created.Id));
+        Assert.All(detail.ChoiceQuestions, question => Assert.Null(question.CorrectOptionIds));
+    }
+
+    [Fact]
+    public async Task IncompleteChoicePublication_DoesNotPersistProblem()
+    {
+        await using var db = CreateDbContext();
+        var (owner, _) = SeedUsers(db);
+        var request = CreateChoiceRequest();
+        request.IsPublished = true;
+        request.ChoiceQuestions[0].StemMarkdown = "";
+        var result = await ProblemService(db, owner.Id, UserRole.ProblemSetter).CreateProblemAsync(request);
+        Assert.True(result.IsFailure);
+        Assert.Empty(await db.Problems.ToListAsync());
+        Assert.Empty(await db.ProblemJudgeRevisions.ToListAsync());
+    }
+
+    [Fact]
     public async Task PublishedChoiceProblem_UsesImmutableRevisionAndHidesAnswersFromPublicDetail()
     {
         await using var db = CreateDbContext();

@@ -167,7 +167,7 @@ export function AdminProblemEditorPage() {
       outputDescription: problemKind === 1 && judgeMode === 1 ? outputDescription : "",
       timeLimitMs: problemKind === 1 ? timeLimitMs : null,
       memoryLimitMb: problemKind === 1 ? memoryLimitMb : null,
-      isPublished: isEditMode ? isPublished : false,
+      isPublished: isEditMode || problemKind === 2 ? isPublished : false,
       judgeMode: problemKind === 1 ? judgeMode : null,
       allowedLanguagesMask: problemKind === 1 ? selectedAllowedLanguagesMask : 0,
       functionSpecJson: functionConfig.functionSpecJson,
@@ -509,12 +509,12 @@ export function AdminProblemEditorPage() {
         </>}
 
         <label className="checkbox-line">
-          <input type="checkbox" checked={isPublished} disabled={!isEditMode} onChange={(event) => setIsPublished(event.target.checked)} />
+          <input type="checkbox" checked={isPublished} disabled={!isEditMode && problemKind !== 2} onChange={(event) => setIsPublished(event.target.checked)} />
           发布题目
         </label>
-        {!isEditMode && <p className="quiet-note">新题目会先保存为草稿；补齐对应题型内容后才能发布。</p>}
+        {!isEditMode && <p className="quiet-note">{problemKind === 2 ? "填写完整题干、选项和正确答案后，可勾选发布题目，直接创建并发布。" : "编程题需先保存草稿，补齐测试点后再发布。"}</p>}
         <button className="button primary" type="submit" disabled={isSaving}>
-          {isSaving ? "保存中..." : isEditMode ? "保存题目" : "创建题目"}
+          {isSaving ? "保存中..." : isEditMode ? "保存题目" : problemKind === 2 && isPublished ? "创建并发布" : "创建题目"}
         </button>
       </form>
     </section>
