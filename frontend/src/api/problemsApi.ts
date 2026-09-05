@@ -1,9 +1,10 @@
-import { apiFetch, baseUrl, request } from "./httpClient";
+import { requestFile, request } from "./httpClient";
 
 export type TestCaseVisibility = 1 | 2;
 export type JudgeMode = 1 | 2;
 export type JudgeLanguage = 1 | 2 | 3;
 export type ProblemKind = 1 | 2;
+export type ProblemDifficulty = 0 | 1 | 2 | 3;
 export type ChoiceSelectionMode = 1 | 2;
 export type ChoiceAnswerRevealPolicy = 1 | 2;
 
@@ -29,6 +30,7 @@ export interface ChoiceQuestionWriteRequest {
 }
 
 export interface ProblemListItemDto {
+  difficulty: ProblemDifficulty;
   id: string;
   title: string;
   problemKind: ProblemKind;
@@ -54,6 +56,7 @@ export interface TestCaseDto {
 }
 
 export interface ProblemDetailDto {
+  difficulty: ProblemDifficulty;
   id: string;
   problemKind: ProblemKind;
   authoringVersion: number;
@@ -88,6 +91,7 @@ export interface ProblemJudgeAssetDto {
 }
 
 export interface CreateProblemRequest {
+  difficulty?: ProblemDifficulty;
   problemKind: ProblemKind;
   title: string;
   description: string;
@@ -243,15 +247,11 @@ export async function importTestCases(problemId: string, payload: ImportTestCase
 }
 
 export async function exportTestCases(problemId: string): Promise<ExportedTestCasesFile> {
-  const response = await apiFetch(`${baseUrl}/api/problems/${problemId}/test-cases/export`);
-
-  if (!response.ok) {
-    throw new Error(await response.text() || `Request failed with status ${response.status}`);
-  }
+  const response = await requestFile(`/api/problems/${problemId}/test-cases/export`);
 
   const disposition = response.headers.get("Content-Disposition");
   return {
-    blob: await response.blob(),
+    blob: response.blob,
     fileName: getFileNameFromDisposition(disposition) || `problem-${problemId}-test-cases.json`
   };
 }
@@ -268,4 +268,9 @@ function getFileNameFromDisposition(disposition: string | null) {
 
   const asciiMatch = /filename="?([^";]+)"?/i.exec(disposition);
   return asciiMatch?.[1] || null;
+}
+
+export function queryProblems(keyword: string, page: number, signal?: AbortSignal) {
+  const search = new URLSearchParams({ keyword, page: String(page), pageSize: "20" });
+  return request<import("./submissionsApi").PagedResult<ProblemListItemDto>>(`/api/problems/query?${search}`, { signal });
 }

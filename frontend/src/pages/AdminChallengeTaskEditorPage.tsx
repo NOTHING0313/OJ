@@ -171,7 +171,6 @@ export function AdminChallengeTaskEditorPage() {
     <section className="challenge-page admin-editor-page ui-v2-page editor-v2-page task-editor-v2-page">
       <div className="leaderboard-header ui-v2-page-header">
         <div>
-          <p className="eyebrow">TASK EDITOR</p>
           <h1>{isEditMode ? "编辑小题" : "创建小题"}</h1>
           <p>{challenge.title}</p>
         </div>
@@ -272,7 +271,6 @@ export function AdminChallengeTaskEditorPage() {
 
         <section className="board-picker-section">
           <div>
-            <p className="eyebrow">BOARD POSITION</p>
             <h2>棋盘位置</h2>
             <p className="muted">当前选择：{form.boardX}, {form.boardY}</p>
           </div>

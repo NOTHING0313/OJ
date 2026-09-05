@@ -19,7 +19,7 @@ export function LeaderboardHomeView({ globalLeaderboard, summary, challenges, is
   const entries = globalLeaderboard?.entries ?? [];
   const season = globalLeaderboard?.season;
   const boards = summary?.boards ?? [];
-  const hasGlobalBoard = boards.some((board) => board.boardType === 1);
+  const hasGlobalBoard = canManage && boards.some((board) => board.boardType === 1);
   const hasChallengeBoards = boards.some((board) => board.boardType === 2);
   const enabledChallengeIds = new Set(boards.flatMap((board) => board.boardType === 2 && board.challengeId ? [board.challengeId] : []));
   const enabledChallenges = challenges.filter((challenge) => enabledChallengeIds.has(challenge.challengeId));
@@ -29,9 +29,7 @@ export function LeaderboardHomeView({ globalLeaderboard, summary, challenges, is
     <section className="challenge-page leaderboard-page leaderboard-v2-page">
       <div className="leaderboard-header leaderboard-v2-header" data-surface="decoration.pageHeader">
         <div>
-          <p className="eyebrow">LEADERBOARDS</p>
           <h1>榜单中心</h1>
-          <p>从全局积分到单个挑战，快速查看平台上的排名、参与和完成情况。</p>
         </div>
         <div className="leaderboard-header-actions">
           {canManage && <Link className="button" to="/admin/leaderboard-seasons">榜单管理</Link>}
@@ -45,7 +43,6 @@ export function LeaderboardHomeView({ globalLeaderboard, summary, challenges, is
         {hasGlobalBoard && <article className="leaderboard-v2-feature-card" data-surface="panel.primary">
           <div className="leaderboard-v2-feature-header" data-surface="panel.header">
             <div>
-              <p className="eyebrow">SEASON</p>
               <h2>{summary?.name ?? season?.name ?? "当前赛季"} · 全局榜</h2>
               <p>{entries.length} 人上榜{currentEntry ? ` · 我的排名 #${currentEntry.rank}` : ""}</p>
             </div>
@@ -55,7 +52,7 @@ export function LeaderboardHomeView({ globalLeaderboard, summary, challenges, is
         </article>}
 
         {hasChallengeBoards && enabledChallenges.map((challenge) => <article className="leaderboard-v2-feature-card challenge-board-card" data-surface="panel.primary" key={challenge.challengeId}>
-          <div className="leaderboard-v2-feature-header" data-surface="panel.header"><div><p className="eyebrow">CHALLENGE BOARD</p><h2>{challenge.title}</h2><p>{challenge.participationMode === 2 ? "战队模式" : "个人模式"} · {challenge.participationMode === 2 ? `${challenge.teamCount} 支战队` : `${challenge.participantCount} 人参与`} · {challenge.completedUserCount} 个完成者</p></div><Link className="button leaderboard-v2-primary-link" to={`/challenges/${challenge.challengeId}/leaderboard`}>查看完整榜单</Link></div>
+          <div className="leaderboard-v2-feature-header" data-surface="panel.header"><div><h2>{challenge.title}</h2><p>{challenge.participationMode === 2 ? "战队模式" : "个人模式"} · {challenge.participationMode === 2 ? `${challenge.teamCount} 支战队` : `${challenge.participantCount} 人参与`} · {challenge.completedUserCount} 个完成者</p></div><Link className="button leaderboard-v2-primary-link" to={`/challenges/${challenge.challengeId}/leaderboard`}>查看完整榜单</Link></div>
           <LeaderboardEntries entries={challenge.topEntries.slice(0, 3).map((entry) => ({ rank: entry.rank, name: entry.userName, detail: `${entry.completedTaskCount} 个任务`, score: entry.totalScore, key: `${challenge.challengeId}-${entry.rank}` }))} />
         </article>)}
         {hasChallengeBoards && !isLoading && enabledChallenges.length === 0 && <div className="compact-empty" data-surface="decoration.emptyState">已启用的挑战榜暂不可用。</div>}

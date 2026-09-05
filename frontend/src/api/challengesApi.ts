@@ -1,4 +1,4 @@
-import { apiFetch, baseUrl, request } from "./httpClient";
+import { requestFile, request } from "./httpClient";
 import type { RankHistory } from "./leaderboardsApi";
 
 export type ChallengeTaskType = 1 | 2;
@@ -453,14 +453,8 @@ export async function downloadChallengeFileSubmission(challengeId: string, fileS
 }
 
 async function downloadChallengeCsv(path: string, fallbackFileName: string) {
-  const response = await apiFetch(`${baseUrl}${path}`);
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || getDownloadErrorMessage(response.status));
-  }
-
-  const blob = await response.blob();
+  const response = await requestFile(path);
+  const blob = response.blob;
   const fileName = getDownloadFileName(response.headers.get("Content-Disposition"), fallbackFileName);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -498,20 +492,4 @@ function getDownloadFileName(contentDisposition: string | null, fallbackFileName
   }
 
   return fallbackFileName || "submission.zip";
-}
-
-function getDownloadErrorMessage(status: number) {
-  if (status === 401) {
-    return "请先登录";
-  }
-
-  if (status === 403) {
-    return "无权限导出或下载";
-  }
-
-  if (status === 404) {
-    return "资源不存在";
-  }
-
-  return `下载失败：${status}`;
 }

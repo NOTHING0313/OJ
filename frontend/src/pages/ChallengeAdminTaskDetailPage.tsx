@@ -200,7 +200,6 @@ export function ChallengeAdminTaskDetailPage() {
     <section className="challenge-page admin-task-detail-page ui-v2-page analytics-v2-page challenge-admin-task-v2-page">
       <div className="leaderboard-header ui-v2-page-header">
         <div>
-          <p className="eyebrow">TASK DETAIL</p>
           <h1>{task.title}</h1>
           <p>{summary.challengeTitle}</p>
         </div>
@@ -231,7 +230,6 @@ export function ChallengeAdminTaskDetailPage() {
 
       <section className="admin-panel">
         <div className="admin-panel-header">
-          <p className="eyebrow">SUBMISSIONS</p>
           <h2>用户作答情况</h2>
         </div>
 

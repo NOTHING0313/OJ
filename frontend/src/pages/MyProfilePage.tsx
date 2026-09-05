@@ -59,7 +59,6 @@ export function MyProfilePage() {
             <span className="leaderboard-avatar-placeholder">{user.userName.slice(0, 1).toUpperCase()}</span>
           )}
           <div className="profile-v2-identity-copy">
-            <p className="eyebrow">PROFILE</p>
             <h1>{user.userName}</h1>
             <p>{user.email}</p>
           </div>
@@ -71,6 +70,7 @@ export function MyProfilePage() {
             <span className="profile-registered-at">注册于 {formatDate(user.createdAt)}</span>
           </div>
           {!userId && <Link className="button profile-settings-link" to="/account/settings">账号设置</Link>}
+          {!userId && user.role === 1 && <Link className="button" to="/account/competition">我的赛季战绩</Link>}
         </div>
       </div>
 
@@ -87,7 +87,6 @@ export function MyProfilePage() {
         <section className="admin-panel profile-equal-card profile-v2-card">
           <div className="admin-panel-header profile-v2-card-header">
             <div>
-              <span className="profile-section-kicker">SUBMISSIONS</span>
               <h2>提交状态分布</h2>
             </div>
           </div>
@@ -104,7 +103,6 @@ export function MyProfilePage() {
         <section className="admin-panel profile-equal-card profile-v2-card">
           <div className="admin-panel-header profile-v2-card-header">
             <div>
-              <span className="profile-section-kicker">LANGUAGES</span>
               <h2>语言统计</h2>
             </div>
           </div>
@@ -140,7 +138,6 @@ export function MyProfilePage() {
       <section className="admin-panel profile-full-width profile-v2-card profile-v2-recent-submissions">
         <div className="admin-panel-header profile-v2-card-header profile-v2-card-header-row">
           <div>
-            <span className="profile-section-kicker">RECENT ACTIVITY</span>
             <h2>最近提交</h2>
           </div>
           {!userId && <Link className="profile-section-link" to="/submissions/my">查看全部提交</Link>}
@@ -183,7 +180,6 @@ export function MyProfilePage() {
         <section className="admin-panel profile-equal-card profile-v2-card">
           <div className="admin-panel-header profile-v2-card-header">
             <div>
-              <span className="profile-section-kicker">PROBLEMS</span>
               <h2>最近通过题目</h2>
             </div>
           </div>
@@ -207,7 +203,6 @@ export function MyProfilePage() {
         <section className="admin-panel profile-equal-card profile-v2-card">
           <div className="admin-panel-header profile-v2-card-header">
             <div>
-              <span className="profile-section-kicker">CHALLENGE</span>
               <h2>Challenge 概览</h2>
             </div>
           </div>
@@ -224,7 +219,6 @@ export function MyProfilePage() {
         <section className="admin-panel profile-equal-card profile-v2-card">
           <div className="admin-panel-header profile-v2-card-header">
             <div>
-              <span className="profile-section-kicker">CHALLENGE ACTIVITY</span>
               <h2>最近 Challenge 完成</h2>
             </div>
           </div>
@@ -248,7 +242,6 @@ export function MyProfilePage() {
         <section className="admin-panel profile-equal-card profile-v2-card">
           <div className="admin-panel-header profile-v2-card-header">
             <div>
-              <span className="profile-section-kicker">FILE REVIEW</span>
               <h2>文件题评分</h2>
             </div>
           </div>

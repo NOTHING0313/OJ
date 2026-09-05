@@ -1,6 +1,8 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { createProblem, deleteJudgeAsset, getJudgeAssets, getProblemAuthoring, updateProblemAuthoring, uploadJudgeAsset, type ChoiceQuestionWriteRequest, type JudgeLanguage, type JudgeMode, type ProblemDetailDto, type ProblemJudgeAssetDto, type ProblemKind } from "../api/problemsApi";
+import { createProblem, deleteJudgeAsset, getJudgeAssets, getProblemAuthoring, updateProblemAuthoring, uploadJudgeAsset, type ChoiceQuestionWriteRequest, type JudgeLanguage, type JudgeMode, type ProblemDetailDto, type ProblemJudgeAssetDto, type ProblemKind, type ProblemDifficulty } from "../api/problemsApi";
+import { useAuth } from "../auth/AuthContext";
+import { useProblemAuthoringDraft } from "../hooks/useProblemAuthoringDraft";
 import { MarkdownEditor } from "../components/MarkdownEditor";
 import { ChoiceQuestionEditor } from "../components/problems/ChoiceQuestionEditor";
 
@@ -25,10 +27,17 @@ const languageOptions = [
 
 export function AdminProblemEditorPage() {
   const { id } = useParams();
+  const { currentUser } = useAuth();
+  return <ProblemEditorContent key={`${currentUser?.id}:${id ?? "new"}`} userId={currentUser?.id} />;
+}
+
+function ProblemEditorContent({ userId }: { userId: string | undefined }) {
+  const { id } = useParams();
   const navigate = useNavigate();
   const isEditMode = Boolean(id);
   const [problem, setProblem] = useState<ProblemDetailDto | null>(null);
   const [problemKind, setProblemKind] = useState<ProblemKind>(1);
+  const [difficulty, setDifficulty] = useState<ProblemDifficulty>(0);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [inputDescription, setInputDescription] = useState("");
@@ -75,6 +84,7 @@ export function AdminProblemEditorPage() {
           setProblem(detail);
           setProblemKind(detail.problemKind);
           setTitle(detail.title);
+          setDifficulty(detail.difficulty ?? 0);
           setDescription(detail.description);
           setInputDescription(detail.inputDescription);
           setOutputDescription(detail.outputDescription);
@@ -131,6 +141,32 @@ export function AdminProblemEditorPage() {
     };
   }, [id]);
 
+  const editorSnapshot = { difficulty, problemKind, title, description, inputDescription, outputDescription, timeLimitMs, memoryLimitMb, isPublished, judgeMode, choiceRevealPolicy, choiceRevealAt, choiceQuestions, isLanguageRestricted, allowedLanguagesMask, functionName, returnType, parameters, customTypes, cpp17StarterCode, c11StarterCode, csharpStarterCode };
+  const draft = useProblemAuthoringDraft(userId, id, problem?.authoringVersion ?? 0, !isLoading && (!isEditMode || Boolean(problem)), editorSnapshot, value => {
+    setProblemKind(value.problemKind);
+    setDifficulty(value.difficulty);
+    setTitle(value.title);
+    setDescription(value.description);
+    setInputDescription(value.inputDescription);
+    setOutputDescription(value.outputDescription);
+    setTimeLimitMs(value.timeLimitMs);
+    setMemoryLimitMb(value.memoryLimitMb);
+    setIsPublished(value.isPublished);
+    setJudgeMode(value.judgeMode);
+    setChoiceRevealPolicy(value.choiceRevealPolicy);
+    setChoiceRevealAt(value.choiceRevealAt);
+    setChoiceQuestions(value.choiceQuestions);
+    setIsLanguageRestricted(value.isLanguageRestricted);
+    setAllowedLanguagesMask(value.allowedLanguagesMask);
+    setFunctionName(value.functionName);
+    setReturnType(value.returnType);
+    setParameters(value.parameters);
+    setCustomTypes(value.customTypes);
+    setCpp17StarterCode(value.cpp17StarterCode);
+    setC11StarterCode(value.c11StarterCode);
+    setCSharpStarterCode(value.csharpStarterCode);
+  });
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setIsSaving(true);
@@ -162,6 +198,7 @@ export function AdminProblemEditorPage() {
     const payload = {
       problemKind,
       title: title.trim(),
+      difficulty,
       description,
       inputDescription: problemKind === 1 && judgeMode === 1 ? inputDescription : "",
       outputDescription: problemKind === 1 && judgeMode === 1 ? outputDescription : "",
@@ -194,9 +231,11 @@ export function AdminProblemEditorPage() {
             isCorrect: question.correctOptionIds?.includes(option.id) ?? false
           }))
         })));
+        draft.markSaved();
         setNotice("题目已保存。");
       } else {
         const created = await createProblem(payload);
+        draft.markSaved();
         navigate(`/admin/problems/${created.id}/edit`);
       }
     } catch (err) {
@@ -225,9 +264,7 @@ export function AdminProblemEditorPage() {
     <section className="page-section narrow problem-editor-page ui-v2-page editor-v2-page problem-editor-v2-page">
       <div className="page-header ui-v2-page-header">
         <div>
-          <p className="eyebrow">PROBLEM EDITOR</p>
           <h1>{isEditMode ? "编辑题目" : "创建题目"}</h1>
-          <p>维护题面、输入输出说明和基础限制。</p>
         </div>
         <div className="button-row">
           <Link className="button" to="/admin/problems">
@@ -251,10 +288,23 @@ export function AdminProblemEditorPage() {
       {notice && <div className="quiet-note success">{notice}</div>}
       {error && <div className="alert error">{error}</div>}
 
+      {draft.pending && <div className="quiet-note" role="status">
+        {draft.conflict ? "发现旧版本草稿，题目已在其他位置更新。可下载保留内容，核对后重新编辑。" : "发现未保存的本地草稿。"}
+        <div className="button-row"><button className="button" type="button" disabled={draft.conflict} onClick={draft.restore}>恢复草稿</button><button className="button" type="button" onClick={draft.download}>下载草稿</button><button className="button" type="button" onClick={draft.discard}>丢弃草稿</button></div>
+      </div>}
+      {draft.warning && <div className="alert error" role="alert">{draft.warning}</div>}
+      {!draft.pending && draft.dirty && <div className="quiet-note">{draft.warning ? "有未保存的修改" : "修改已暂存到此浏览器，尚未保存到服务器。"}</div>}
       <form className="form-stack" onSubmit={handleSubmit}>
+        <fieldset disabled={isSaving || Boolean(draft.pending)} className="authoring-fields">
         <label>
           标题
           <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+        </label>
+        <label>
+          难度
+          <select value={difficulty} onChange={event => setDifficulty(Number(event.target.value) as ProblemDifficulty)}>
+            <option value={0}>未分级</option><option value={1}>简单</option><option value={2}>中等</option><option value={3}>困难</option>
+          </select>
         </label>
         <MarkdownEditor label="题目描述" value={description} onChange={setDescription} required />
         <label>
@@ -516,6 +566,7 @@ export function AdminProblemEditorPage() {
         <button className="button primary" type="submit" disabled={isSaving}>
           {isSaving ? "保存中..." : isEditMode ? "保存题目" : problemKind === 2 && isPublished ? "创建并发布" : "创建题目"}
         </button>
+        </fieldset>
       </form>
     </section>
   );

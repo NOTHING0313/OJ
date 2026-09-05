@@ -95,6 +95,7 @@ export interface PagedResult<T> {
 }
 
 export interface SubmissionQueryParams {
+  submissionKind?: SubmissionKind | "";
   mine?: boolean;
   userId?: string;
   problemId?: string;
@@ -130,7 +131,7 @@ export function getSubmission(id: string) {
   return request<SubmissionDto>(`/api/submissions/${id}`);
 }
 
-export function querySubmissions(params: SubmissionQueryParams = {}) {
+export function querySubmissions(params: SubmissionQueryParams = {}, signal?: AbortSignal) {
   const search = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
@@ -142,5 +143,5 @@ export function querySubmissions(params: SubmissionQueryParams = {}) {
   });
 
   const queryString = search.toString();
-  return request<PagedResult<SubmissionQueryItem>>(`/api/submissions${queryString ? `?${queryString}` : ""}`);
+  return request<PagedResult<SubmissionQueryItem>>(`/api/submissions${queryString ? `?${queryString}` : ""}`, { signal });
 }

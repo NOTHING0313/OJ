@@ -28,6 +28,8 @@ public class LeaderboardSeasonRankPointDto
 
 public class LeaderboardSeasonPersonalDto
 {
+    public Guid UserId { get; set; }
+    public string UserName { get; set; } = string.Empty;
     public LeaderboardSeasonDto? Season { get; set; }
     public int? CurrentRank { get; set; }
     public int TotalParticipants { get; set; }

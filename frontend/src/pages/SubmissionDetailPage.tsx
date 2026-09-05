@@ -59,9 +59,8 @@ function SubmissionDetailContent() {
     <section className="page-section ui-v2-page submission-detail-v2-page">
       <div className="page-header ui-v2-page-header">
         <div>
-          <p className="eyebrow">SUBMISSION</p>
           <h1>提交详情</h1>
-          <p>{submission.problemTitle} · {submission.id}</p>
+          <p>{submission.problemTitle}</p>
         </div>
         <div className="button-row">
           {challengeId && (
@@ -69,7 +68,7 @@ function SubmissionDetailContent() {
               返回挑战棋盘
             </Link>
           )}
-          <Link className="button" to={`/problems/${submission.problemId}`}>
+          <Link className="button" to={`/problems/${submission.problemId}${submission.challengeTaskId ? `?${new URLSearchParams({ taskId: submission.challengeTaskId, ...(challengeId ? { challengeId } : {}) })}` : ""}`}>
             返回题目
           </Link>
           <Link className="button" to={`/submissions/my?problemId=${submission.problemId}`}>

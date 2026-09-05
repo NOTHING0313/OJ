@@ -5,6 +5,7 @@ import { getMyTeam, type TeamProjectDto } from "../api/teamsApi";
 import { useAuth } from "../auth/AuthContext";
 import { canManageContent } from "../auth/roles";
 import { MarkdownRenderer } from "../components/MarkdownRenderer";
+import { problemDraftKey, readDraft, writeDraft } from "../utils/problemDrafts";
 
 const difficultySymbols = {
   1: "♙",
@@ -28,12 +29,21 @@ const breakFragments = Array.from({ length: 10 }, (_, index) => index + 1);
 
 export function ChallengeDetailPage() {
   const { id } = useParams();
+  const { currentUser } = useAuth();
+  return <ChallengeDetailContent key={`${id}:${currentUser?.id ?? "guest"}`} />;
+}
+
+function ChallengeDetailContent() {
+  const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser } = useAuth();
   const [challenge, setChallenge] = useState<ChallengeDetailDto | null>(null);
   const [selectedTask, setSelectedTask] = useState<ChallengeTaskDto | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const restoredPositionRef = useRef(false);
+  const selectionKey = problemDraftKey(currentUser?.id, "challenge-position", id ?? "");
   const [joinWarning, setJoinWarning] = useState<string | null>(null);
   const [joinedChallengeId, setJoinedChallengeId] = useState<string | null>(null);
   const [breakingTaskId, setBreakingTaskId] = useState<string | null>(null);
@@ -57,19 +67,61 @@ export function ChallengeDetailPage() {
       return;
     }
 
-    getChallenge(id)
-      .then((detail) => {
+    let stopped = false;
+    let loading = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    async function refresh() {
+      if (stopped || loading) return;
+      clearTimeout(timer);
+      if (document.visibilityState === "hidden") return;
+      loading = true;
+      try {
+        const detail = await getChallenge(id!);
+        if (stopped) return;
         setChallenge(detail);
+        setRefreshWarning(null);
         setSelectedTask((current) => {
           if (!current) {
-            return detail.tasks[0] ?? null;
+            const saved = readDraft(selectionKey);
+            return detail.tasks.find(task => idsEqual(task.id, saved)) ?? detail.tasks[0] ?? null;
           }
 
           return detail.tasks.find((task) => idsEqual(task.id, current.id)) ?? detail.tasks[0] ?? null;
         });
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "加载挑战失败"));
-  }, [id]);
+      } catch (err) {
+        if (!stopped) setRefreshWarning(err instanceof Error ? err.message : "刷新挑战失败");
+      } finally {
+        loading = false;
+        if (!stopped) timer = setTimeout(() => void refresh(), 5000);
+      }
+    }
+    void refresh();
+    const resume = () => { void refresh(); };
+    window.addEventListener("focus", resume);
+    window.addEventListener("online", resume);
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("online", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [id, selectionKey, refreshVersion]);
+
+  useEffect(() => {
+    if (!challenge || restoredPositionRef.current) return;
+    restoredPositionRef.current = true;
+    const saved = readDraft(selectionKey);
+    const task = challenge.tasks.find(item => idsEqual(item.id, saved));
+    if (!task) return;
+    const frame = window.requestAnimationFrame(() => {
+      const element = pieceRefs.current[normalizeTaskId(task.id)];
+      element?.focus({ preventScroll: true });
+      element?.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [challenge, selectionKey]);
 
   useEffect(() => {
     if (!currentUser || !challenge || joinedChallengeId === challenge.id) {
@@ -175,22 +227,7 @@ export function ChallengeDetailPage() {
         return next;
       });
 
-      if (id) {
-        getChallenge(id)
-          .then((detail) => {
-            setChallenge(detail);
-            setSelectedTask((current) => {
-              if (!current) {
-                return detail.tasks.find((task) => idsEqual(task.id, taskId)) ?? detail.tasks[0] ?? null;
-              }
-
-              return detail.tasks.find((task) => idsEqual(task.id, current.id)) ?? detail.tasks[0] ?? null;
-            });
-          })
-          .catch(() => {
-            // Keep the optimistic visual completion if a transient refresh fails.
-          });
-      }
+      setRefreshVersion(value => value + 1);
     }, prefersReducedMotion ? 0 : 950);
   }, [challenge, id, location.key, location.pathname, location.state, navigate]);
 
@@ -201,6 +238,7 @@ export function ChallengeDetailPage() {
   }, [challenge]);
 
   function handleTaskClick(task: ChallengeTaskDto) {
+    writeDraft(selectionKey, task.id);
     if (task.taskType === 1 && task.algorithmProblemId) {
       navigate(`/problems/${task.algorithmProblemId}?challengeId=${task.challengeId}&taskId=${task.id}`);
       return;
@@ -211,26 +249,10 @@ export function ChallengeDetailPage() {
     }
   }
 
-  if (error) {
-    const isMissingChallenge = error.toLowerCase().includes("not found") || error.includes("不存在") || error.includes("404");
-
-    return (
-      <section className="page-section narrow">
-        <div className="alert error">{isMissingChallenge ? "挑战不存在或已被删除" : error}</div>
-        <div className="button-row">
-          <button className="button" type="button" onClick={() => navigate("/challenges")}>
-            返回挑战列表
-          </button>
-          <button className="button" type="button" onClick={() => navigate("/admin/challenges")}>
-            返回挑战管理
-          </button>
-        </div>
-      </section>
-    );
-  }
-
   if (!challenge) {
-    return <div className="state-line">正在加载挑战...</div>;
+    return refreshWarning
+      ? <div className="alert error" role="alert">{refreshWarning}<button className="button" onClick={() => setRefreshVersion(value => value + 1)}>重试</button><button className="button" onClick={() => navigate("/challenges")}>返回挑战列表</button></div>
+      : <div className="state-line">正在加载挑战...</div>;
   }
 
   const canOpenAdminSummary = challenge.canManage;
@@ -255,8 +277,8 @@ export function ChallengeDetailPage() {
     <section className="challenge-page ui-v2-page challenge-detail-v2-page challenge-detail-v8-page">
       <header className="challenge-detail-header-v8">
         <div className="challenge-detail-title-v8">
-          <p className="eyebrow">BOARD CHALLENGE</p>
           <h1>{challenge.title}</h1>
+          {refreshWarning && <div className="alert error" role="alert">进度暂未更新：{refreshWarning}<button className="button" onClick={() => setRefreshVersion(value => value + 1)}>刷新进度</button></div>}
           {joinWarning && <div className="alert error">{joinWarning}</div>}
           <div className="challenge-description-v8">
             <MarkdownRenderer value={challenge.description} />
@@ -381,7 +403,6 @@ export function ChallengeDetailPage() {
           <section className="challenge-side-section-v8">
             <div className="challenge-side-heading-v8">
               <div>
-                <p className="eyebrow">PROGRESS</p>
                 <span>我的挑战进度</span>
               </div>
               <strong>
@@ -437,7 +458,6 @@ export function ChallengeDetailPage() {
           </section>
 
           <section className="challenge-side-section-v8 challenge-selected-section-v8">
-            <p className="eyebrow">SELECTED TASK</p>
             {selectedTask ? (
               <div className="selected-task selected-task-v8">
                 <div className="selected-task-title-v8">

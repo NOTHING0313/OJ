@@ -1,4 +1,4 @@
-import { apiFetch, request } from "./httpClient";
+import { requestFile, request } from "./httpClient";
 import { normalizeUploadedImagePath, resolveSiteAssetUrl } from "../utils/uploadedImageUrl";
 import {
   isThemeDecorationSlot,
@@ -244,9 +244,8 @@ export function applyThemePreset(presetId: string | null) {
 }
 
 export async function exportThemePreset(presetId: string, name: string) {
-  const response = await apiFetch(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}/export`);
-  if (!response.ok) throw new Error((await response.text()) || "Theme preset export failed.");
-  const blob = await response.blob();
+  const response = await requestFile(`/api/site-settings/theme-presets/${encodeURIComponent(presetId)}/export`);
+  const blob = response.blob;
   const url = URL.createObjectURL(blob);
   try {
     const anchor = document.createElement("a");

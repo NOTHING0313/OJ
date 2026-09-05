@@ -83,7 +83,7 @@ export function ChoiceProblemDetail({ problem, isAuthenticated, onRequireLogin }
   return (
     <section className="page-section choice-problem-detail problem-detail-layout ui-v2-page problem-detail-v2-page">
       <article className="problem-content problem-content-v2" data-surface="panel.primary">
-        <div className="page-header compact ui-v2-page-header"><div><p className="eyebrow">CHOICE SET</p><h1>{problem.title}</h1><p>{problem.totalScore} 分 · {problem.choiceQuestions.length} 道小题 · {problem.choiceAnswerRevealPolicy === 1 ? "提交后查看答案" : problem.choiceAnswerRevealAt ? `答案于 ${new Date(problem.choiceAnswerRevealAt).toLocaleString()} 揭示` : "答案策略尚未配置"}</p></div></div>
+        <div className="page-header compact ui-v2-page-header"><div><h1>{problem.title}</h1><p>{problem.totalScore} 分 · {problem.choiceQuestions.length} 道小题 · {problem.choiceAnswerRevealPolicy === 1 ? "提交后查看答案" : problem.choiceAnswerRevealAt ? `答案于 ${new Date(problem.choiceAnswerRevealAt).toLocaleString()} 揭示` : "答案策略尚未配置"}</p></div></div>
         <section className="content-block"><h2>描述</h2><MarkdownRenderer value={problem.description} /></section>
         <form className="form-stack" onSubmit={submit}>
           {problem.choiceQuestions.map((question, index) => {

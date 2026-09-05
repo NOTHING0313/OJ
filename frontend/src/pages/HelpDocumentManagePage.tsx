@@ -48,9 +48,7 @@ export function HelpDocumentManagePage() {
     <section className="help-manage-page">
       <header className="page-header help-center-header">
         <div>
-          <p className="eyebrow">HELP MANAGEMENT</p>
           <h1>文档管理</h1>
-          <p>维护帮助中心的草稿与已发布内容。</p>
         </div>
         <div className="help-header-actions">
           <Link className="button" to="/help">返回帮助中心</Link>
@@ -59,7 +57,7 @@ export function HelpDocumentManagePage() {
       </header>
       {error && <div className="alert error" role="alert">{error}</div>}
       {documents.length === 0 ? (
-        <div className="empty-state"><p>暂无文档</p><p>创建文档后即可向答题人发布平台使用说明。</p></div>
+        <div className="empty-state"><p>暂无文档</p></div>
       ) : (
         <div className="table-scroll help-document-table-wrap">
           <table className="help-document-table">

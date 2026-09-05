@@ -95,7 +95,7 @@ export function HelpDocumentEditorPage() {
   return (
     <section className="help-editor-page">
       <header className="page-header help-center-header">
-        <div><p className="eyebrow">MARKDOWN EDITOR</p><h1>{id ? "编辑文档" : "新建文档"}</h1><p>左侧编辑 Markdown，右侧即时预览。</p></div>
+        <div><h1>{id ? "编辑文档" : "新建文档"}</h1><p>左侧编辑 Markdown，右侧即时预览。</p></div>
         <Link className="button" to="/help/manage">返回文档管理</Link>
       </header>
       {error && <div className="alert error" role="alert">{error}</div>}

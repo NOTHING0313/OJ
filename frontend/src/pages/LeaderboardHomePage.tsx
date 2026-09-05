@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
 import {
   getChallengeLeaderboardIndex,
   getCurrentSeasonLeaderboard,
@@ -9,7 +8,6 @@ import {
   type SeasonLeaderboard
 } from "../api/leaderboardsApi";
 import { useAuth } from "../auth/AuthContext";
-import { canManageContent } from "../auth/roles";
 import { LeaderboardHomeView } from "../components/leaderboards/LeaderboardHomeView";
 
 export function LeaderboardHomePage() {
@@ -19,10 +17,13 @@ export function LeaderboardHomePage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const { currentUser } = useAuth();
+  const isRoot = currentUser?.role === 3;
+
   useEffect(() => {
     let ignore = false;
 
-    Promise.all([getCurrentSeasonLeaderboard(), getChallengeLeaderboardIndex(), getCurrentSeasonPublicSummary()])
+    Promise.all([isRoot ? getCurrentSeasonLeaderboard() : Promise.resolve(null), getChallengeLeaderboardIndex(), getCurrentSeasonPublicSummary()])
       .then(([globalData, challengeData, summaryData]) => {
         if (!ignore) {
           setGlobalLeaderboard(globalData);
@@ -45,15 +46,7 @@ export function LeaderboardHomePage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [isRoot]);
 
-  const { currentUser } = useAuth();
-  const boards = summary?.boards ?? [];
-
-  if (!isLoading && boards.length === 0 && !canManageContent(currentUser?.role)) {
-    return <Navigate to="/problems" replace />;
-  }
-
-  // Personal season records are suspended pending explicit product requirements.
-  return <LeaderboardHomeView globalLeaderboard={globalLeaderboard} summary={summary} challenges={challengeIndex?.challenges ?? []} isLoading={isLoading} error={error} canManage={canManageContent(currentUser?.role)} showPersonalRecord={false} />;
+  return <LeaderboardHomeView globalLeaderboard={globalLeaderboard} summary={summary} challenges={challengeIndex?.challenges ?? []} isLoading={isLoading} error={error} canManage={isRoot} showPersonalRecord={currentUser?.role === 1} />;
 }

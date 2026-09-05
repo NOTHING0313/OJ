@@ -173,9 +173,8 @@ export function ChallengeLeaderboardIndexPage() {
     <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
       <div className="leaderboard-header leaderboard-v2-header">
         <div>
-          <p className="eyebrow">CHALLENGE LEADERBOARDS</p>
           <h1>挑战榜单</h1>
-          <p>浏览所有已发布挑战的实时领先者，并查看挑战内每位参与者的完成情况与近十天名次变化。</p>
+
         </div>
         <div className="leaderboard-header-actions">
           <span className="leaderboard-live-status">
@@ -202,9 +201,8 @@ export function ChallengeLeaderboardIndexPage() {
 
       <section className="challenge-leaderboard-detail-switcher">
         <div>
-          <p className="eyebrow">CHALLENGE DETAILS</p>
           <h2>挑战参与与名次趋势</h2>
-          <p>选择挑战后，下方同步展示所有参与者的任务完成矩阵与最近十天排名轨迹。</p>
+
         </div>
         <label>
           <span>当前挑战</span>
@@ -285,7 +283,6 @@ function ChallengeSummaryCard({
       <aside className="leaderboard-top-panel leaderboard-v2-top-panel">
         <div className="leaderboard-v2-top-header">
           <div>
-            <p className="eyebrow">TOP 3</p>
             <strong>领先用户</strong>
           </div>
           <Link className="admin-user-view-link" to={`/challenges/${challenge.challengeId}/leaderboard`}>

@@ -45,3 +45,35 @@ Frontend guards the corresponding problem/challenge-detail/task routes before mo
 | API | Change | Compatibility | Verification |
 |---|---|---|---|
 | `POST /api/problems` | Accept existing `IsPublished=true` for a complete choice set; validate before persistence and create its immutable revision in the same relational transaction | Additive request semantics; unchanged DTO/schema/authorization; programming creation still saves a draft first | `ChoiceProblemTests`, `ProblemJudgeRevisionTests`, local PostgreSQL browser create/publish/submit flow |
+
+### 2026-09-05 — Private season results / Root audit
+
+| API / contract | Change and reason | Compatibility / verification |
+|---|---|---|
+| `GET /api/leaderboards/season/current`, `current/problems/{problemId}` | Full standings require Root; no anonymous or Answerer access to other participants' season scores | Intentional authorization restriction; `SeasonResultAccessTests` and service tests |
+| `GET /api/leaderboard-seasons/history`, `history/{seasonId}`; admin aliases `GET /api/admin/leaderboard-seasons/current/leaderboard`, `history`, `history/{seasonId}` | Root-only current and archived full results | Removes prior ProblemSetter audit access; guards in controller and service |
+| `GET /api/leaderboard-seasons/current/me`, `me/history` | Signed-in active Answerer reads only their own data; history no longer has a contradictory ProblemSetter controller policy | Existing shapes preserved apart from additive identity fields below; no target identity accepted |
+| `GET /api/admin/leaderboard-seasons/users/{userId}/current`, `users/{userId}/history` | New Root-only personal audit endpoints; reuse self-query core and DTOs; unknown user returns 404 | Adds `GetUserCurrentPersonalAsync` and `GetUserPersonalHistoryAsync` to the existing service interface; no new service or storage |
+| `LeaderboardSeasonPersonalDto.UserId`, `.UserName` | Add current identity so the Root detail screen identifies the queried user, including empty seasons | Additive response fields; self projection only exposes its caller; identity/isolation assertions |
+
+Season summary/configuration responses carry no participant results and keep existing consumers working. Challenge rankings and the legacy challenge aggregates at `/api/leaderboards/users` and `/api/leaderboards/users/history` are not season-results endpoints and are unchanged. No persisted shape change.
+
+
+### 2026-09-05：功能可靠性查询增量
+- 新增 `GET /api/problems/query?keyword=&page=1&pageSize=20`，返回既有 `PagedResult<ProblemListItemDto>`；默认 20、上限 100，越界页归入有效范围。保持登录要求与 ContentVisibilityPolicy，旧 `/api/problems` 数组接口保留供既有选题调用。
+- `SubmissionQueryRequest` 新增可选 `submissionKind=1|2`，分页前过滤，非法枚举由模型验证拒绝；原用户可见性与现有字段不变。
+- 本地出题草稿 `authoring-v1`：按账号、题目/新建隔离；schema=1，保存基准 authoringVersion 及全部可编辑字段。缓存不具备服务器写入权，旧版本只允许下载/丢弃。
+- 无数据库迁移。新增查询测试覆盖可见性、搜索、页界、题型与用户隔离。
+
+
+### 2026-09-05：统一文件与网络错误
+- 前端新增 `requestFile(path, options)` 返回 `{ blob, headers }`，与 JSON 请求共用状态解析和 AUTH_* 会话失效处理；支持取消信号与认证处理抑制。
+- 测试点导出、挑战用户/任务 CSV、文件作业 ZIP、主题 ZIP 全部接入该路径；不改变后端下载协议和文件名规则。
+- 网络/响应体中断使用 `ApiError(status=0, errorCode=NETWORK_ERROR)`，主动取消保留原异常；成功响应的无效 JSON 使用 `INVALID_RESPONSE`。HTTP 状态及中文业务原因保留。
+- 单元测试覆盖 5 个具体下载调用及断网、流中断、取消、401 和 429；无数据库变更。
+
+### 2026-09-05：题库难度分级
+- `ProblemDifficulty`：0 未分级、1 简单、2 中等、3 困难；题目列表与详情 DTO 增加 `difficulty`，创建请求缺省为 0，更新请求省略/null 保留现值、显式 0 清除分级。非法值被 API/服务验证拒绝。
+- 难度沿用题目元数据编辑权限、并发版本与审计，仅修改难度不增加判题版本。旧调用方省略字段不会清除已有分级。
+- 持久化增加 `Problems.Difficulty` 整型列，默认 0，数据库约束 0..3；迁移 `20260905125143_AddProblemDifficulty` 已在本地应用。
+- `authoring-v1` 草稿增加 difficulty，兼容旧草稿缺失值为 0。验证证据见 `docs/visual/PROBLEM-DIFFICULTY-20260905.md`。

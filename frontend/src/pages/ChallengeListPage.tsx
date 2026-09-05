@@ -44,9 +44,7 @@ export function ChallengeListPage() {
     <section className="challenge-page ui-v2-page challenge-list-v2-page challenge-list-v8-page">
       <div className="challenge-hero challenge-list-header">
         <div>
-          <p className="eyebrow">UNREALSTUDIO CHALLENGES</p>
           <h1>挑战</h1>
-          <p>进入棋盘、完成任务并推进自己的挑战进度。</p>
         </div>
         <span className="context-chip">共 {challenges.length} 个挑战</span>
       </div>

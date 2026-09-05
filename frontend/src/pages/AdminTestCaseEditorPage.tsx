@@ -241,7 +241,6 @@ export function AdminTestCaseEditorPage() {
       <article>
         <div className="page-header compact ui-v2-page-header">
           <div>
-            <p className="eyebrow">TEST CASES</p>
             <h1>测试用例配置</h1>
             <p>{problem.title}</p>
           </div>
@@ -292,7 +291,7 @@ export function AdminTestCaseEditorPage() {
               </button>
             </div>
             <textarea className="import-textarea" value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={importExample} />
-            <div className="quiet-note">visibility 默认 Hidden。导入采用事务化策略，任一测试点校验失败时不会写入任何测试点。</div>
+            <div className="quiet-note">测试点默认隐藏；全部校验通过后才会导入。</div>
             {importErrors.length > 0 && (
               <div className="alert error">
                 {importErrors.map((item) => (

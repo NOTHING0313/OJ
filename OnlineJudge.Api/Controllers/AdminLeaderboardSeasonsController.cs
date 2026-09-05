@@ -18,14 +18,27 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
     public async Task<IActionResult> GetSeasons(CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetSeasonsAsync(cancellationToken));
 
+    [Authorize(Policy = "RequireRoot")]
     [HttpGet("current/leaderboard")]
     public async Task<IActionResult> GetCurrentLeaderboard(CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetCurrentAuditLeaderboardAsync(cancellationToken));
 
+    [Authorize(Policy = "RequireRoot")]
+    [HttpGet("users/{userId:guid}/current")]
+    public async Task<IActionResult> GetUserCurrent(Guid userId, CancellationToken cancellationToken) =>
+        ToActionResult(await seasonService.GetUserCurrentPersonalAsync(userId, cancellationToken));
+
+    [Authorize(Policy = "RequireRoot")]
+    [HttpGet("users/{userId:guid}/history")]
+    public async Task<IActionResult> GetUserHistory(Guid userId, CancellationToken cancellationToken) =>
+        ToActionResult(await seasonService.GetUserPersonalHistoryAsync(userId, cancellationToken));
+
+    [Authorize(Policy = "RequireRoot")]
     [HttpGet("history")]
     public async Task<IActionResult> GetHistory(CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetHistoryAsync(cancellationToken));
 
+    [Authorize(Policy = "RequireRoot")]
     [HttpGet("history/{seasonId:guid}")]
     public async Task<IActionResult> GetHistory(Guid seasonId, CancellationToken cancellationToken) =>
         ToActionResult(await seasonService.GetHistoryAsync(seasonId, cancellationToken));
@@ -122,7 +135,7 @@ public class AdminLeaderboardSeasonsController(ILeaderboardSeasonService seasonS
     {
         "Unauthorized." => Unauthorized(errorMessage),
         "Forbidden." => Forbid(),
-        "Leaderboard season not found." or "Problem not found." or "Season problem not found." => NotFound(errorMessage),
+        "User not found." or "Leaderboard season history not found." or "Leaderboard season not found." or "Problem not found." or "Season problem not found." => NotFound(errorMessage),
         _ => BadRequest(errorMessage)
     };
 }

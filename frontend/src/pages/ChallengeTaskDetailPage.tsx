@@ -51,7 +51,6 @@ export function ChallengeTaskDetailPage() {
       </article>
 
       <aside className="task-meta-panel">
-        <p className="eyebrow">TASK</p>
         <dl>
           <div>
             <dt>类型</dt>

@@ -79,11 +79,13 @@ function ProblemDetailContent() {
   }, [id, languageCacheKey]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || currentUser?.role !== 3) return;
+    let ignore = false;
     getCurrentSeasonProblemLeaderboard(id)
-      .then(setSeasonLeaderboard)
-      .catch(() => setSeasonLeaderboard(null));
-  }, [id]);
+      .then((result) => { if (!ignore) setSeasonLeaderboard(result); })
+      .catch(() => { if (!ignore) setSeasonLeaderboard(null); });
+    return () => { ignore = true; };
+  }, [id, currentUser?.role]);
 
   useEffect(() => {
     if (!languageCacheKey || availableLanguages.length === 0) {
@@ -214,7 +216,7 @@ function ProblemDetailContent() {
 
   return <ProblemDetailView
     problem={sharedProblem}
-    seasonScore={seasonLeaderboard?.season && seasonLeaderboard.problem ? {
+    seasonScore={currentUser?.role === 3 && seasonLeaderboard?.season && seasonLeaderboard.problem ? {
       seasonName: seasonLeaderboard.season.name,
       baseScore: seasonLeaderboard.problem.baseScore,
       timeBonus: Math.max(...seasonLeaderboard.season.scoringRules.timeBonusPercentages),

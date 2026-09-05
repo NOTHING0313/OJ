@@ -199,7 +199,6 @@ export function ChallengeTaskAnswerPage() {
 
       <aside className="file-task-sidebar">
         <section className="file-task-panel file-task-info-panel">
-          <p className="eyebrow">ZIP FILE TASK</p>
           <dl>
             <div>
               <dt>类型</dt>
@@ -221,7 +220,6 @@ export function ChallengeTaskAnswerPage() {
         </section>
 
         <section className="file-task-panel my-file-submission">
-          <p className="eyebrow">MY SUBMISSION</p>
           {!isAuthenticated ? (
             <div className="quiet-note">
               <p>请先登录后提交文件。</p>
@@ -277,7 +275,6 @@ export function ChallengeTaskAnswerPage() {
         <form className="file-task-panel answer-form file-answer-form file-task-upload-card" onSubmit={handleSubmit}>
           <div className="file-task-upload-head">
             <div>
-              <p className="eyebrow">UPLOAD</p>
               <h2>ZIP 文件</h2>
               <p>请选择 .zip 文件后提交。</p>
             </div>

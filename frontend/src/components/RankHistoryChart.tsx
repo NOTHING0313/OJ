@@ -45,7 +45,6 @@ export function RankHistoryChart({
       <section className="rank-history-card">
         <div className="rank-history-header">
           <div>
-            <p className="eyebrow">RANK HISTORY</p>
             <h2>{title}</h2>
             <p>{description}</p>
           </div>
@@ -85,7 +84,6 @@ export function RankHistoryChart({
     <section className="rank-history-card">
       <div className="rank-history-header">
         <div>
-          <p className="eyebrow">RANK HISTORY</p>
           <h2>{title}</h2>
           <p>{description}</p>
         </div>

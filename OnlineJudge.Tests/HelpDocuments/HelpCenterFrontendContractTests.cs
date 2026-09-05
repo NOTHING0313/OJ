@@ -106,7 +106,7 @@ public class HelpCenterFrontendContractTests
 
         Assert.Equal(1, CountOccurrences(manage, "to=\"/help/manage/new\">新建文档</Link>"));
         Assert.Contains("暂无文档", manage, StringComparison.Ordinal);
-        Assert.Contains("创建文档后即可向答题人发布平台使用说明。", manage, StringComparison.Ordinal);
+        Assert.DoesNotContain("创建文档后即可向答题人发布平台使用说明。", manage, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -183,12 +183,12 @@ export function ChallengeAdminSummaryPage() {
   if (summary.participationMode === 2) {
     return (
       <section className="challenge-page admin-summary-page ui-v2-page analytics-v2-page">
-        <div className="leaderboard-header ui-v2-page-header"><div><p className="eyebrow">TEAM CHALLENGE AUDIT</p><h1>{summary.challengeTitle}</h1><p>冻结报名阵容、逐题最高分、最佳提交与实际贡献者审计。</p></div><Link className="button" to={`/challenges/${summary.challengeId}`}>返回棋盘</Link></div>
+        <div className="leaderboard-header ui-v2-page-header"><div><h1>{summary.challengeTitle}</h1></div><Link className="button" to={`/challenges/${summary.challengeId}`}>返回棋盘</Link></div>
         <div className="admin-metrics"><Metric label="报名战队" value={summary.teams.length} /><Metric label="冻结成员" value={summary.participantCount} /><Metric label="总任务数" value={summary.totalTaskCount} /><Metric label="完成次数" value={summary.totalCompletionCount} /></div>
         {summary.teams.map((team) => <section className="admin-panel" key={team.teamParticipantId}><div className="admin-panel-header"><div><h2>{team.teamName}</h2><p>冻结阵容 {team.roster.length} 人 · {team.completedTaskCount}/{summary.totalTaskCount} 题 · {team.totalScore} 分</p></div></div><div className="table-wrap leaderboard-table-wrap"><table className="leaderboard-table"><thead><tr><th>任务</th><th>得分</th><th>状态</th><th>贡献者</th><th>最佳提交</th></tr></thead><tbody>{team.tasks.map((task) => <tr key={task.taskId}><td>{task.taskTitle}</td><td>{task.score}</td><td>{task.isCompleted ? "已完成" : "进行中"}</td><td>{task.contributorUserName ?? "—"}</td><td>{task.bestSubmissionId ? <Link to={`/submissions/${task.bestSubmissionId}`}>查看</Link> : "—"}</td></tr>)}</tbody></table></div><details><summary>查看冻结阵容</summary><div className="button-row">{team.roster.map((member) => <span className="context-chip" key={member.userId}>{member.userName}{member.role === 1 ? " · Owner" : ""}</span>)}</div></details></section>)}
         {peerReviewAudit && (
           <section className="admin-panel">
-            <div className="admin-panel-header"><div><p className="eyebrow">PEER REVIEW AUDIT</p><h2>项目互评审计</h2><p>{peerReviewAudit.submittedCount} / {peerReviewAudit.assignmentCount} 已提交</p></div></div>
+            <div className="admin-panel-header"><div><h2>项目互评审计</h2><p>{peerReviewAudit.submittedCount} / {peerReviewAudit.assignmentCount} 已提交</p></div></div>
             {peerReviewAudit.assignments.length === 0 ? <div className="empty-state">暂无互评分配</div> : (
               <div className="table-wrap leaderboard-table-wrap"><table className="leaderboard-table"><thead><tr><th>评审战队</th><th>目标项目</th><th>状态</th><th>评分</th><th>内容</th></tr></thead><tbody>{peerReviewAudit.assignments.map((assignment) => (
                 <tr key={assignment.assignmentId}>
@@ -212,9 +212,7 @@ export function ChallengeAdminSummaryPage() {
     <section className="challenge-page admin-summary-page ui-v2-page analytics-v2-page challenge-admin-summary-v2-page challenge-admin-summary-v8-page">
       <div className="leaderboard-header ui-v2-page-header challenge-admin-header-v8">
         <div>
-          <p className="eyebrow">CHALLENGE ADMIN</p>
           <h1>{summary.challengeTitle}</h1>
-          <p>查看参与者进度、逐题完成情况与文件题评分状态。</p>
         </div>
         <div className="button-row challenge-admin-toolbar-v8">
           <button
@@ -252,7 +250,6 @@ export function ChallengeAdminSummaryPage() {
       <section className="admin-panel challenge-admin-panel-v8">
         <div className="admin-panel-header challenge-admin-panel-header-v8">
           <div>
-            <p className="eyebrow">USERS</p>
             <h2>用户进度</h2>
             <p>选择用户后可在下方查看完整逐题状态。</p>
           </div>
@@ -317,9 +314,7 @@ export function ChallengeAdminSummaryPage() {
       <section className="admin-panel challenge-admin-panel-v8">
         <div className="admin-panel-header challenge-admin-panel-header-v8">
           <div>
-            <p className="eyebrow">TASKS</p>
             <h2>题目完成统计</h2>
-            <p>汇总每道题的类型、难度、分数与参与者完成情况。</p>
           </div>
           <span className="context-chip">{summary.tasks.length} 道任务</span>
         </div>
@@ -367,9 +362,7 @@ export function ChallengeAdminSummaryPage() {
       <section className="admin-panel challenge-admin-panel-v8 challenge-user-detail-v8">
         <div className="admin-panel-header challenge-admin-panel-header-v8">
           <div>
-            <p className="eyebrow">DETAIL</p>
             <h2>{selectedUser ? `${selectedUser.userName} 的逐题状态` : "用户逐题状态"}</h2>
-            <p>查看每道任务的完成状态、得分与提交记录。</p>
           </div>
         </div>
 

@@ -59,7 +59,7 @@ public sealed class SeasonLeaderboardUx06CContractTests
         var container = Read("frontend/src/pages/LeaderboardHomePage.tsx");
         var view = Read("frontend/src/components/leaderboards/LeaderboardHomeView.tsx");
         Assert.Contains("enabledChallengeIds.has", view, StringComparison.Ordinal);
-        Assert.Contains("canManageContent(currentUser?.role)", container, StringComparison.Ordinal);
+        Assert.Contains("currentUser?.role === 3", container, StringComparison.Ordinal);
         Assert.Contains("榜单管理", view, StringComparison.Ordinal);
     }
 

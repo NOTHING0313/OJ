@@ -188,6 +188,8 @@ export interface LeaderboardSeasonArchive {
 }
 
 export interface LeaderboardSeasonPersonal {
+  userId: string;
+  userName: string;
   season: LeaderboardSeason | null;
   currentRank: number | null;
   totalParticipants: number;
@@ -391,4 +393,13 @@ export function finalizeLeaderboardSeason(seasonId: string) {
 
 export function archiveLeaderboardSeason(seasonId: string) {
   return request<LeaderboardSeason>(`/api/admin/leaderboard-seasons/${seasonId}/archive`, { method: "POST" });
+}
+
+
+export function getUserSeasonPersonal(userId: string) {
+  return request<LeaderboardSeasonPersonal>(`/api/admin/leaderboard-seasons/users/${encodeURIComponent(userId)}/current`);
+}
+
+export function getUserSeasonHistory(userId: string) {
+  return request<LeaderboardSeasonPersonalHistory[]>(`/api/admin/leaderboard-seasons/users/${encodeURIComponent(userId)}/history`);
 }

@@ -362,3 +362,27 @@
 - Context: The audit incorrectly called `/account/competition` “参赛资料”; its actual page title is “赛季战绩”. The user does not recognize this requirement. Its historical authorization was not established in this task.
 - Decision: Hide the leaderboard's personal record entry and redirect the old URL to the protected personal profile. Retain the dormant component and backend/data unchanged for possible future review.
 - Scope: Frontend availability only; no permission expansion, API removal, data deletion or change to other leaderboard features.
+
+## Decision: Season results are self-only for answerers and fully auditable by Root
+
+- Status: Accepted and implemented locally, 2026-09-05. Explicit user clarification supersedes the suspension above and previous public/ProblemSetter season-results access.
+- Requirement: Answerers can read their own current and archived season results, never another participant's season scores or the full season standings. Root can read current/archived standings and query any user's current/archived results.
+- Reuse: Keep the existing scoring engine, rank snapshots, archive snapshots, personal/history DTOs, and leaderboard management pages. Both self and Root user queries delegate to the same private projection methods in `LeaderboardSeasonService`; no separate scoring path or storage is introduced.
+- Authority: Self HTTP endpoints do not accept a target user. Their service resolves the active Answerer from the current session. Target-user endpoints and full-result endpoints require Root in both controller policy and service validation. Retained aliases do not grant public access.
+- Presentation: Restore `/account/competition` for Answerers with current and expandable historical scores. Root uses `/admin/leaderboard-seasons` and `/admin/leaderboard-seasons/users/:userId`, reachable through standings names or searchable user management.
+- Boundary: Non-score season configuration remains available to ProblemSetters for challenge authoring. Public season summary contains schedule/board metadata only. Challenge leaderboards and legacy challenge aggregate/history endpoints are outside this change.
+- Persistence: No migration, snapshot rewrite, scoring/lifecycle mutation, or dependency change. Archived scores still come from immutable archive rows, including after a participant's role/status changes.
+- Review/verification: R4 permission boundary change explicitly authorized by the user, reviewed before implementation. See `docs/visual/SEASON-RESULTS-ACCESS-20260905.md` for final scope and evidence.
+
+
+### 2026-09-05：编辑与查询可靠性
+- 题库采用新增分页入口，复用既有可见性、字段投影和分数查询，保留全量旧入口避免破坏后台选题。
+- 出题草稿是按账号隔离的非权威本地缓存，显式恢复，版本不符时下载保留；不自动合并或更新 authoringVersion。
+- 普通/Root 提交列表共同修复：题型在服务端过滤；清除 URL 条件；AbortSignal 与过期结果检查；统一结果表头。
+- 验收细节：`docs/visual/FUNCTIONAL-RELIABILITY-PLAN-20260905.md`。
+
+### 2026-09-05：题库难度作为题目元数据
+- 用户授权三档难度及未分级状态，以题库标题颜色呈现。新增独立 `ProblemDifficulty`，不复用具有不同语义和六个等级的挑战难度。
+- 难度由出题编辑流程设置并持久化到 Problem，不依据通过率推算，不影响判题版本、评分或赛季。
+- 更新省略值保留原分级，显式 0 清除；历史题目默认未分级。主题强调色仅覆盖未分级标题，以保留分级色和原主题兼容性。
+- 状态：本地完成。验证范围与 PostgreSQL 并发测试跳过原因见 `docs/visual/PROBLEM-DIFFICULTY-20260905.md`。

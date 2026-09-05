@@ -7,6 +7,9 @@ public class UpdateProblemRequest
     public long? ExpectedAuthoringVersion { get; set; }
 
     public ProblemKind ProblemKind { get; set; } = ProblemKind.Programming;
+    [System.ComponentModel.DataAnnotations.EnumDataType(typeof(ProblemDifficulty))]
+    public ProblemDifficulty? Difficulty { get; set; }
+
     public string Title { get; set; } = string.Empty;
 
     public string Description { get; set; } = string.Empty;

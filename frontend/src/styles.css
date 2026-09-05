@@ -559,11 +559,13 @@ h2 {
   display: block;
 }
 
-.problem-search span {
+.problem-search-icon {
   position: absolute;
   top: 50%;
   left: 14px;
-  color: #8b93a7;
+  width: 18px;
+  height: 18px;
+  color: #b8b8b8;
   pointer-events: none;
   transform: translateY(-50%);
 }
@@ -3403,7 +3405,7 @@ h2 {
 
 .admin-user-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 180px 180px auto;
+  grid-template-columns: minmax(200px, 1fr) repeat(3, minmax(120px, 160px)) auto;
   gap: 12px;
   align-items: end;
   padding: 16px;
@@ -3760,11 +3762,11 @@ h2 {
 }
 
 .submission-toolbar-my {
-  grid-template-columns: minmax(260px, 1fr) 180px 180px auto;
+  grid-template-columns: minmax(200px, 1fr) repeat(3, minmax(120px, 160px)) auto;
 }
 
 .submission-toolbar-admin {
-  grid-template-columns: minmax(220px, 1.35fr) minmax(210px, 1.2fr) 170px 150px auto;
+  grid-template-columns: repeat(2, minmax(150px, 1fr)) repeat(3, minmax(110px, 140px)) auto;
 }
 
 .submission-toolbar label {
@@ -12890,7 +12892,7 @@ h2 {
 }
 
 .theme-mystic-background .site-theme-content :is(
-  .problem-list-title,
+  .problem-list-title:not([data-difficulty]),
   .leaderboard-score,
   .leaderboard-challenge-title,
   .eyebrow
@@ -14378,3 +14380,13 @@ h2 {
   .topbar .nav-links { flex-wrap: wrap; justify-content: flex-start; gap: 6px; }
   .topbar .nav-links > a, .topbar .nav-links > details { flex-shrink: 0; white-space: nowrap; }
 }
+
+.authoring-fields { display: grid; gap: 16px; min-width: 0; margin: 0; border: 0; padding: 0; }
+
+/* Rated titles keep their difficulty color in both site themes and hover states. */
+.problem-list-v2-page .problem-list-title[data-difficulty="1"],
+.problem-list-v2-page .problem-list-title[data-difficulty="1"]:hover { color: #4ade80; }
+.problem-list-v2-page .problem-list-title[data-difficulty="2"],
+.problem-list-v2-page .problem-list-title[data-difficulty="2"]:hover { color: #facc15; }
+.problem-list-v2-page .problem-list-title[data-difficulty="3"],
+.problem-list-v2-page .problem-list-title[data-difficulty="3"]:hover { color: #f87171; }

@@ -37,9 +37,7 @@ export function ChallengePeerReviewAuditPage() {
     <section className="challenge-page admin-summary-page ui-v2-page analytics-v2-page">
       <div className="leaderboard-header ui-v2-page-header">
         <div>
-          <p className="eyebrow">PEER REVIEW AUDIT</p>
           <h1>项目互评审计</h1>
-          <p>只读查看本场挑战的互评分配、项目快照和评审内容。</p>
         </div>
         <Link className="button" to={`/challenges/${challengeId}`}>返回挑战</Link>
       </div>

@@ -255,9 +255,7 @@ export function AccountSettingsPage() {
     <section className="account-settings-page ui-v2-page account-settings-v2-page account-settings-v3-page">
       <div className="page-header ui-v2-page-header account-settings-header-v3">
         <div>
-          <p className="eyebrow">ACCOUNT</p>
           <h1>账号设置</h1>
-          <p>管理个人资料、界面偏好与账号安全。</p>
         </div>
         <Link className="button" to="/profile/me">
           返回个人中心
@@ -288,7 +286,7 @@ export function AccountSettingsPage() {
               </div>
             </div>
             <p>{account.email}</p>
-            <span>头像和账号身份信息会用于个人中心、榜单与管理页面展示。</span>
+
           </div>
         </div>
 
@@ -327,10 +325,9 @@ export function AccountSettingsPage() {
       <section className="account-section-v3 account-personalization-section-v3">
         <div className="account-section-heading-v3">
           <div>
-            <p className="eyebrow">PERSONALIZATION</p>
             <h2>外观与个性化</h2>
           </div>
-          <p>配置账号专属背景与浏览器界面风格，不影响其他用户。</p>
+          <p>仅对自己生效。</p>
         </div>
 
         <div className="account-personalization-grid-v3">
@@ -356,7 +353,6 @@ export function AccountSettingsPage() {
           <section className="admin-panel account-card account-theme-card-v3">
             <div className="admin-panel-header">
               <div>
-                <p className="eyebrow">THEME</p>
                 <h2>界面风格</h2>
               </div>
             </div>
@@ -396,10 +392,8 @@ export function AccountSettingsPage() {
       <section className="account-section-v3">
         <div className="account-section-heading-v3">
           <div>
-            <p className="eyebrow">SECURITY</p>
             <h2>登录与安全</h2>
           </div>
-          <p>管理账号安全，并在需要时注销账号。</p>
         </div>
 
         <div className="account-security-grid-v3">

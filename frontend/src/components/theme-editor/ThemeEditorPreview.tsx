@@ -142,8 +142,8 @@ function PreviewPageHeader({ page, onSelect }: { page: ThemeEditorPreviewPage; o
     account: ["ACCOUNT", "账号设置", "管理个人资料与安全选项"],
     "security-audit": ["SECURITY", "安全审计", "查看不可变安全事件记录"]
   };
-  const [eyebrow, title, description] = labels[page];
-  return <div className="page-header theme-editor-surface" data-surface="decoration.pageHeader" onClick={onSelect}><div><span className="theme-editor-preview-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{description}</p></div></div>;
+  const [, title] = labels[page];
+  return <div className="page-header theme-editor-surface" data-surface="decoration.pageHeader" onClick={onSelect}><div><h2>{title}</h2></div></div>;
 }
 
 function getPreviewRoute(page: ThemeEditorPreviewPage) {
@@ -158,10 +158,10 @@ function getPreviewRoute(page: ThemeEditorPreviewPage) {
 
 function PreviewComposition({ page, appearance, onSelect }: { page: ThemeEditorPreviewPage; appearance: SiteAppearance; onSelect: (surface: ThemeEditorSurfaceId) => void }) {
   if (page === "login") return <div className="theme-editor-preview-login"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header" onClick={(event) => { event.stopPropagation(); onSelect("panel.header"); }}><strong>账号登录</strong></div><label>账号 / 邮箱<input value="UnrealStudio" readOnly /></label><label>密码<input value="••••••••" readOnly /></label><button className="button primary" type="button">进入工作室</button></section></div>;
-  if (page === "team") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="chat" appearance={appearance} /><strong>战队聊天</strong></div><p>保持沟通，推进当前项目。</p><button className="button" type="button"><DraftIcon slot="git" appearance={appearance} />Git 项目</button></section><EmptyPreview onSelect={onSelect} /></div>;
-  if (page === "account") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><strong>个人资料</strong><label>用户名<input value="UnrealStudio" readOnly /></label><button className="button primary" type="button">保存资料</button></section><section className="content-block"><strong>安全设置</strong><p>密码与会话状态保持安全。</p><span className="theme-editor-badge">已启用</span></section></div>;
+  if (page === "team") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="chat" appearance={appearance} /><strong>战队聊天</strong></div><button className="button" type="button"><DraftIcon slot="git" appearance={appearance} />Git 项目</button></section><EmptyPreview onSelect={onSelect} /></div>;
+  if (page === "account") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><strong>个人资料</strong><label>用户名<input value="UnrealStudio" readOnly /></label><button className="button primary" type="button">保存资料</button></section><section className="content-block"><strong>安全设置</strong><span className="theme-editor-badge">已启用</span></section></div>;
   if (page === "security-audit") return <PreviewTable onSelect={onSelect} security />;
-  if (page === "season") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="season" appearance={appearance} /><strong>2026 秋季赛</strong></div><p>Scheduled · 3 Problems</p><button className="button primary" type="button"><DraftIcon slot="reward" appearance={appearance} />奖励设置</button></section><PreviewTable onSelect={onSelect} /></div>;
+  if (page === "season") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="season" appearance={appearance} /><strong>2026 秋季赛</strong></div><p>未开始 · 3 道题</p><button className="button primary" type="button"><DraftIcon slot="reward" appearance={appearance} />奖励设置</button></section><PreviewTable onSelect={onSelect} /></div>;
   if (page === "challenge") return <div className="theme-editor-preview-grid"><section className="content-block theme-editor-surface" onClick={() => onSelect("panel.primary")}><div className="workspace-section-header"><DraftIcon slot="challenge" appearance={appearance} /><strong>算法挑战</strong></div><p>4 个任务 · 当前进度 75%</p><div className="theme-editor-progress"><span /></div></section><EmptyPreview onSelect={onSelect} /></div>;
   return null;
 }
@@ -171,7 +171,7 @@ function PreviewTable({ onSelect, security = false }: { onSelect: (surface: Them
 }
 
 function EmptyPreview({ onSelect }: { onSelect: (surface: ThemeEditorSurfaceId) => void }) {
-  return <div className="empty-state theme-editor-surface" onClick={() => onSelect("decoration.emptyState")}><strong>暂无更多内容</strong><p>新的数据将在这里显示。</p></div>;
+  return <div className="empty-state theme-editor-surface" onClick={() => onSelect("decoration.emptyState")}><strong>暂无更多内容</strong></div>;
 }
 
 function DraftIcon({ slot, appearance }: { slot: ThemeIconSlot; appearance: SiteAppearance }) {

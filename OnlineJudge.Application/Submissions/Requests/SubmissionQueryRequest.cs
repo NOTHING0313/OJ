@@ -12,6 +12,9 @@ public class SubmissionQueryRequest
 
     public JudgeStatus? Status { get; set; }
 
+    [System.ComponentModel.DataAnnotations.EnumDataType(typeof(SubmissionKind))]
+    public SubmissionKind? SubmissionKind { get; set; }
+
     public JudgeLanguage? Language { get; set; }
 
     public string? ProblemKeyword { get; set; }

@@ -12,50 +12,55 @@ import { parseLanguage, parseStatus } from "../utils/submissionFilters";
 const pageSize = 20;
 
 export function MySubmissionsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const problemId = searchParams.get("problemId") ?? undefined;
   const [items, setItems] = useState<SubmissionQueryItem[]>([]);
   const [problemKeyword, setProblemKeyword] = useState("");
   const [status, setStatus] = useState<JudgeStatus | "">("");
+  const [submissionKind, setSubmissionKind] = useState<1 | 2 | "">("");
   const [language, setLanguage] = useState<JudgeLanguage | "">("");
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadSubmissions = useCallback(async () => {
+  const loadSubmissions = useCallback(async (signal: AbortSignal) => {
     try {
       setIsLoading(true);
       const result = await querySubmissions({
         mine: true,
         problemId,
         problemKeyword,
+        submissionKind,
         status,
         language,
         page,
         pageSize
-      });
+      }, signal);
+      if (signal.aborted) return;
       setItems(result.items);
       setTotalCount(result.totalCount);
       setError(null);
     } catch (err) {
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : "提交记录加载失败");
     } finally {
-      setIsLoading(false);
+      if (!signal.aborted) setIsLoading(false);
     }
-  }, [problemId, problemKeyword, status, language, page]);
+  }, [submissionKind, problemId, problemKeyword, status, language, page]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const handle = window.setTimeout(() => {
-      void loadSubmissions();
+      void loadSubmissions(controller.signal);
     }, 180);
 
-    return () => window.clearTimeout(handle);
+    return () => { controller.abort(); window.clearTimeout(handle); };
   }, [loadSubmissions]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const filtersAreDefault = !problemKeyword && status === "" && language === "";
+  const filtersAreDefault = !problemId && submissionKind === "" && !problemKeyword && status === "" && language === "";
 
   function resetFilters(update: () => void) {
     update();
@@ -63,6 +68,8 @@ export function MySubmissionsPage() {
   }
 
   function resetAllFilters() {
+    setSearchParams(current => { const next = new URLSearchParams(current); next.delete("problemId"); return next; });
+    setSubmissionKind("");
     setProblemKeyword("");
     setStatus("");
     setLanguage("");
@@ -73,14 +80,14 @@ export function MySubmissionsPage() {
     <section className="challenge-page submissions-page submission-v2-page">
       <div className="leaderboard-header submission-header">
         <div>
-          <p className="eyebrow">SUBMISSIONS</p>
           <h1>我的提交</h1>
-          <p>查看自己的判题记录、筛选状态和语言，并进入提交详情。</p>
         </div>
         <span className="submission-total">共 {totalCount} 条提交</span>
       </div>
 
       {error && <div className="alert error">{error}</div>}
+
+      {problemId && <div className="quiet-note">已限定当前题目 <button className="button" type="button" onClick={() => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete("problemId"); return next; }); setPage(1); }}>清除题目筛选</button></div>}
 
       <div className="submission-toolbar submission-toolbar-my">
         <label className="submission-search-field">
@@ -100,8 +107,14 @@ export function MySubmissionsPage() {
           </select>
         </label>
         <label>
+          <span>题型</span>
+          <select value={submissionKind} onChange={event => resetFilters(() => { const kind = event.target.value === "" ? "" : Number(event.target.value) as 1 | 2; setSubmissionKind(kind); if (kind === 2) setLanguage(""); })}>
+            <option value="">全部题型</option><option value="1">编程题</option><option value="2">选择题</option>
+          </select>
+        </label>
+        <label>
           <span>语言</span>
-          <select value={language} onChange={(event) => resetFilters(() => setLanguage(parseLanguage(event.target.value)))}>
+          <select disabled={submissionKind === 2} value={language} onChange={(event) => resetFilters(() => setLanguage(parseLanguage(event.target.value)))}>
             <option value="">语言：全部</option>
             <LanguageOptions />
           </select>
@@ -145,8 +158,7 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
             {showUser && <th>用户</th>}
             <th>题型 / 语言</th>
             <th>状态</th>
-            <th>时间评估</th>
-            <th>内存评估</th>
+            <th>结果评估</th>
             <th>完成时间</th>
             <th>操作</th>
           </tr>
@@ -170,16 +182,14 @@ export function SubmissionTable({ items, showUser }: { items: SubmissionQueryIte
               )}
               <td><span className="submission-language-badge">{item.language ? languageLabel(item.language) : "选择题"}</span></td>
               <td><SubmissionStatusBadge status={item.status} /></td>
-              {item.submissionKind === 2 ? <td colSpan={2}>
+              {item.submissionKind === 2 ? <td>
                 <span className="submission-metric">得分 {item.choiceScore}/{item.choiceTotalScore}</span>
-              </td> : <><td>
-                <span className="submission-metric">最大 {formatMetric(item.evaluation.maxTimeUsedMs, "ms")}</span>
-                <span className="submission-metric">平均 {formatMetric(item.evaluation.averageCaseTimeUsedMs, "ms")}</span>
-              </td>
-              <td>
-                <span className="submission-metric">最大 {formatMemory(item.evaluation.maxMemoryUsedKb)}</span>
-                <span className="submission-metric">平均 {formatMemory(item.evaluation.averageCaseMemoryUsedKb)}</span>
-              </td></>}
+              </td> : <td>
+                <span className="submission-metric">耗时最大 {formatMetric(item.evaluation.maxTimeUsedMs, "ms")}</span>
+                <span className="submission-metric">耗时平均 {formatMetric(item.evaluation.averageCaseTimeUsedMs, "ms")}</span>
+                <span className="submission-metric">内存最大 {formatMemory(item.evaluation.maxMemoryUsedKb)}</span>
+                <span className="submission-metric">内存平均 {formatMemory(item.evaluation.averageCaseMemoryUsedKb)}</span>
+              </td>}
               <td><SubmissionDateTime value={item.finishedAt} /></td>
               <td>
                 <Link className="button submission-view-link" to={`/submissions/${item.id}`}>查看</Link>

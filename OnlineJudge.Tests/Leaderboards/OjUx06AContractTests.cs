@@ -12,9 +12,9 @@ public sealed class OjUx06AContractTests
         { "frontend/src/components/AppHeaderView.tsx", "竞赛管理" },
         { "frontend/src/components/AppHeaderView.tsx", "系统管理" },
         { "frontend/src/components/AppHeaderView.tsx", "榜单管理" },
-        { "frontend/src/main.tsx", "allowedRoles={[2, 3]}><LeaderboardSeasonHistoryPage" },
+        { "frontend/src/main.tsx", "allowedRoles={[3]}><LeaderboardSeasonHistoryPage" },
         { "frontend/src/pages/AccountCompetitionPage.tsx", "getCurrentSeasonPersonal" },
-        { "frontend/src/pages/LeaderboardHomePage.tsx", "boards.length === 0" },
+        { "frontend/src/pages/LeaderboardHomePage.tsx", "isRoot ? getCurrentSeasonLeaderboard()" },
         { "frontend/src/components/leaderboards/LeaderboardHomeView.tsx", "hasGlobalBoard" },
         { "frontend/src/components/leaderboards/LeaderboardHomeView.tsx", "hasChallengeBoards" },
         { "frontend/src/pages/AdminLeaderboardSeasonPage.tsx", "创建并关联挑战" },
@@ -31,7 +31,7 @@ public sealed class OjUx06AContractTests
         { "OnlineJudge.Infrastructure/Leaderboards/LeaderboardSeasonService.cs", "SynchronizeBoardsAsync" },
         { "OnlineJudge.Infrastructure/Leaderboards/LeaderboardSeasonService.cs", "Challenge leaderboard must stay within the season time range." },
         { "OnlineJudge.Infrastructure/Challenges/ChallengeService.cs", "CanViewSelectedLeaderboardAsync" },
-        { "OnlineJudge.Api/Controllers/LeaderboardSeasonHistoryController.cs", "Authorize(Policy = \"RequireProblemSetter\")" },
+        { "OnlineJudge.Api/Controllers/LeaderboardSeasonHistoryController.cs", "Authorize(Policy = \"RequireRoot\")" },
         { "OnlineJudge.Application/Leaderboards/Models/LeaderboardScoringRules.cs", "FirstCompletionBonusEnabled" },
         { "OnlineJudge.Application/Account/Requests/UpdateLeaderboardAnonymityRequest.cs", "IsLeaderboardAnonymous" },
         { "OnlineJudge.Infrastructure/Persistence/Migrations/20260828120113_AddEditableTestCasesAndResultSnapshots.cs", "SET \\\"UpdatedAt\\\" = \\\"CreatedAt\\\";" }
@@ -59,11 +59,11 @@ public sealed class OjUx06AContractTests
     }
 
     [Fact]
-    public void AnswererCompetitionPage_DoesNotRequestHistory()
+    public void AnswererCompetitionPage_RequestsOnlyPersonalHistory()
     {
         var source = Read("frontend/src/pages/AccountCompetitionPage.tsx");
-        Assert.DoesNotContain("getSeasonPersonalHistory", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("我的历史赛季", source, StringComparison.Ordinal);
+        Assert.Contains("getSeasonPersonalHistory", source, StringComparison.Ordinal);
+        Assert.Contains("我的历史赛季", source, StringComparison.Ordinal);
     }
 
     [Fact]

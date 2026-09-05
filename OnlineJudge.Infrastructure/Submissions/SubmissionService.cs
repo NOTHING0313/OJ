@@ -438,6 +438,11 @@ public class SubmissionService(
             query = query.Where(submission => submission.Status == request.Status.Value);
         }
 
+        if (request.SubmissionKind.HasValue)
+        {
+            query = query.Where(submission => submission.SubmissionKind == request.SubmissionKind.Value);
+        }
+
         if (request.Language.HasValue)
         {
             query = query.Where(submission => submission.Language == request.Language.Value);

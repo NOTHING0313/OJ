@@ -5,7 +5,6 @@ export function ChallengeCompletionMatrix({ progress }: { progress: ChallengeLea
     <section className="challenge-progress-card">
       <div className="challenge-progress-header">
         <div>
-          <p className="eyebrow">PARTICIPANT PROGRESS</p>
           <h2>参与者完成情况</h2>
           <p>展示挑战内每位参与者对各任务的完成状态，未上榜但已参与的用户也会保留。</p>
         </div>

@@ -6,6 +6,8 @@ namespace OnlineJudge.Application.Problems.Services;
 
 public interface IProblemService
 {
+    Task<Result<PagedResult<ProblemListItemDto>>> QueryProblemsAsync(ProblemQueryRequest request, CancellationToken cancellationToken = default);
+
     Task<Result<IReadOnlyList<ProblemListItemDto>>> GetProblemsAsync(CancellationToken cancellationToken = default);
 
     Task<Result<ProblemDetailDto>> GetProblemAsync(Guid id, CancellationToken cancellationToken = default);

@@ -50,7 +50,6 @@ export function SeasonLeaderboardPage() {
     <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
       <div className="leaderboard-header leaderboard-v2-header">
         <div>
-          <p className="eyebrow">SEASON LEADERBOARD</p>
           <h1>{season.name}</h1>
           <p>开始：{formatDate(season.startAt)} · 结榜：{formatDate(season.freezeAt)}</p>
           <div className="season-lifecycle-line"><span className={`season-status status-${season.effectiveStatus}`}>{state.label}</span><strong>{state.countdownLabel} {state.countdown}</strong></div>
@@ -79,7 +78,7 @@ export function SeasonLeaderboardPage() {
               {entries.map((entry) => (
                 <tr className={entry.isCurrentUser ? "leaderboard-current-user" : ""} key={`${entry.rank}-${entry.alias}`}>
                   <td><span className={`leaderboard-rank ${rankClass(entry.rank)}`}>{entry.rank}</span></td>
-                  <td><strong>{entry.displayName}</strong>{entry.isCurrentUser && <small className="leaderboard-you-badge">YOU</small>}</td>
+                  <td>{entry.userId ? <Link to={`/admin/leaderboard-seasons/users/${entry.userId}`}>{entry.displayName}</Link> : <strong>{entry.displayName}</strong>}{entry.isCurrentUser && <small className="leaderboard-you-badge">YOU</small>}</td>
                   <td>{entry.solvedCount}</td>
                   <td>{entry.baseScore}</td>
                   <td>+{entry.timeBonus}</td>

@@ -1170,6 +1170,11 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("Difficulty")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("FunctionSpecJson")
                         .HasColumnType("text");
 
@@ -1221,6 +1226,8 @@ namespace OnlineJudge.Infrastructure.Persistence.Migrations
                     b.ToTable("Problems", null, t =>
                         {
                             t.HasCheckConstraint("CK_Problems_AuthoringVersion", "\"AuthoringVersion\" >= 1");
+
+                            t.HasCheckConstraint("CK_Problems_Difficulty", "\"Difficulty\" BETWEEN 0 AND 3");
 
                             t.HasCheckConstraint("CK_Problems_KindConfiguration", "(\"ProblemKind\" = 1 AND \"JudgeMode\" IN (1, 2) AND \"TimeLimitMs\" IS NOT NULL AND \"MemoryLimitMb\" IS NOT NULL AND \"ChoiceAnswerRevealPolicy\" IS NULL AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ProblemKind\" = 2 AND \"JudgeMode\" IS NULL AND \"TimeLimitMs\" IS NULL AND \"MemoryLimitMb\" IS NULL AND \"AllowedLanguagesMask\" = 0 AND \"FunctionSpecJson\" IS NULL AND \"StarterCodeJson\" IS NULL AND ((\"ChoiceAnswerRevealPolicy\" IS NULL AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ChoiceAnswerRevealPolicy\" = 1 AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ChoiceAnswerRevealPolicy\" = 2 AND \"ChoiceAnswerRevealAt\" IS NOT NULL)))");
                         });

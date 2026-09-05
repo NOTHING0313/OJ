@@ -37,7 +37,7 @@ export function SeasonProblemLeaderboardPage() {
     return (
       <section className="challenge-page leaderboard-page leaderboard-v2-page">
         <div className="leaderboard-header leaderboard-v2-header">
-          <div><p className="eyebrow">PROBLEM LEADERBOARD</p><h1>单题排行榜</h1></div>
+          <div><h1>单题排行榜</h1></div>
           <Link className="button" to="/leaderboards/users">返回赛季榜</Link>
         </div>
         <div className="empty-state">该题当前不属于进行中或公示中的赛季。</div>
@@ -50,7 +50,6 @@ export function SeasonProblemLeaderboardPage() {
     <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
       <div className="leaderboard-header leaderboard-v2-header">
         <div>
-          <p className="eyebrow">PROBLEM LEADERBOARD</p>
           <h1>{problem.problemTitle}</h1>
           <p>{season.name} · 基础分 {problem.baseScore}</p>
         </div>

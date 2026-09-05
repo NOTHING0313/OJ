@@ -6,6 +6,8 @@ public class Problem
 {
     public Guid Id { get; set; }
 
+    public ProblemDifficulty Difficulty { get; set; } = ProblemDifficulty.Unrated;
+
     public string Title { get; set; } = string.Empty;
 
     /// <summary>

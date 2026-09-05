@@ -97,7 +97,6 @@ export function GlobalUserLeaderboardPage() {
     <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
       <div className="leaderboard-header leaderboard-v2-header">
         <div>
-          <p className="eyebrow">GLOBAL LEADERBOARD</p>
           <h1>全局用户榜单</h1>
           <p>只统计已发布挑战，按总分、完成题数和完成挑战数展示当前排名。</p>
         </div>

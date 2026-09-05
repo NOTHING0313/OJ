@@ -40,7 +40,7 @@ export function ProblemDetailView({ problem, seasonScore, language, languages, i
     <section className="page-section two-column problem-detail-layout ui-v2-page problem-detail-v2-page">
       <article className="problem-content problem-content-v2" data-surface="panel.primary">
         <div className="page-header compact ui-v2-page-header problem-detail-header-v3" data-surface="decoration.pageHeader">
-          <div className="problem-title-block-v3"><p className="eyebrow">PROBLEM</p><h1>{problem.title}</h1><div className="problem-meta-row-v3"><span className="problem-meta-summary-v3">{problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {problem.totalScore} 分</span>{problem.languageTags.map((tag) => <span className="context-chip" key={tag}>{tag}</span>)}</div></div>
+          <div className="problem-title-block-v3"><h1>{problem.title}</h1><div className="problem-meta-row-v3"><span className="problem-meta-summary-v3">{problem.timeLimitMs} ms / {problem.memoryLimitMb} MB / {problem.totalScore} 分</span>{problem.languageTags.map((tag) => <span className="context-chip" key={tag}>{tag}</span>)}</div></div>
           <div className="problem-header-actions-v3">{isAuthenticated && <Link className="button" to={`/submissions/my?problemId=${problem.id}`}>我的提交</Link>}{canManage && <Link className="button" to={`/admin/problems/${problem.id}/test-cases`}>测试用例</Link>}</div>
         </div>
 

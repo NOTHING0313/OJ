@@ -31,6 +31,41 @@ public class ProblemService(
     {
     }
 
+    private static readonly System.Linq.Expressions.Expression<Func<Problem, ProblemListItemDto>> ProblemListProjection = problem => new ProblemListItemDto
+    {
+        Id = problem.Id,
+        Title = problem.Title,
+        Difficulty = problem.Difficulty,
+        ProblemKind = problem.ProblemKind,
+        TimeLimitMs = problem.TimeLimitMs,
+        MemoryLimitMb = problem.MemoryLimitMb,
+        IsPublished = problem.IsPublished,
+        JudgeMode = problem.JudgeMode,
+        AllowedLanguagesMask = problem.AllowedLanguagesMask,
+        CreatedAt = problem.CreatedAt
+    };
+
+    public async Task<Result<PagedResult<ProblemListItemDto>>> QueryProblemsAsync(ProblemQueryRequest request, CancellationToken cancellationToken = default)
+    {
+        var role = await GetVisibilityRoleAsync(cancellationToken);
+        var query = visibilityPolicy.ApplyProblemVisibility(dbContext.Problems.AsNoTracking().Where(problem => !problem.IsDeleted), role);
+        if (!string.IsNullOrWhiteSpace(request.Keyword))
+        {
+            var keyword = request.Keyword.Trim().ToLower();
+            query = query.Where(problem => problem.Title.ToLower().Contains(keyword));
+        }
+        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var page = Math.Clamp(request.Page, 1, Math.Max(1, (int)Math.Ceiling(totalCount / (double)pageSize)));
+        var items = await query.OrderByDescending(problem => problem.CreatedAt).ThenBy(problem => problem.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(ProblemListProjection)
+            .ToListAsync(cancellationToken);
+        var scores = await ProblemScoreQuery.GetTotalsAsync(dbContext, items.Select(problem => problem.Id), cancellationToken);
+        foreach (var item in items) item.TotalScore = scores.GetValueOrDefault(item.Id);
+        return Result<PagedResult<ProblemListItemDto>>.Success(new PagedResult<ProblemListItemDto> { Items = items, TotalCount = totalCount, Page = page, PageSize = pageSize });
+    }
+
     public async Task<Result<IReadOnlyList<ProblemListItemDto>>> GetProblemsAsync(CancellationToken cancellationToken = default)
     {
         var visibilityRole = await GetVisibilityRoleAsync(cancellationToken);
@@ -40,18 +75,7 @@ public class ProblemService(
 
         var problems = await visibilityPolicy.ApplyProblemVisibility(query, visibilityRole)
             .OrderByDescending(problem => problem.CreatedAt)
-            .Select(problem => new ProblemListItemDto
-            {
-                Id = problem.Id,
-                Title = problem.Title,
-                ProblemKind = problem.ProblemKind,
-                TimeLimitMs = problem.TimeLimitMs,
-                MemoryLimitMb = problem.MemoryLimitMb,
-                IsPublished = problem.IsPublished,
-                JudgeMode = problem.JudgeMode,
-                AllowedLanguagesMask = problem.AllowedLanguagesMask,
-                CreatedAt = problem.CreatedAt
-            })
+            .Select(ProblemListProjection)
             .ToListAsync(cancellationToken);
 
         var totalScores = await ProblemScoreQuery.GetTotalsAsync(dbContext, problems.Select(problem => problem.Id), cancellationToken);
@@ -117,6 +141,8 @@ public class ProblemService(
             return Result<ProblemDetailDto>.Failure("Forbidden.");
         }
 
+        if (!Enum.IsDefined(request.Difficulty)) return Result<ProblemDetailDto>.Failure("无效的题目难度。");
+
         var validation = ValidateProblemRequest(request.Title, request.Description, request.InputDescription, request.OutputDescription, request.TimeLimitMs, request.MemoryLimitMb, request.ProblemKind, request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
         if (validation.IsFailure)
         {
@@ -135,6 +161,7 @@ public class ProblemService(
             ProblemKind = request.ProblemKind,
             AuthoringVersion = 1,
             Title = request.Title,
+            Difficulty = request.Difficulty,
             Description = request.Description,
             InputDescription = request.InputDescription,
             OutputDescription = request.OutputDescription,
@@ -228,6 +255,8 @@ public class ProblemService(
             return Result<ProblemDetailDto>.Failure("Choice problems cannot be bound to algorithm challenge tasks.");
         }
 
+        if (request.Difficulty.HasValue && !Enum.IsDefined(request.Difficulty.Value)) return Result<ProblemDetailDto>.Failure("无效的题目难度。");
+
         var validation = ValidateProblemRequest(request.Title, request.Description, request.InputDescription, request.OutputDescription, request.TimeLimitMs, request.MemoryLimitMb, request.ProblemKind, request.JudgeMode, request.AllowedLanguagesMask, request.FunctionSpecJson, request.StarterCodeJson);
         if (validation.IsFailure)
         {
@@ -282,7 +311,8 @@ public class ProblemService(
         var requiresRevision = request.IsPublished
             && (!problem.IsPublished || problem.CurrentJudgeRevisionId is null || judgeDefinitionChanged);
 
-        var metadataChanged = !string.Equals(problem.Title, request.Title, StringComparison.Ordinal)
+        var metadataChanged = problem.Difficulty != (request.Difficulty ?? problem.Difficulty)
+            || !string.Equals(problem.Title, request.Title, StringComparison.Ordinal)
             || !string.Equals(problem.Description, request.Description, StringComparison.Ordinal)
             || !string.Equals(problem.InputDescription, request.InputDescription, StringComparison.Ordinal)
             || !string.Equals(problem.OutputDescription, request.OutputDescription, StringComparison.Ordinal);
@@ -303,6 +333,7 @@ public class ProblemService(
         }
 
         problem.Title = request.Title;
+        problem.Difficulty = request.Difficulty ?? problem.Difficulty;
         problem.Description = request.Description;
         problem.InputDescription = request.InputDescription;
         problem.OutputDescription = request.OutputDescription;
@@ -1379,6 +1410,7 @@ public class ProblemService(
             AuthoringVersion = problem.AuthoringVersion,
             CurrentJudgeRevisionId = problem.CurrentJudgeRevisionId,
             Title = problem.Title,
+            Difficulty = problem.Difficulty,
             Description = problem.Description,
             InputDescription = problem.InputDescription,
             OutputDescription = problem.OutputDescription,

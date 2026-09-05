@@ -277,6 +277,149 @@ public class ProblemMetadataUxTests
         Assert.Equal("Unsupported allowed languages mask.", result.ErrorMessage);
     }
 
+    [Fact]
+    public async Task PagedProblems_SearchesBeforePagingAndPreservesVisibility()
+    {
+        await using var db = CreateDbContext();
+        var ids = SeedProblem(db, JudgeMode.StandardInputOutput, 0);
+        db.Problems.Single().Title = "Visible Alpha";
+        db.Problems.Add(new Problem { Id = Guid.NewGuid(), Title = "Hidden Alpha", IsPublished = false, CreatedByUserId = ids.OwnerId });
+        db.Problems.Add(new Problem { Id = Guid.NewGuid(), Title = "Visible Beta", IsPublished = true, CreatedByUserId = ids.OwnerId });
+        db.TestCases.Add(TestCase(ids.ProblemId, TestCaseVisibility.Hidden, 75, "case"));
+        await db.SaveChangesAsync();
+        var service = new ProblemService(db, new TestCurrentUser(ids.AnswererId, UserRole.Answerer));
+        var result = (await service.QueryProblemsAsync(new ProblemQueryRequest { Keyword = "ALPHA", Page = int.MaxValue, PageSize = 1 })).Value!;
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(1, result.Page);
+        Assert.Equal(ids.ProblemId, Assert.Single(result.Items).Id);
+        Assert.Equal(75, result.Items[0].TotalScore);
+        var empty = (await service.QueryProblemsAsync(new ProblemQueryRequest { Keyword = "missing", Page = -1, PageSize = 500 })).Value!;
+        Assert.Empty(empty.Items);
+        Assert.Equal(1, empty.Page);
+        Assert.Equal(100, empty.PageSize);
+        var root = new ProblemService(db, new TestCurrentUser(ids.OwnerId, UserRole.ProblemSetter));
+        var all = (await root.QueryProblemsAsync(new ProblemQueryRequest { Keyword = "alpha", PageSize = 1 })).Value!;
+        Assert.Equal(2, all.TotalCount);
+        var second = (await root.QueryProblemsAsync(new ProblemQueryRequest { Keyword = "alpha", PageSize = 1, Page = 2 })).Value!;
+        Assert.NotEqual(Assert.Single(all.Items).Id, Assert.Single(second.Items).Id);
+    }
+
+    [Fact]
+    public async Task SubmissionKindFilter_IsAppliedBeforePagingAndKeepsOwnerScope()
+    {
+        await using var db = CreateDbContext();
+        var ids = SeedProblem(db, JudgeMode.StandardInputOutput, 0);
+        db.Submissions.AddRange(
+            new Submission { Id = Guid.NewGuid(), ProblemId = ids.ProblemId, UserId = ids.AnswererId, SubmissionKind = SubmissionKind.Code, Language = JudgeLanguage.Cpp17 },
+            new Submission { Id = Guid.NewGuid(), ProblemId = ids.ProblemId, UserId = ids.AnswererId, SubmissionKind = SubmissionKind.Choice, ProblemJudgeRevisionId = db.ProblemJudgeRevisions.Single().Id, ChoiceQuestionResults = [new SubmissionChoiceQuestionResult { Id = Guid.NewGuid(), Score = 5 }] },
+            new Submission { Id = Guid.NewGuid(), ProblemId = ids.ProblemId, UserId = ids.OwnerId, SubmissionKind = SubmissionKind.Choice });
+        await db.SaveChangesAsync();
+        var result = (await CreateSubmissionService(db, ids.AnswererId).QuerySubmissionsAsync(new SubmissionQueryRequest { SubmissionKind = SubmissionKind.Choice, PageSize = 1 })).Value!;
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(ids.AnswererId, Assert.Single(result.Items).UserId);
+        Assert.Equal(5, result.Items[0].ChoiceScore);
+    }
+
+    [Fact]
+    public async Task PagedProblems_LargeCatalogKeepsBoundedPagesAndFindsLateMatches()
+    {
+        await using var db = CreateDbContext();
+        var users = SeedUsers(db);
+        db.Problems.AddRange(Enumerable.Range(0, 5000).Select(index => new Problem
+        {
+            Id = Guid.NewGuid(), Title = $"Catalog {index:D5}", Description = "body",
+            InputDescription = "", OutputDescription = "", IsPublished = true,
+            CreatedByUserId = users.OwnerId, CreatedAt = BaseTime.AddSeconds(index)
+        }));
+        await db.SaveChangesAsync();
+        var service = new ProblemService(db, new TestCurrentUser(users.AnswererId, UserRole.Answerer));
+        var first = (await service.QueryProblemsAsync(new ProblemQueryRequest { PageSize = 20 })).Value!;
+        var last = (await service.QueryProblemsAsync(new ProblemQueryRequest { PageSize = 20, Page = 250 })).Value!;
+        Assert.Equal(5000, first.TotalCount);
+        Assert.Equal(20, first.Items.Count);
+        Assert.Equal(20, last.Items.Count);
+        Assert.Equal("Catalog 04999", first.Items[0].Title);
+        Assert.Equal("Catalog 00000", last.Items[^1].Title);
+        var searched = (await service.QueryProblemsAsync(new ProblemQueryRequest { Keyword = "00001", PageSize = 20 })).Value!;
+        Assert.Equal("Catalog 00001", Assert.Single(searched.Items).Title);
+        Assert.Equal(1, searched.TotalCount);
+    }
+
+    [Theory]
+    [InlineData(ProblemDifficulty.Unrated)]
+    [InlineData(ProblemDifficulty.Easy)]
+    [InlineData(ProblemDifficulty.Medium)]
+    [InlineData(ProblemDifficulty.Hard)]
+    public async Task Difficulty_CreateRoundTripsThroughDetailAndBothLists(ProblemDifficulty difficulty)
+    {
+        await using var db = CreateDbContext();
+        var users = SeedUsers(db);
+        var service = new ProblemService(db, new TestCurrentUser(users.OwnerId, UserRole.ProblemSetter));
+        var result = await service.CreateProblemAsync(new CreateProblemRequest
+        {
+            Title = "Graded", Description = "body", InputDescription = "in", OutputDescription = "out",
+            TimeLimitMs = 1000, MemoryLimitMb = 128, Difficulty = difficulty
+        });
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal(difficulty, result.Value!.Difficulty);
+        Assert.Equal(difficulty, (await service.GetProblemAuthoringAsync(result.Value.Id)).Value!.Difficulty);
+        Assert.Equal(difficulty, Assert.Single((await service.GetProblemsAsync()).Value!).Difficulty);
+        Assert.Equal(difficulty, Assert.Single((await service.QueryProblemsAsync(new ProblemQueryRequest())).Value!.Items).Difficulty);
+    }
+
+    [Fact]
+    public async Task Difficulty_UpdatePreservesJudgeRevisionAndOldClientOmission()
+    {
+        await using var db = CreateDbContext();
+        var ids = SeedProblem(db, JudgeMode.StandardInputOutput, 0);
+        db.TestCases.Add(TestCase(ids.ProblemId, TestCaseVisibility.Sample, 100, "1"));
+        await db.SaveChangesAsync();
+        var revision = db.Problems.Single().CurrentJudgeRevisionId;
+        var service = new ProblemService(db, new TestCurrentUser(ids.OwnerId, UserRole.ProblemSetter));
+        var request = DifficultyUpdate(ProblemDifficulty.Hard, 1);
+        var updated = await service.UpdateProblemAsync(ids.ProblemId, request);
+        Assert.True(updated.IsSuccess, updated.ErrorMessage);
+        Assert.Equal(ProblemDifficulty.Hard, updated.Value!.Difficulty);
+        Assert.Equal(2, updated.Value.AuthoringVersion);
+        Assert.Equal(revision, updated.Value.CurrentJudgeRevisionId);
+        Assert.Single(db.ProblemJudgeRevisions);
+        request.Difficulty = null; request.ExpectedAuthoringVersion = 2;
+        var omitted = await service.UpdateProblemAsync(ids.ProblemId, request);
+        Assert.Equal(ProblemDifficulty.Hard, omitted.Value!.Difficulty);
+        Assert.Equal(2, omitted.Value.AuthoringVersion);
+        request.Difficulty = ProblemDifficulty.Unrated;
+        var cleared = await service.UpdateProblemAsync(ids.ProblemId, request);
+        Assert.Equal(ProblemDifficulty.Unrated, cleared.Value!.Difficulty);
+        Assert.Equal(3, cleared.Value.AuthoringVersion);
+        Assert.Equal(revision, cleared.Value.CurrentJudgeRevisionId);
+    }
+
+    [Fact]
+    public async Task Difficulty_RejectsInvalidValuesAndJudgeOnlyCollaborator()
+    {
+        await using var db = CreateDbContext();
+        var ids = SeedProblem(db, JudgeMode.StandardInputOutput, 0);
+        var service = new ProblemService(db, new TestCurrentUser(ids.OwnerId, UserRole.ProblemSetter));
+        var invalid = await service.UpdateProblemAsync(ids.ProblemId, DifficultyUpdate((ProblemDifficulty)99, 1));
+        Assert.True(invalid.IsFailure);
+        Assert.Equal(ProblemDifficulty.Unrated, db.Problems.Single().Difficulty);
+        var create = await service.CreateProblemAsync(new CreateProblemRequest { Difficulty = (ProblemDifficulty)(-1) });
+        Assert.True(create.IsFailure);
+        db.ProblemCollaborators.Add(new ProblemCollaborator { Id = Guid.NewGuid(), ProblemId = ids.ProblemId, UserId = ids.AnswererId, CanManageTestCases = true });
+        await db.SaveChangesAsync();
+        var judgeOnly = new ProblemService(db, new TestCurrentUser(ids.AnswererId, UserRole.Answerer));
+        var forbidden = await judgeOnly.UpdateProblemAsync(ids.ProblemId, DifficultyUpdate(ProblemDifficulty.Easy, 1));
+        Assert.True(forbidden.IsFailure);
+        Assert.Equal("Forbidden.", forbidden.ErrorMessage);
+        Assert.Equal(ProblemDifficulty.Unrated, db.Problems.Single().Difficulty);
+    }
+
+    private static UpdateProblemRequest DifficultyUpdate(ProblemDifficulty? difficulty, long version) => new()
+    {
+        Title = "Problem", Description = "Description", InputDescription = "Input", OutputDescription = "Output",
+        TimeLimitMs = 1000, MemoryLimitMb = 128, IsPublished = true, Difficulty = difficulty, ExpectedAuthoringVersion = version
+    };
+
     private static OnlineJudgeDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<OnlineJudgeDbContext>()

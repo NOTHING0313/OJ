@@ -149,9 +149,7 @@ export function AdminChallengeListPage() {
     <section className="challenge-page management-v2-page admin-challenge-v2-page">
       <div className="leaderboard-header management-header">
         <div>
-          <p className="eyebrow">CHALLENGE ADMIN</p>
           <h1>挑战管理</h1>
-          <p>维护挑战、棋盘任务、开放时间与发布状态。</p>
         </div>
         <div className="management-header-actions">
           <span className="management-total">共 {manageableChallenges.length} 个挑战</span>

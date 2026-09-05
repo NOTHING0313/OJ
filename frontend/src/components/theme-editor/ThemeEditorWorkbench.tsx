@@ -444,7 +444,7 @@ export function ThemeEditorWorkbench() {
     <ThemeEditorGestureContext.Provider value={gestureControls}>
     <section className={`theme-editor-page${focusMode ? " focus-mode" : ""}`}>
       <header className="theme-editor-page-header">
-        <div><span>站点外观 / 可视化工作台</span><h1>可视化主题编辑器</h1><p>选择编辑区域 → 实时预览 → 撤销或对比 → 保存主题 → 明确应用</p></div>
+        <div><h1>可视化主题编辑器</h1></div>
         <div className={`theme-editor-save-state${dirty ? " dirty" : ""}`}><span />{dirty ? "有未保存修改" : "当前草稿已保存"}</div>
       </header>
 
@@ -471,7 +471,7 @@ export function ThemeEditorWorkbench() {
       </div>
 
       <section className="theme-library-panel" aria-label="主题库">
-        <header><div><span>主题库</span><h2>已保存主题</h2><p>“载入预览”只改变草稿；只有“应用全站”才会改变网站主题。</p></div><div><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="搜索主题名称..." aria-label="搜索主题" /><select value={presetSort} onChange={(event) => setPresetSort(event.target.value as "updated" | "name")} aria-label="主题排序"><option value="updated">最近更新</option><option value="name">按名称</option></select><label className="button">{libraryBusy ? "正在检查..." : "导入主题包"}<input type="file" accept=".zip,application/zip" disabled={libraryBusy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void prepareImportPreset(file); event.currentTarget.value = ""; }} /></label><button className="button primary" type="button" disabled={libraryBusy} onClick={() => setSavePresetDialog({ continuation: null })}>另存为主题</button></div></header>
+        <header><div><h2>已保存主题</h2><p>“载入预览”只改变草稿；只有“应用全站”才会改变网站主题。</p></div><div><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder="搜索主题名称..." aria-label="搜索主题" /><select value={presetSort} onChange={(event) => setPresetSort(event.target.value as "updated" | "name")} aria-label="主题排序"><option value="updated">最近更新</option><option value="name">按名称</option></select><label className="button">{libraryBusy ? "正在检查..." : "导入主题包"}<input type="file" accept=".zip,application/zip" disabled={libraryBusy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void prepareImportPreset(file); event.currentTarget.value = ""; }} /></label><button className="button primary" type="button" disabled={libraryBusy} onClick={() => setSavePresetDialog({ continuation: null })}>另存为主题</button></div></header>
         <div className="theme-library-grid">
           {visiblePresets.map((preset) => <article key={preset.id ?? "default"} className={selectedPresetId !== undefined && selectedPresetId === preset.id ? "selected" : ""}>
             <div className="theme-library-swatch" style={{ background: `linear-gradient(135deg, ${preset.appearance.theme.panelColor}, ${preset.appearance.theme.accentColor})` }} aria-hidden="true" />

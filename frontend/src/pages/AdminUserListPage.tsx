@@ -157,9 +157,7 @@ export function AdminUserListPage() {
     <section className="challenge-page admin-user-page admin-user-v2-page">
       <div className="leaderboard-header admin-user-header">
         <div>
-          <p className="eyebrow">ROOT ADMIN</p>
           <h1>用户管理</h1>
-          <p>管理用户角色、账号状态与访问权限。</p>
         </div>
         <span className="admin-user-total">共 {totalCount} 名用户</span>
       </div>
@@ -250,6 +248,7 @@ export function AdminUserListPage() {
                     <td>
                       <div className="admin-user-row-actions">
                         <Link className="button admin-user-view-link" to={`/admin/users/${user.id}/profile`}>查看</Link>
+                        <Link className="button" to={`/admin/leaderboard-seasons/users/${user.id}`}>赛季成绩</Link>
                         {user.role === 3 ? (
                           <span className="admin-user-root-note">Root 账号不可管理</span>
                         ) : (

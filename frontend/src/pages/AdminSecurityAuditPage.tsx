@@ -56,7 +56,7 @@ export function AdminSecurityAuditPage() {
   return (
     <section className="admin-security-audit-page">
       <header className="leaderboard-header">
-        <div><p className="eyebrow">ROOT ADMIN</p><h1>安全审计</h1><p>查看高风险管理操作的不可变审计记录。</p></div>
+        <div><h1>安全审计</h1></div>
         <span className="submission-total">共 {totalCount} 条记录</span>
       </header>
 
@@ -81,7 +81,7 @@ export function AdminSecurityAuditPage() {
 
       <div className="admin-user-pagination"><button className="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button><span>第 {page} / {totalPages} 页</span><button className="button" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>下一页</button></div>
 
-      {selected && <div className="security-audit-backdrop" role="presentation" onMouseDown={() => setSelected(null)}><div className="security-audit-detail" role="dialog" aria-modal="true" aria-label="安全审计详情" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">AUDIT DETAIL</p><h2>审计详情</h2></div><button className="button" type="button" onClick={() => setSelected(null)}>关闭</button></header><dl><dt>时间</dt><dd>{formatDate(selected.createdAt)}</dd><dt>操作者</dt><dd>{selected.actorNameSnapshot ?? "系统"}</dd><dt>操作</dt><dd>{selected.action}</dd><dt>目标</dt><dd>{selected.targetType}{selected.targetId ? ` · ${selected.targetId}` : ""}</dd><dt>结果</dt><dd>{resultLabel(selected.result)}</dd><dt>客户端 IP</dt><dd>{selected.clientIp ?? "未记录"}</dd><dt>安全元数据</dt><dd><pre>{formatMetadata(selected.metadataJson)}</pre></dd></dl></div></div>}
+      {selected && <div className="security-audit-backdrop" role="presentation" onMouseDown={() => setSelected(null)}><div className="security-audit-detail" role="dialog" aria-modal="true" aria-label="安全审计详情" onMouseDown={(event) => event.stopPropagation()}><header><div><h2>审计详情</h2></div><button className="button" type="button" onClick={() => setSelected(null)}>关闭</button></header><dl><dt>时间</dt><dd>{formatDate(selected.createdAt)}</dd><dt>操作者</dt><dd>{selected.actorNameSnapshot ?? "系统"}</dd><dt>操作</dt><dd>{selected.action}</dd><dt>目标</dt><dd>{selected.targetType}{selected.targetId ? ` · ${selected.targetId}` : ""}</dd><dt>结果</dt><dd>{resultLabel(selected.result)}</dd><dt>客户端 IP</dt><dd>{selected.clientIp ?? "未记录"}</dd><dt>安全元数据</dt><dd><pre>{formatMetadata(selected.metadataJson)}</pre></dd></dl></div></div>}
     </section>
   );
 }

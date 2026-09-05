@@ -5,7 +5,7 @@ using OnlineJudge.Application.Leaderboards.Services;
 namespace OnlineJudge.Api.Controllers;
 
 [ApiController]
-[AllowAnonymous]
+[Authorize(Policy = "RequireRoot")]
 [Route("api/leaderboards/season")]
 public class LeaderboardSeasonsController(ILeaderboardSeasonService seasonService) : ControllerBase
 {
@@ -16,6 +16,7 @@ public class LeaderboardSeasonsController(ILeaderboardSeasonService seasonServic
         return result.IsFailure ? BadRequest(result.ErrorMessage) : Ok(result.Value);
     }
 
+    [AllowAnonymous]
     [HttpGet("/api/leaderboard-seasons/current/summary")]
     public async Task<IActionResult> GetCurrentSummary(CancellationToken cancellationToken)
     {

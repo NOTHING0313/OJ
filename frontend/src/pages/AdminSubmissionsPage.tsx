@@ -17,12 +17,13 @@ import { parseLanguage, parseStatus } from "../utils/submissionFilters";
 const pageSize = 20;
 
 export function AdminSubmissionsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const problemId = searchParams.get("problemId") ?? undefined;
   const [items, setItems] = useState<SubmissionQueryItem[]>([]);
   const [userKeyword, setUserKeyword] = useState("");
   const [problemKeyword, setProblemKeyword] = useState("");
   const [status, setStatus] = useState<JudgeStatus | "">("");
+  const [submissionKind, setSubmissionKind] = useState<1 | 2 | "">("");
   const [language, setLanguage] = useState<JudgeLanguage | "">("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -31,41 +32,45 @@ export function AdminSubmissionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadSubmissions = useCallback(async () => {
+  const loadSubmissions = useCallback(async (signal: AbortSignal) => {
     try {
       setIsLoading(true);
       const result = await querySubmissions({
         problemId,
         userKeyword,
         problemKeyword,
+        submissionKind,
         status,
         language,
         from: toIsoString(from),
         to: toIsoString(to),
         page,
         pageSize
-      });
+      }, signal);
+      if (signal.aborted) return;
       setItems(result.items);
       setTotalCount(result.totalCount);
       setError(null);
     } catch (err) {
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : "提交管理列表加载失败");
     } finally {
-      setIsLoading(false);
+      if (!signal.aborted) setIsLoading(false);
     }
-  }, [problemId, userKeyword, problemKeyword, status, language, from, to, page]);
+  }, [submissionKind, problemId, userKeyword, problemKeyword, status, language, from, to, page]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const handle = window.setTimeout(() => {
-      void loadSubmissions();
+      void loadSubmissions(controller.signal);
     }, 180);
 
-    return () => window.clearTimeout(handle);
+    return () => { controller.abort(); window.clearTimeout(handle); };
   }, [loadSubmissions]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const filtersAreDefault = !userKeyword && !problemKeyword && status === "" && language === "" && !from && !to;
+  const filtersAreDefault = !problemId && submissionKind === "" && !userKeyword && !problemKeyword && status === "" && language === "" && !from && !to;
 
   function resetFilters(update: () => void) {
     update();
@@ -73,6 +78,8 @@ export function AdminSubmissionsPage() {
   }
 
   function resetAllFilters() {
+    setSearchParams(current => { const next = new URLSearchParams(current); next.delete("problemId"); return next; });
+    setSubmissionKind("");
     setUserKeyword("");
     setProblemKeyword("");
     setStatus("");
@@ -86,14 +93,14 @@ export function AdminSubmissionsPage() {
     <section className="challenge-page submissions-page submission-v2-page admin-submissions-v2-page">
       <div className="leaderboard-header submission-header">
         <div>
-          <p className="eyebrow">ROOT ADMIN</p>
           <h1>提交管理</h1>
-          <p>查看全站提交记录，并按用户、题目、状态、语言和时间范围筛选。</p>
         </div>
         <span className="submission-total">共 {totalCount} 条提交</span>
       </div>
 
       {error && <div className="alert error">{error}</div>}
+
+      {problemId && <div className="quiet-note">已限定当前题目 <button className="button" type="button" onClick={() => { setSearchParams(current => { const next = new URLSearchParams(current); next.delete("problemId"); return next; }); setPage(1); }}>清除题目筛选</button></div>}
 
       <div className="submission-toolbar submission-toolbar-admin">
         <label className="submission-filter-user">
@@ -116,9 +123,15 @@ export function AdminSubmissionsPage() {
             <StatusOptions />
           </select>
         </label>
+        <label>
+          <span>题型</span>
+          <select value={submissionKind} onChange={event => resetFilters(() => { const kind = event.target.value === "" ? "" : Number(event.target.value) as 1 | 2; setSubmissionKind(kind); if (kind === 2) setLanguage(""); })}>
+            <option value="">全部题型</option><option value="1">编程题</option><option value="2">选择题</option>
+          </select>
+        </label>
         <label className="submission-filter-language">
           <span>语言</span>
-          <select value={language} onChange={(event) => resetFilters(() => setLanguage(parseLanguage(event.target.value)))}>
+          <select disabled={submissionKind === 2} value={language} onChange={(event) => resetFilters(() => setLanguage(parseLanguage(event.target.value)))}>
             <option value="">语言：全部</option>
             <LanguageOptions />
           </select>

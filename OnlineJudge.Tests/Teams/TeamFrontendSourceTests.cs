@@ -64,7 +64,7 @@ public class TeamFrontendSourceTests
         var styles = File.ReadAllText(Path.Combine(root, "frontend", "src", "styles.css"));
 
         Assert.Contains("team-onboarding-page", page);
-        Assert.Contains("与队友协作挑战、共享项目与代码历史。", page);
+        Assert.Contains("<h1>战队</h1>", page);
         Assert.Contains("if (isCreating) return", page);
         Assert.Contains("正在创建...", page);
         Assert.Contains("team-field-error", page);

@@ -13,7 +13,7 @@ export function LeaderboardSeasonHistoryPage() {
 
   return <section className="challenge-page leaderboard-page leaderboard-v2-page season-operations-page">
     <div className="leaderboard-header leaderboard-v2-header">
-      <div><p className="eyebrow">SEASON HISTORY</p><h1>历史赛季</h1><p>查看已经归档并永久保留的最终排行榜。</p></div>
+      <div><h1>历史赛季</h1></div>
       <Link className="button" to="/leaderboards/users">当前赛季</Link>
     </div>
     {error ? <div className="alert error">{error}</div> : seasons.length === 0 ? <div className="empty-state">暂无已归档赛季</div> :

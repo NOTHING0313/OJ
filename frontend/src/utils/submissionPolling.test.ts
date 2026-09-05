@@ -9,7 +9,7 @@ afterEach(() => vi.useRealTimers());
 describe("submission refresh lifecycle", () => {
   it("recovers from a network failure and stops once judging completes", async () => {
     vi.useFakeTimers();
-    const load = vi.fn().mockRejectedValueOnce(new TypeError("offline")).mockResolvedValueOnce({ finishedAt: null }).mockResolvedValue(completed);
+    const load = vi.fn().mockRejectedValueOnce(new ApiError("网络连接中断", 0, "NETWORK_ERROR")).mockResolvedValueOnce({ finishedAt: null }).mockResolvedValue(completed);
     const result = vi.fn();
     const error = vi.fn();
     const stop = pollSubmission(load, result, error);

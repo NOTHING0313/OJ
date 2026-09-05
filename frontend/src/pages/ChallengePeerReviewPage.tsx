@@ -70,7 +70,7 @@ export function ChallengePeerReviewPage() {
   return (
     <section className="challenge-page ui-v2-page editor-v2-page">
       <div className="leaderboard-header ui-v2-page-header">
-        <div><p className="eyebrow">TEAM PEER REVIEW</p><h1>战队项目互评</h1><p>冻结阵容共享一份草稿；正式提交后不可修改。</p></div>
+        <div><h1>战队项目互评</h1><p>冻结阵容共享一份草稿；正式提交后不可修改。</p></div>
         <Link className="button" to={`/challenges/${challengeId}`}>返回挑战</Link>
       </div>
       {workspace.peerReviewEndAt && <div className="quiet-note">互评截止：{formatDate(workspace.peerReviewEndAt)}</div>}
@@ -84,7 +84,6 @@ export function ChallengePeerReviewPage() {
       ) : (
         <>
           <section className="admin-panel">
-            <p className="eyebrow">REVIEW TARGET</p>
             <h2>{workspace.targetTeamName}</h2>
             <p>{workspace.targetProjectName}</p>
             <span className="context-chip">

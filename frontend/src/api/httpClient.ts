@@ -9,9 +9,24 @@ export class ApiError extends Error {
     public readonly errorCode?: string,
     public readonly retryAfterSeconds?: number
   ) {
-    super(message);
+    super(localizeApiError(message, status));
     this.name = "ApiError";
   }
+}
+
+function localizeApiError(message: string, status: number): string {
+  if (/[\u3400-\u9fff]/.test(message)) return message;
+  const messages: Record<number, string> = {
+    400: "请求内容有误，请检查填写内容后重试。",
+    401: "登录已失效，请重新登录。",
+    403: "没有权限执行此操作，请返回或联系管理员。",
+    404: "内容不存在或已被删除，请返回列表刷新。",
+    409: "内容已发生变化，请刷新后重试。",
+    413: "提交内容过大，请缩小文件或内容后重试。",
+    429: "操作过于频繁，请稍后重试。"
+  };
+  if (message.trim() === "Slug already exists.") return "Slug 已被使用。";
+  return messages[status] ?? (status >= 500 ? "服务暂时不可用，请稍后重试。" : "请求失败，请稍后重试。");
 }
 
 export interface ApiRequestOptions extends RequestInit {
@@ -30,6 +45,7 @@ const apiBusinessMessages: Record<string, string> = {
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (!(error instanceof Error)) return fallback;
   if (error instanceof ApiError && error.status === 429) return error.message;
+  if (error instanceof ApiError) return error.message;
   return apiBusinessMessages[error.message.trim()] ?? fallback;
 }
 
@@ -49,31 +65,48 @@ export async function request<T>(path: string, options: ApiRequestOptions = {}):
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await apiFetch(`${baseUrl}${path}`, {
-    ...fetchOptions,
-    headers
-  });
+  const response = await requestResponse(path, { ...fetchOptions, headers, suppressAuthenticationHandler });
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await readBody(() => response.text(), options.signal);
+
+  if (!text) {
+    return undefined as T;
+  }
+
+  try { return JSON.parse(text) as T; }
+  catch { throw new ApiError("服务器返回了无法识别的数据，请稍后重试。", response.status, "INVALID_RESPONSE"); }
+}
+
+async function requestResponse(path: string, options: ApiRequestOptions): Promise<Response> {
+  const { suppressAuthenticationHandler = false, ...fetchOptions } = options;
+  const response = await apiFetch(`${baseUrl}${path}`, fetchOptions);
   if (!response.ok) {
-    const error = await readApiError(response);
+    const error = await readApiError(response, options.signal);
     if (response.status === 401 && error.errorCode?.startsWith("AUTH_") && !suppressAuthenticationHandler && !authenticationErrorHandled && authenticationErrorHandler) {
       authenticationErrorHandled = true;
       authenticationErrorHandler(error);
     }
     throw error;
   }
+  return response;
+}
 
-  if (response.status === 204) {
-    return undefined as T;
+export async function requestFile(path: string, options: ApiRequestOptions = {}): Promise<{ blob: Blob; headers: Headers }> {
+  const response = await requestResponse(path, options);
+  const blob = await readBody(() => response.blob(), options.signal);
+  return { blob, headers: response.headers };
+}
+
+async function readBody<T>(read: () => Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  try { return await read(); }
+  catch (error) {
+    if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+    throw new ApiError("网络连接中断，请检查网络后重试。", 0, "NETWORK_ERROR");
   }
-
-  const text = await response.text();
-
-  if (!text) {
-    return undefined as T;
-  }
-
-  return JSON.parse(text) as T;
 }
 
 export function apiFetch(input: RequestInfo | URL, options: RequestInit = {}) {
@@ -85,11 +118,11 @@ export function apiFetch(input: RequestInfo | URL, options: RequestInit = {}) {
     headers.set(csrfHeaderName, csrfToken);
   }
 
-  return fetch(input, {
+  return readBody(() => fetch(input, {
     ...options,
     credentials: "same-origin",
     headers
-  });
+  }), options.signal);
 }
 
 function isUnsafeMethod(method: string) {
@@ -103,8 +136,8 @@ function readCookie(name: string): string | null {
   return item ? decodeURIComponent(item.slice(prefix.length)) : null;
 }
 
-async function readApiError(response: Response): Promise<ApiError> {
-  const text = await response.text();
+async function readApiError(response: Response, signal?: AbortSignal | null): Promise<ApiError> {
+  const text = await readBody(() => response.text(), signal);
 
   if (!text) {
     return new ApiError(response.statusText || `Request failed with status ${response.status}`, response.status);
@@ -123,7 +156,7 @@ async function readApiError(response: Response): Promise<ApiError> {
       const retryAfterSeconds = typeof payload.retryAfterSeconds === "number" && Number.isFinite(payload.retryAfterSeconds)
         ? Math.max(0, Math.ceil(payload.retryAfterSeconds))
         : undefined;
-      const displayMessage = typeof message === "string" ? message : `Request failed with status ${response.status}`;
+      const displayMessage = localizeApiError(typeof message === "string" ? message : response.statusText, response.status);
       return new ApiError(
         response.status === 429 && retryAfterSeconds
           ? `${displayMessage} 请在 ${retryAfterSeconds} 秒后重试。`

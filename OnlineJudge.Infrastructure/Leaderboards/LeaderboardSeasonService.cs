@@ -38,6 +38,8 @@ public sealed class LeaderboardSeasonService(
 
     public async Task<Result<SeasonLeaderboardDto>> GetCurrentLeaderboardAsync(CancellationToken cancellationToken = default)
     {
+        var access = await RequireRootAsync(cancellationToken);
+        if (access.IsFailure) return Result<SeasonLeaderboardDto>.Failure(access.ErrorMessage!);
         var season = await LoadCurrentSeasonAsync(cancellationToken);
         if (season is null || !season.Boards.Any(board => board.BoardType == LeaderboardSeasonBoardType.Global))
         {
@@ -102,7 +104,7 @@ public sealed class LeaderboardSeasonService(
 
     public async Task<Result<SeasonLeaderboardDto>> GetCurrentAuditLeaderboardAsync(CancellationToken cancellationToken = default)
     {
-        var userResult = await RequireProblemSetterAsync(cancellationToken);
+        var userResult = await RequireRootAsync(cancellationToken);
         if (userResult.IsFailure) return Result<SeasonLeaderboardDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
 
         var season = await LoadCurrentSeasonAsync(cancellationToken);
@@ -117,6 +119,8 @@ public sealed class LeaderboardSeasonService(
         Guid problemId,
         CancellationToken cancellationToken = default)
     {
+        var access = await RequireRootAsync(cancellationToken);
+        if (access.IsFailure) return Result<SeasonProblemLeaderboardDto>.Failure(access.ErrorMessage!);
         var season = await LoadCurrentSeasonAsync(cancellationToken);
         if (season is null || !season.Boards.Any(board => board.BoardType == LeaderboardSeasonBoardType.Global))
         {
@@ -498,6 +502,8 @@ public sealed class LeaderboardSeasonService(
 
     public async Task<Result<IReadOnlyList<LeaderboardSeasonHistorySummaryDto>>> GetHistoryAsync(CancellationToken cancellationToken = default)
     {
+        var access = await RequireRootAsync(cancellationToken);
+        if (access.IsFailure) return Result<IReadOnlyList<LeaderboardSeasonHistorySummaryDto>>.Failure(access.ErrorMessage!);
         var viewer = await identityService.GetViewerAsync(cancellationToken);
         var seasons = await dbContext.LeaderboardSeasons.AsNoTracking()
             .Where(season => season.Status == LeaderboardSeasonStatus.Archived)
@@ -525,6 +531,8 @@ public sealed class LeaderboardSeasonService(
 
     public async Task<Result<LeaderboardSeasonArchiveDto>> GetHistoryAsync(Guid seasonId, CancellationToken cancellationToken = default)
     {
+        var access = await RequireRootAsync(cancellationToken);
+        if (access.IsFailure) return Result<LeaderboardSeasonArchiveDto>.Failure(access.ErrorMessage!);
         var season = await LoadSeasonAsync(seasonId, cancellationToken);
         if (season is null || season.Status != LeaderboardSeasonStatus.Archived)
         {
@@ -540,13 +548,27 @@ public sealed class LeaderboardSeasonService(
         var userResult = await RequireAnswererAsync(cancellationToken);
         if (userResult.IsFailure) return Result<LeaderboardSeasonPersonalDto>.Failure(userResult.ErrorMessage ?? "Forbidden.");
 
+        return await GetCurrentPersonalCoreAsync(userResult.Value!.Id, cancellationToken);
+    }
+
+    public async Task<Result<LeaderboardSeasonPersonalDto>> GetUserCurrentPersonalAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var access = await RequireRootAsync(cancellationToken);
+        if (access.IsFailure) return Result<LeaderboardSeasonPersonalDto>.Failure(access.ErrorMessage!);
+        if (!await dbContext.Users.AnyAsync(user => user.Id == userId, cancellationToken))
+            return Result<LeaderboardSeasonPersonalDto>.Failure("User not found.");
+        return await GetCurrentPersonalCoreAsync(userId, cancellationToken);
+    }
+
+    private async Task<Result<LeaderboardSeasonPersonalDto>> GetCurrentPersonalCoreAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var userName = await dbContext.Users.Where(user => user.Id == userId).Select(user => user.UserName).SingleAsync(cancellationToken);
         var season = await LoadCurrentSeasonAsync(cancellationToken);
         if (season is null || !season.Boards.Any(board => board.BoardType == LeaderboardSeasonBoardType.Global))
         {
-            return Result<LeaderboardSeasonPersonalDto>.Success(new LeaderboardSeasonPersonalDto());
+            return Result<LeaderboardSeasonPersonalDto>.Success(new LeaderboardSeasonPersonalDto { UserId = userId, UserName = userName });
         }
 
-        var userId = userResult.Value!.Id;
         var snapshots = await dbContext.LeaderboardSeasonRankSnapshots.AsNoTracking()
             .Where(snapshot => snapshot.SeasonId == season.Id && snapshot.UserId == userId)
             .OrderBy(snapshot => snapshot.RecordedAt)
@@ -595,6 +617,8 @@ public sealed class LeaderboardSeasonService(
 
         return Result<LeaderboardSeasonPersonalDto>.Success(new LeaderboardSeasonPersonalDto
         {
+            UserId = userId,
+            UserName = userName,
             Season = ToDto(season),
             CurrentRank = currentRank,
             TotalParticipants = season.Status == LeaderboardSeasonStatus.Public
@@ -626,8 +650,22 @@ public sealed class LeaderboardSeasonService(
         var userResult = await RequireAnswererAsync(cancellationToken);
         if (userResult.IsFailure) return Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>.Failure(userResult.ErrorMessage ?? "Forbidden.");
 
+        return await GetPersonalHistoryCoreAsync(userResult.Value!.Id, cancellationToken);
+    }
+
+    public async Task<Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>> GetUserPersonalHistoryAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var access = await RequireRootAsync(cancellationToken);
+        if (access.IsFailure) return Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>.Failure(access.ErrorMessage!);
+        if (!await dbContext.Users.AnyAsync(user => user.Id == userId, cancellationToken))
+            return Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>.Failure("User not found.");
+        return await GetPersonalHistoryCoreAsync(userId, cancellationToken);
+    }
+
+    private async Task<Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>> GetPersonalHistoryCoreAsync(Guid userId, CancellationToken cancellationToken)
+    {
         var entries = await dbContext.LeaderboardSeasonArchiveEntries.AsNoTracking()
-            .Where(entry => entry.UserId == userResult.Value!.Id && entry.Season!.Status == LeaderboardSeasonStatus.Archived)
+            .Where(entry => entry.UserId == userId && entry.Season!.Status == LeaderboardSeasonStatus.Archived)
             .Include(entry => entry.Season)
             .Include(entry => entry.ProblemScores)
             .OrderByDescending(entry => entry.Season!.ArchivedAt)

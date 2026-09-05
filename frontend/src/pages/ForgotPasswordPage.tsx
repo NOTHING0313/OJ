@@ -77,7 +77,6 @@ export function ForgotPasswordPage() {
         </div>
         <div className="page-header auth-v2-header">
           <div>
-            <p className="eyebrow">ACCOUNT RECOVERY</p>
             <h1>找回密码</h1>
             <p>通过账号邮箱接收验证码并重置密码。若邮箱存在，验证码将会发送。</p>
           </div>

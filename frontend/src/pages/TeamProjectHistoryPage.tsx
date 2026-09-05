@@ -47,7 +47,7 @@ export function TeamProjectHistoryPage() {
   return (
     <section className="page-section ui-v2-page team-page team-history-page">
       <div className="page-header">
-        <div><p className="eyebrow">TEAM PROJECT</p><h1>{project?.name ?? "项目提交历史"}</h1><p>{team?.name ?? "战队项目"} · Git History</p></div>
+        <div><h1>{project?.name ?? "项目提交历史"}</h1><p>{team?.name ?? "战队项目"}</p></div>
         <button className="button" onClick={() => navigate("/teams")}>返回聊天</button>
       </div>
       {error && <div className="alert error">{error}</div>}

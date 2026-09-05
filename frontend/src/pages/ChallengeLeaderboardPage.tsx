@@ -118,7 +118,7 @@ export function ChallengeLeaderboardPage() {
     return (
       <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
         <div className="leaderboard-header leaderboard-v2-header">
-          <div><p className="eyebrow">TEAM CHALLENGE LEADERBOARD</p><h1>{leaderboard.challengeTitle}</h1><p>仅展示冻结报名战队的汇总成绩；成员与贡献者信息仅供管理员审计。</p></div>
+          <div><h1>{leaderboard.challengeTitle}</h1><p>仅展示冻结报名战队的汇总成绩；成员与贡献者信息仅供管理员审计。</p></div>
           <div className="leaderboard-header-actions"><span className="leaderboard-total">共 {leaderboard.teamEntries.length} 支战队</span><Link className="button" to={`/challenges/${leaderboard.challengeId}`}>返回棋盘</Link></div>
         </div>
         <div className="leaderboard-mini-metrics"><div><span>挑战任务</span><strong>{leaderboard.totalTaskCount}</strong></div><div><span>报名战队</span><strong>{leaderboard.teamEntries.length}</strong></div><div><span>当前第一</span><strong>{leaderboard.teamEntries[0]?.teamName ?? "—"}</strong></div><div><span>累计完成题目</span><strong>{completedTaskTotal}</strong></div></div>
@@ -136,9 +136,8 @@ export function ChallengeLeaderboardPage() {
     <section className="challenge-page leaderboard-page leaderboard-v2-page leaderboard-live-page">
       <div className="leaderboard-header leaderboard-v2-header">
         <div>
-          <p className="eyebrow">CHALLENGE LEADERBOARD</p>
           <h1>{leaderboard.challengeTitle}</h1>
-          <p>查看当前挑战的实时排名、参与者任务完成情况和近十天名次变化。</p>
+
         </div>
         <div className="leaderboard-header-actions">
           <span className="leaderboard-live-status">

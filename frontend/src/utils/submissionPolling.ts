@@ -24,7 +24,7 @@ export function pollSubmission(load: () => Promise<SubmissionDto>, onResult: (it
     } catch (error) {
       if (stopped) return;
       failures++;
-      const retryable = !(error instanceof ApiError) || error.status === 408 || error.status === 429 || error.status >= 500;
+      const retryable = !(error instanceof ApiError) || error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
       const retry = retryable && failures <= 3;
       onError(`${error instanceof Error ? error.message : "加载提交失败"}。${retry ? "正在自动重试…" : "自动刷新已停止，请手动重试。"}`);
       if (retry) timer = setTimeout(refresh, Math.max(2000 * 2 ** (failures - 1), error instanceof ApiError ? (error.retryAfterSeconds ?? 0) * 1000 : 0));

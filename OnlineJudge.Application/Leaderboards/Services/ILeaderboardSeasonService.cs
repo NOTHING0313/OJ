@@ -50,4 +50,7 @@ public interface ILeaderboardSeasonService
     Task<Result<LeaderboardSeasonPersonalDto>> GetCurrentPersonalAsync(CancellationToken cancellationToken = default);
 
     Task<Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>> GetPersonalHistoryAsync(CancellationToken cancellationToken = default);
+    Task<Result<LeaderboardSeasonPersonalDto>> GetUserCurrentPersonalAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<LeaderboardSeasonPersonalHistoryDto>>> GetUserPersonalHistoryAsync(Guid userId, CancellationToken cancellationToken = default);
 }

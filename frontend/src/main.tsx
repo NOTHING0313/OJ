@@ -7,6 +7,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { ThemeProvider } from "./theme/ThemeContext";
 import "./styles.css";
 
+const AccountCompetitionPage = lazy(() => import("./pages/AccountCompetitionPage").then((module) => ({ default: module.AccountCompetitionPage })));
 const AccountSettingsPage = lazy(() => import("./pages/AccountSettingsPage").then((module) => ({ default: module.AccountSettingsPage })));
 const AdminChallengeEditorPage = lazy(() => import("./pages/AdminChallengeEditorPage").then((module) => ({ default: module.AdminChallengeEditorPage })));
 const AdminChallengeListPage = lazy(() => import("./pages/AdminChallengeListPage").then((module) => ({ default: module.AdminChallengeListPage })));
@@ -70,11 +71,11 @@ export function App() {
             <Route path="/challenges/:challengeId/peer-review" element={<ProtectedRoute><ChallengePeerReviewPage /></ProtectedRoute>} />
             <Route path="/challenges/:challengeId/peer-review-audit" element={<ProtectedRoute allowedRoles={[2, 3]}><ChallengePeerReviewAuditPage /></ProtectedRoute>} />
             <Route path="/leaderboards" element={<LeaderboardHomePage />} />
-            <Route path="/leaderboards/users" element={<SeasonLeaderboardPage />} />
-            <Route path="/leaderboards/users/problems/:problemId" element={<SeasonProblemLeaderboardPage />} />
+            <Route path="/leaderboards/users" element={<ProtectedRoute allowedRoles={[3]}><SeasonLeaderboardPage /></ProtectedRoute>} />
+            <Route path="/leaderboards/users/problems/:problemId" element={<ProtectedRoute allowedRoles={[3]}><SeasonProblemLeaderboardPage /></ProtectedRoute>} />
             <Route path="/leaderboards/challenges" element={<ChallengeLeaderboardIndexPage />} />
-            <Route path="/leaderboards/history" element={<ProtectedRoute allowedRoles={[2, 3]}><LeaderboardSeasonHistoryPage /></ProtectedRoute>} />
-            <Route path="/leaderboards/history/:seasonId" element={<ProtectedRoute allowedRoles={[2, 3]}><LeaderboardSeasonHistoryDetailPage /></ProtectedRoute>} />
+            <Route path="/leaderboards/history" element={<ProtectedRoute allowedRoles={[3]}><LeaderboardSeasonHistoryPage /></ProtectedRoute>} />
+            <Route path="/leaderboards/history/:seasonId" element={<ProtectedRoute allowedRoles={[3]}><LeaderboardSeasonHistoryDetailPage /></ProtectedRoute>} />
             <Route path="/teams" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
             <Route path="/teams/:teamId/projects/:projectId/history" element={<ProtectedRoute><TeamProjectHistoryPage /></ProtectedRoute>} />
             <Route path="/help" element={<ProtectedRoute><HelpCenterPage /></ProtectedRoute>} />
@@ -125,8 +126,8 @@ export function App() {
                 </ProtectedRoute>
               )}
             />
-            {/* Personal season records are suspended pending explicit product requirements. */}
-            <Route path="/account/competition" element={<Navigate to="/profile/me" replace />} />
+            <Route path="/account/competition" element={<ProtectedRoute allowedRoles={[1]}><AccountCompetitionPage /></ProtectedRoute>} />
+            <Route path="/admin/leaderboard-seasons/users/:userId" element={<ProtectedRoute allowedRoles={[3]}><AccountCompetitionPage /></ProtectedRoute>} />
             <Route
               path="/submissions"
               element={(
@@ -218,7 +219,7 @@ export function App() {
             <Route
               path="/admin/leaderboard-seasons"
               element={(
-                <ProtectedRoute allowedRoles={[2, 3]}>
+                <ProtectedRoute allowedRoles={[3]}>
                   <AdminLeaderboardSeasonPage />
                 </ProtectedRoute>
               )}

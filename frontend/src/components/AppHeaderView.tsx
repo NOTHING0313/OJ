@@ -28,7 +28,7 @@ export function AppHeaderView({ role, isAuthenticated, hasPublicLeaderboard, use
       <nav className="nav-links" aria-label="Main navigation">
         <NavLink className={activePath?.startsWith("/problems") ? "active" : undefined} to="/problems" onClick={interactive ? undefined : preventNavigation}>{renderIcon("problem")}题目</NavLink>
         <NavLink className={activePath === "/challenges" ? "active" : undefined} to="/challenges" onClick={interactive ? undefined : preventNavigation}>{renderIcon("challenge")}挑战</NavLink>
-        {(canManage || hasPublicLeaderboard) && <NavLink className={activePath === "/leaderboards" ? "active" : undefined} to="/leaderboards" onClick={interactive ? undefined : preventNavigation}>{renderIcon("leaderboard")}榜单</NavLink>}
+        {(canManage || role === 1 || hasPublicLeaderboard) && <NavLink className={activePath === "/leaderboards" ? "active" : undefined} to="/leaderboards" onClick={interactive ? undefined : preventNavigation}>{renderIcon("leaderboard")}榜单</NavLink>}
         {isAuthenticated && <NavLink className={activePath === "/teams" ? "active" : undefined} to="/teams" onClick={interactive ? undefined : preventNavigation}>{renderIcon("team")}战队</NavLink>}
         {isAuthenticated && <NavLink className={activePath === "/submissions/my" ? "active" : undefined} to="/submissions/my" onClick={interactive ? undefined : preventNavigation}>{renderIcon("submission")}我的提交</NavLink>}
         {isAuthenticated && <NavLink className={activePath === "/help" ? "active" : undefined} to="/help" onClick={interactive ? undefined : preventNavigation}>{renderIcon("help")}帮助</NavLink>}
@@ -41,7 +41,7 @@ export function AppHeaderView({ role, isAuthenticated, hasPublicLeaderboard, use
               <NavLink to="/admin/problems" onClick={interactive ? undefined : preventNavigation}>题目管理</NavLink>
               <NavLink to="/admin/challenges" onClick={interactive ? undefined : preventNavigation}>挑战管理</NavLink>
               <strong>{renderIcon("reward")}竞赛管理</strong>
-              <NavLink to="/admin/leaderboard-seasons" onClick={interactive ? undefined : preventNavigation}>{renderIcon("season")}榜单管理</NavLink>
+              {isRoot(role) && <NavLink to="/admin/leaderboard-seasons" onClick={interactive ? undefined : preventNavigation}>{renderIcon("season")}榜单管理</NavLink>}
               <NavLink to="/admin/teams" onClick={interactive ? undefined : preventNavigation}>战队管理</NavLink>
               {isRoot(role) && <strong>系统管理</strong>}
               {isRoot(role) && <NavLink to="/admin/submissions" onClick={interactive ? undefined : preventNavigation}>提交管理</NavLink>}

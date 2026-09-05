@@ -119,9 +119,7 @@ export function AdminProblemListPage() {
     <section className="challenge-page management-v2-page admin-problem-v2-page">
       <div className="leaderboard-header management-header">
         <div>
-          <p className="eyebrow">PROBLEM ADMIN</p>
           <h1>题目管理</h1>
-          <p>维护算法题、题面、资源限制与测试用例。</p>
         </div>
         <div className="management-header-actions">
           <span className="management-total">共 {problems.length} 道题目</span>

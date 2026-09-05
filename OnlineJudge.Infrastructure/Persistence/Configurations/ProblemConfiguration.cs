@@ -11,11 +11,14 @@ public class ProblemConfiguration : IEntityTypeConfiguration<Problem>
     {
         builder.ToTable("Problems", table =>
         {
+            table.HasCheckConstraint("CK_Problems_Difficulty", "\"Difficulty\" BETWEEN 0 AND 3");
             table.HasCheckConstraint("CK_Problems_AuthoringVersion", "\"AuthoringVersion\" >= 1");
             table.HasCheckConstraint("CK_Problems_KindConfiguration", "(\"ProblemKind\" = 1 AND \"JudgeMode\" IN (1, 2) AND \"TimeLimitMs\" IS NOT NULL AND \"MemoryLimitMb\" IS NOT NULL AND \"ChoiceAnswerRevealPolicy\" IS NULL AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ProblemKind\" = 2 AND \"JudgeMode\" IS NULL AND \"TimeLimitMs\" IS NULL AND \"MemoryLimitMb\" IS NULL AND \"AllowedLanguagesMask\" = 0 AND \"FunctionSpecJson\" IS NULL AND \"StarterCodeJson\" IS NULL AND ((\"ChoiceAnswerRevealPolicy\" IS NULL AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ChoiceAnswerRevealPolicy\" = 1 AND \"ChoiceAnswerRevealAt\" IS NULL) OR (\"ChoiceAnswerRevealPolicy\" = 2 AND \"ChoiceAnswerRevealAt\" IS NOT NULL)))");
         });
 
         builder.HasKey(problem => problem.Id);
+
+        builder.Property(problem => problem.Difficulty).HasDefaultValue(ProblemDifficulty.Unrated);
 
         builder.Property(problem => problem.Title)
             .HasMaxLength(200)

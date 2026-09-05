@@ -34,6 +34,13 @@ public class ProblemsController(IProblemService problemService, IProblemJudgeAss
         return Ok(result.Value);
     }
 
+    [HttpGet("query")]
+    public async Task<IActionResult> QueryProblems([FromQuery] ProblemQueryRequest request, CancellationToken cancellationToken)
+    {
+        var result = await problemService.QueryProblemsAsync(request, cancellationToken);
+        return Ok(result.Value);
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetProblem(Guid id, CancellationToken cancellationToken)
     {

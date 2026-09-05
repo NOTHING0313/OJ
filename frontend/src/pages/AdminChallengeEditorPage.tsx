@@ -199,9 +199,7 @@ export function AdminChallengeEditorPage() {
     <section className="challenge-page admin-editor-page ui-v2-page editor-v2-page challenge-editor-v2-page">
       <div className="leaderboard-header ui-v2-page-header">
         <div>
-          <p className="eyebrow">CHALLENGE EDITOR</p>
           <h1>{isEditMode ? "编辑挑战" : "创建挑战"}</h1>
-          <p>配置大题目名称、说明、开放时间和发布状态。</p>
         </div>
         <div className="button-row">
           <Link className="button" to="/admin/challenges">
@@ -327,7 +325,6 @@ export function AdminChallengeEditorPage() {
       {challenge && (
         <section className="admin-panel">
           <div className="admin-panel-header">
-            <p className="eyebrow">TASKS</p>
             <h2>小题管理</h2>
             <Link className="button" to={`/admin/challenges/${challenge.id}/tasks/new`}>
               新建小题
